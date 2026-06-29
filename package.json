@@ -1,7 +1,7 @@
 {
   "name": "pg4",
   "version": "0.1.0",
-  "description": "pg4 \u2014 clean lead generation & enrichment pipeline (Italian SMBs)",
+  "description": "pg4 — clean lead generation & enrichment pipeline (Italian SMBs)",
   "private": true,
   "type": "commonjs",
   "packageManager": "pnpm@10.33.2",
@@ -30,6 +30,7 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
     "cheerio": "^1.0.0",
+    "domhandler": "^5.0.3",
     "csv-parse": "^5.5.6",
     "csv-stringify": "^6.5.2",
     "dotenv": "^16.4.5",
