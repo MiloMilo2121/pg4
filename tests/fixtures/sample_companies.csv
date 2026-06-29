@@ -1,0 +1,11 @@
+company_name,city,province,address,phone,website,vat_code,category
+"Mario Rossi SRL",Milano,MI,Via Roma 1,02 1234567,https://www.example.com,12345678901,test
+"  Beauty Center Verona  ",Verona,VR,Via Mazzini 5,045/123456,beautyverona.it,,centro estetico
+"Solo Nome SpA",,,,,,,
+"Bad URL Inc",Roma,RM,Via dei Fori 2,06 9999999,not a url,99999999999,test
+"Whatsapp Only",Torino,TO,,3331234567,https://wa.me/393331234567,,test
+"Linkedin Lead",Bologna,BO,Via Indipendenza 8,051 555555,https://linkedin.com/company/foo,,test
+"Pippo Pluto SNC",Napoli,NA,Via Toledo 100,081 7654321,,11122233344,test
+"Empty Website Co",Firenze,FI,Piazza del Duomo 1,055 333333,,,test
+"Quality Threshold Test",,,,,,,test
+"Caino (BS) Coiffeur",Caino,,Via Trento 12,030 000800,https://caino-coiffeur.it,,test

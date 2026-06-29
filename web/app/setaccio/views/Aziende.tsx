@@ -81,7 +81,15 @@ export default function Aziende({ st, set }: Pick<ViewProps, 'st' | 'set'>) {
           <span>Azienda</span><span>Settore</span><span>Comune</span><span>Fatturato</span><span>Dip.</span><span>Maturità</span><span>Giudizio</span>
         </div>
         {rows.map((c) => (
-          <div key={c.nome} className="ag-row" style={{ display: 'grid', gridTemplateColumns: COLS, gap: 12, padding: '13px 20px', borderBottom: '1px solid var(--line-soft)', alignItems: 'center', fontSize: '.86rem' }}>
+          <div
+            key={c.id ?? c.nome}
+            className="ag-row"
+            role={c.id ? 'button' : undefined}
+            tabIndex={c.id ? 0 : undefined}
+            onClick={() => c.id && set({ selectedCompanyId: c.id })}
+            onKeyDown={(e) => { if (c.id && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); set({ selectedCompanyId: c.id }); } }}
+            style={{ display: 'grid', gridTemplateColumns: COLS, gap: 12, padding: '13px 20px', borderBottom: '1px solid var(--line-soft)', alignItems: 'center', fontSize: '.86rem', cursor: c.id ? 'pointer' : 'default' }}
+          >
             <span style={{ fontWeight: 600, color: 'var(--ink)' }}>{c.nome}</span>
             <span style={{ color: 'var(--ink-3)', fontSize: '.8rem' }}>{c.settore}</span>
             <span style={{ color: 'var(--ink-2)' }}>{c.comune}</span>

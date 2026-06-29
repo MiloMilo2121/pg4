@@ -3,6 +3,7 @@ import { WIZ_CATS, WIZ_PROV, WIZ_SOURCES, WIZ_DEPTH } from './data';
 import { fmt, chipStyle } from './helpers';
 import type { ViewProps } from './ctx';
 import MiloAvatar from './MiloAvatar';
+import { useScrapeJob } from './jobs';
 
 const MILO_SEEN_KEY = 'ag_milo_seen';
 
@@ -94,14 +95,32 @@ export function MiloModal({ st, set }: Pick<ViewProps, 'st' | 'set'>) {
 const STEP_LABELS = ['Cosa', 'Dove', 'Fonti', 'Profondità', 'Preflight'];
 
 export function WizardModal({ st, set }: Pick<ViewProps, 'st' | 'set'>) {
+  const scrapeJob = useScrapeJob();
   const toggleArr = (field: 'wCats' | 'wProv' | 'wSrc', val: string) => {
     const a = st[field];
     set({ [field]: a.includes(val) ? a.filter((x) => x !== val) : [...a, val] } as Partial<ViewProps['st']>);
   };
   const closeWizard = () => set({ wizardOpen: false });
   const wNext = () => {
-    if (st.wStep >= 4) set({ wizardOpen: false, nav: 'mercati' });
-    else set({ wStep: st.wStep + 1 });
+    if (st.wStep < 4) {
+      set({ wStep: st.wStep + 1 });
+      return;
+    }
+    // Final step → launch the REAL scrape. The engine takes one category+province;
+    // the wizard allows multi-select, so we send the first combo (multi = follow-up).
+    const category = st.wCats[0];
+    const province = st.wProv[0];
+    if (!category || !province) {
+      set({ wizardOpen: false, nav: 'mercati' });
+      return;
+    }
+    scrapeJob.mutate(
+      { category, province },
+      {
+        onSuccess: (r) => set({ activeJob: { id: r.jobId, kind: 'scrape' }, jobModalOpen: true, wizardOpen: false }),
+        onError: () => set({ wizardOpen: false, nav: 'mercati' }),
+      },
+    );
   };
   const wBack = () => set({ wStep: Math.max(0, st.wStep - 1) });
 

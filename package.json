@@ -1,7 +1,7 @@
 {
   "name": "pg4",
   "version": "0.1.0",
-  "description": "pg4 — clean lead generation & enrichment pipeline (Italian SMBs)",
+  "description": "pg4 \u2014 clean lead generation & enrichment pipeline (Italian SMBs)",
   "private": true,
   "type": "commonjs",
   "packageManager": "pnpm@10.33.2",
@@ -23,6 +23,7 @@
     "validate:output": "tsx src/scripts/validate_output.ts",
     "lookup": "tsx src/cli/lookup.ts",
     "serve": "tsx src/server/api_server.ts",
+    "dev": "node scripts/dev.mjs",
     "mcp": "tsx src/server/mcp_server.ts",
     "lint": "eslint src tests scripts",
     "test:coverage": "vitest run tests/unit --coverage --reporter=dot"

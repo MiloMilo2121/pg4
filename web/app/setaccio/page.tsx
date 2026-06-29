@@ -16,6 +16,8 @@ import Analytics from './views/Analytics';
 import Liste from './views/Liste';
 import Sistema from './views/Sistema';
 import { MiloFab, MiloModal, WizardModal } from './Modals';
+import JobProgressModal from './JobProgressModal';
+import CompanyDrawer from './CompanyDrawer';
 
 const PAGE_BG =
   'radial-gradient(120% 80% at 88% -10%, rgba(151,88,47,0.06), transparent 55%), ' +
@@ -98,6 +100,8 @@ export default function SetaccioPage() {
         <MiloFab set={set} />
         {st.miloOpen && <MiloModal st={st} set={set} />}
         {st.wizardOpen && <WizardModal st={st} set={set} />}
+        {st.activeJob && <JobProgressModal st={st} set={set} />}
+        {st.selectedCompanyId && <CompanyDrawer st={st} set={set} />}
       </div>
     </div>
   );

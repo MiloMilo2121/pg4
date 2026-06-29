@@ -20,6 +20,19 @@ export interface Company {
   facebook?: string;
   linkedin?: string;
   source?: string;
+  // schema-v4 fields (already in the /api/companies payload; typed for the drawer).
+  tiktok?: string;
+  youtube?: string;
+  rating?: string;
+  reviews_count?: string;
+  founding_year?: string;
+  net_profit?: string;
+  net_profit_year?: string;
+  share_capital?: string;
+  legal_form?: string;
+  ateco?: string;
+  rea?: string;
+  decision_maker_name?: string;
   [k: string]: unknown;
 }
 
@@ -157,7 +170,7 @@ export const api = {
   companiesCsvUrl: () => `${BASE}/api/companies.csv`,
   enrich: (companyIds: string[], fields: string[]) => post<{ jobId: string; itemCount: number }>('/api/jobs/enrich', { companyIds, fields }),
   job: (id: string) => get<EnrichJob>(`/api/jobs/${id}`),
-  scrape: (body: Record<string, unknown>) => post<{ accepted: boolean; note: string }>('/api/jobs/scrape', body),
+  scrape: (body: Record<string, unknown>) => post<{ jobId: string; kind: string; category: string; province: string }>('/api/jobs/scrape', body),
   // judgment-layer buttons (L2–L5) — each independent, idempotent, cumulative.
   discovery: (companyIds: string[]) => post<{ jobId: string; kind: JudgmentJobKind; itemCount: number }>('/api/jobs/discovery', { companyIds }),
   collectSignals: (companyIds: string[]) => post<{ jobId: string; kind: JudgmentJobKind; itemCount: number }>('/api/jobs/collect-signals', { companyIds }),

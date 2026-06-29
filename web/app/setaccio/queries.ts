@@ -11,6 +11,15 @@ import { api, type Company as ApiCompany } from '../../lib/api';
 import type { Company as ViewCompany, Market, Province, Region, EnrichField } from './data';
 import { REGIONS, PROVINCES, ENRICH } from './data';
 
+/**
+ * Single source of truth: Setaccio enrich-field keys → the engine's free
+ * EnrichableField names. Keys absent here (decisore, ateco) have NO free server
+ * field — the enrich POST would 422 on them, so the wiring filters them out.
+ */
+export const ENRICH_KEY_TO_API: Record<string, 'vat' | 'revenue' | 'employees' | 'email' | 'pec' | 'linkedin'> = {
+  piva: 'vat', fatturato: 'revenue', dipendenti: 'employees', email: 'email', pec: 'pec', social: 'linkedin',
+};
+
 // ---- parsers ----
 function parseRevenueMillions(v: unknown): number {
   if (v === undefined || v === null || v === '') return 0;
@@ -52,6 +61,7 @@ function tier(c: ApiCompany): string {
 /** Real Company → the view's Company shape (design-preserving). */
 function toViewCompany(c: ApiCompany): ViewCompany {
   return {
+    id: c.id,
     nome: c.company_name ?? '—',
     comune: c.city ?? (c.province as string) ?? '—',
     settore: c.category ?? '—',
@@ -158,11 +168,8 @@ export function useEnrichFields(): EnrichField[] {
   const m = useMetrics();
   const fr = m.data?.fillRates ?? {};
   const total = m.data?.total ?? 0;
-  const map: Record<string, string> = {
-    piva: 'vat', fatturato: 'revenue', dipendenti: 'employees', email: 'email', pec: 'pec', social: 'linkedin',
-  };
   return ENRICH.map((e) => {
-    const apiKey = map[e.k];
+    const apiKey = ENRICH_KEY_TO_API[e.k];
     const cov = apiKey && fr[apiKey] !== undefined ? Math.round(fr[apiKey]) : e.cov;
     const toArr = total ? Math.round(((100 - cov) / 100) * total) : e.toArr;
     return { ...e, cov, toArr };

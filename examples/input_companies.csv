@@ -1,0 +1,6 @@
+company_name,category,city,province,region,address,phone,website,vat_code,source
+Atlas Meccanica Srl,componenti meccanici,Bergamo,BG,Lombardia,Via Industriale 10,,https://atlasmeccanica.example.test,99900000001,EXAMPLE
+Nord Valvole Spa,valvole industriali,Vicenza,VI,Veneto,Viale Tecnica 22,,https://nordvalvole.example.test,99900000002,EXAMPLE
+Lario Componenti Srl,lavorazioni conto terzi,Lecco,LC,Lombardia,Via Officina 4,,https://lariocomponenti.example.test,99900000003,EXAMPLE
+Adriatica Packaging Srl,packaging alimentare,Rimini,RN,Emilia-Romagna,Via Imballaggi 8,,https://adriaticapackaging.example.test,99900000004,EXAMPLE
+Etna Automazioni Srl,automazione industriale,Catania,CT,Sicilia,Via Controlli 15,,https://etnaautomazioni.example.test,99900000005,EXAMPLE

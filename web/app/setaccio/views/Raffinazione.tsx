@@ -1,8 +1,11 @@
 import type { CSSProperties } from 'react';
 import { RAFF } from '../data';
-import { useEnrichFields } from '../queries';
+import { useEnrichFields, useCompanies, ENRICH_KEY_TO_API } from '../queries';
+import { useEnrichJob } from '../jobs';
 import { fmt, tabStyle, prioPillStyle } from '../helpers';
 import type { ViewProps } from '../ctx';
+
+const ENRICH_MAX = 200; // server caps a job at 200 companies
 
 const SECTION = { padding: '30px 36px 60px', maxWidth: 1180, margin: '0 auto' } as const;
 const TABS: [ViewProps['st']['raffTab'], string][] = [
@@ -19,10 +22,25 @@ const SAVED = [
 
 export default function Raffinazione({ st, set }: Pick<ViewProps, 'st' | 'set'>) {
   const ENRICH = useEnrichFields();
+  const { ids } = useCompanies();
+  const enrichJob = useEnrichJob();
   // enrichment
   const selFields = ENRICH.filter((f) => st.enrich[f.k]);
   const enrichN = selFields.reduce((s, f) => s + f.costN, 0);
   const enrichTargets = selFields.reduce((s, f) => Math.max(s, f.toArr), 0);
+  // map selected FE keys → free engine fields; decisore/ateco have no free field.
+  const selectedKeys = selFields.map((f) => f.k);
+  const apiFields = Array.from(new Set(selectedKeys.map((k) => ENRICH_KEY_TO_API[k]).filter(Boolean))) as string[];
+  const unmappable = selectedKeys.filter((k) => !ENRICH_KEY_TO_API[k]);
+  const targetIds = ids.slice(0, ENRICH_MAX);
+  const canEnrich = apiFields.length > 0 && targetIds.length > 0 && !enrichJob.isPending;
+  const runEnrich = () => {
+    if (!canEnrich) return;
+    enrichJob.mutate(
+      { ids: targetIds, fields: apiFields },
+      { onSuccess: (r) => set({ activeJob: { id: r.jobId, kind: 'enrich' }, jobModalOpen: true }) },
+    );
+  };
 
   // imbuto
   const totalRemoved = RAFF.reduce((s, f) => s + (st.filters[f.k] ? f.removed : 0), 0);
@@ -88,10 +106,24 @@ export default function Raffinazione({ st, set }: Pick<ViewProps, 'st' | 'set'>)
               <div style={{ fontSize: '.76rem', color: 'var(--ink-3)', marginBottom: 16 }}>{selFields.length} campi · {fmt(enrichTargets)} aziende</div>
               <div style={{ background: 'var(--accent-wash)', borderRadius: 11, padding: '13px 14px', marginBottom: 16 }}>
                 <div style={{ fontSize: '.82rem', color: 'var(--ink-2)', lineHeight: 1.5 }}>
-                  {selFields.length ? `Aggiungendo questi campi rendi filtrabili fino a ${fmt(enrichTargets)} aziende e abiliti i segmenti per fascia di fatturato.` : "Seleziona almeno un campo per vedere l'impatto sul dataset."}
+                  {apiFields.length
+                    ? `Arricchisco ${fmt(targetIds.length)} aziende sui campi gratuiti selezionati${ids.length > ENRICH_MAX ? ` (primo lotto di ${ENRICH_MAX})` : ''}.`
+                    : "Seleziona almeno un campo arricchibile (P.IVA, fatturato, dipendenti, email, PEC, social)."}
+                  {unmappable.length > 0 && (
+                    <span style={{ display: 'block', marginTop: 6, color: 'var(--ink-3)' }}>
+                      {unmappable.join(', ')}: non arricchibili gratis in questa versione — verranno ignorati.
+                    </span>
+                  )}
                 </div>
               </div>
-              <button className="btn btn-solid" style={{ width: '100%', justifyContent: 'center' }}><span>Arricchisci</span><span className="gl">→</span></button>
+              <button
+                className="btn btn-solid"
+                onClick={runEnrich}
+                disabled={!canEnrich}
+                style={{ width: '100%', justifyContent: 'center', opacity: canEnrich ? 1 : 0.5, cursor: canEnrich ? 'pointer' : 'not-allowed' }}
+              >
+                <span>{enrichJob.isPending ? 'Avvio…' : 'Arricchisci'}</span><span className="gl">→</span>
+              </button>
             </div>
           </div>
         </div>

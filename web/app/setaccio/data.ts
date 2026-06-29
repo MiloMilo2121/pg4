@@ -12,6 +12,12 @@ export type Nav =
   | 'liste'
   | 'sistema';
 
+export type JobKind = 'enrich' | 'scrape' | 'discovery' | 'collect_signals' | 'judge' | 'validate_export';
+export interface ActiveJob {
+  id: string;
+  kind: JobKind;
+}
+
 export type ItLevel = 'nazione' | 'regione' | 'provincia';
 export type ItMode =
   | 'copertura'
@@ -53,6 +59,10 @@ export interface State {
   wProv: string[];
   wSrc: string[];
   wDepth: 'rapido' | 'completo' | 'esteso';
+  // FE↔BE wiring: the job currently polled + the progress modal + the company drawer.
+  activeJob: ActiveJob | null;
+  jobModalOpen: boolean;
+  selectedCompanyId: string | null;
 }
 
 export const INITIAL_STATE: State = {
@@ -78,6 +88,9 @@ export const INITIAL_STATE: State = {
   wProv: ['Vicenza'],
   wSrc: ['pg', 'maps'],
   wDepth: 'completo',
+  activeJob: null,
+  jobModalOpen: false,
+  selectedCompanyId: null,
 };
 
 export interface Market {
@@ -195,6 +208,8 @@ export const CREDITS: Credit[] = [
 ];
 
 export interface Company {
+  /** Real company id (empty for the static demo rows; set for API rows). */
+  id?: string;
   nome: string;
   comune: string;
   settore: string;

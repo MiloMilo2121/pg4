@@ -270,7 +270,7 @@ export default function Dashboard() {
     setScrapeNote('Avvio…');
     try {
       const r = await api.scrape({ category, province, sources: [srcPg && 'pg', srcMaps && 'maps'].filter(Boolean), paidEnabled: paid });
-      setScrapeNote(r.note);
+      setScrapeNote(`Avviato: ${r.category} · ${r.province} (job ${r.jobId.slice(0, 8)})`);
     } catch (e) {
       setScrapeNote((e as Error).message);
     }

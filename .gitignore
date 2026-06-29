@@ -11,18 +11,3 @@ tmp/
 coverage/
 *.tsbuildinfo
 .DS_Store
-
-# --- export hardening: dati, segreti, profili browser MAI nel repo ---
-leads/
-output/
-*.csv
-*.jsonl
-.env
-.env.*
-!.env.example
-.browser-state/
-**/Default/
-**/temp_profiles/
-**/Cookies
-**/Login Data
-**/*.leveldb
