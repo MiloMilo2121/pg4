@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="it">
+<head><title>agenzie immobiliari Sedico - Google Maps</title></head>
+<body>
+<div role="main">
+  <div role="feed">
+
+    <!-- Card 1: name only — no address, no phone, no website -->
+    <div class="Nv2PK">
+      <a aria-label="Agenzia Sedico" href="/maps/place/Agenzia+Sedico/data=...">
+        <div class="qBF1Pd fontHeadlineSmall">Agenzia Sedico</div>
+      </a>
+    </div>
+
+    <!-- Card 2: empty name (must be filtered out) -->
+    <div class="Nv2PK">
+      <a aria-label="" href="/maps/place/anonymous/data=...">
+        <div class="qBF1Pd fontHeadlineSmall"></div>
+      </a>
+      <div class="W4Efsd">
+        <span>Agenzia immobiliare</span>
+        <span>Via Indipendenza 1, 32036 Sedico BL</span>
+      </div>
+    </div>
+
+    <!-- Card 3: name from a[aria-label] only (no .qBF1Pd) -->
+    <div class="Nv2PK">
+      <a aria-label="Casa & Co Sedico">href</a>
+      <div class="W4Efsd">
+        <span>Via Roma 4, 32036 Sedico BL</span>
+      </div>
+    </div>
+
+    <!-- Card 4: phone with weird format -->
+    <div class="Nv2PK">
+      <a aria-label="Studio CMT">x</a>
+      <div class="qBF1Pd fontHeadlineSmall">Studio CMT</div>
+      <div class="W4Efsd">
+        <span>Aperto</span>
+        <span>Strada Provinciale 1, 32036 Sedico BL</span>
+        <span>0437 850 200</span>
+      </div>
+    </div>
+
+  </div>
+</div>
+</body>
+</html>

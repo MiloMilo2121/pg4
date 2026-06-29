@@ -1,0 +1,19 @@
+{
+  "objectClassName": "domain",
+  "handle": "unrelated.com",
+  "ldhName": "unrelated.com",
+  "entities": [
+    {
+      "objectClassName": "entity",
+      "roles": ["registrant"],
+      "vcardArray": [
+        "vcard",
+        [
+          ["version", {}, "text", "4.0"],
+          ["fn", {}, "text", "Domain Privacy Service"],
+          ["org", {}, "text", "Privacy Inc."]
+        ]
+      ]
+    }
+  ]
+}

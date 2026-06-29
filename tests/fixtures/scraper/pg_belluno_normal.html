@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="it">
+<head><title>Agenzie immobiliari a Belluno - PagineGialle</title></head>
+<body>
+<header><h1>Risultati per "agenzie immobiliari" a Belluno</h1></header>
+<main>
+  <div class="search-results">
+
+    <!-- Card 1: full record -->
+    <div class="search-itm">
+      <h3 class="search-itm__rag">Studio Immobiliare Dolomiti SRL</h3>
+      <div class="search-itm__adr">Via Mezzaterra 21, 32100 Belluno (BL)</div>
+      <div class="search-itm__phone">
+        <span class="search-itm__phone-item">0437 000123</span>
+      </div>
+      <a class="search-itm__website" href="https://www.studiodolomiti.it/" target="_blank" rel="noopener">www.studiodolomiti.it</a>
+      <a class="remove_blank_for_app" href="https://www.paginegialle.it/belluno/agenzie-immobiliari/studio-immobiliare-dolomiti-srl.html">scheda</a>
+    </div>
+
+    <!-- Card 2: missing website, multiple phones -->
+    <div class="search-itm">
+      <h3 class="search-itm__rag">Immobiliare Cadore</h3>
+      <div class="search-itm__adr">Piazza dei Martiri 5, 32100 Belluno (BL)</div>
+      <div class="search-itm__phone">
+        <span class="search-itm__phone-item">0437 00123</span>
+        <span class="search-itm__phone-item">347 1234567</span>
+      </div>
+      <a class="remove_blank_for_app" href="https://www.paginegialle.it/belluno/agenzie-immobiliari/immobiliare-cadore.html">scheda</a>
+    </div>
+
+    <!-- Card 3: directory link should be ignored as website -->
+    <div class="search-itm">
+      <h3 class="search-itm__rag">Agenzia Casa Belluno di Mario Rossi</h3>
+      <div class="search-itm__adr">Via Roma 12, 32100 Belluno (BL)</div>
+      <div class="search-itm__phone">
+        <span class="search-itm__phone-item">0437 30000</span>
+      </div>
+      <!-- internal PG link masquerading as website -->
+      <a href="https://www.paginegialle.it/promo/agenzia-casa-belluno" class="search-itm__internal">scheda completa</a>
+      <a href="https://italiaonline.it/profilo/agenzia-casa" class="search-itm__internal">profilo</a>
+      <a class="remove_blank_for_app" href="https://www.paginegialle.it/belluno/agenzie-immobiliari/agenzia-casa-belluno.html">scheda</a>
+    </div>
+
+    <!-- Card 4: name with whitespace/nbsp + address with Comune diverso -->
+    <div class="search-itm">
+      <h3 class="search-itm__rag">  Re/Max&nbsp;Belluno   </h3>
+      <div class="search-itm__adr">Via Garibaldi 8, 32030 Sedico (BL)</div>
+      <div class="search-itm__phone">
+        <span class="search-itm__phone-item">0437 000100</span>
+      </div>
+      <a href="https://www.remaxbelluno.it/" class="search-itm__website">remaxbelluno.it</a>
+      <a class="remove_blank_for_app" href="https://www.paginegialle.it/sedico/agenzie-immobiliari/remax-belluno.html">scheda</a>
+    </div>
+
+    <!-- Card 5: empty name (must be filtered out) -->
+    <div class="search-itm">
+      <h3 class="search-itm__rag">   </h3>
+      <div class="search-itm__adr">Via X, 32100 Belluno (BL)</div>
+    </div>
+
+  </div>
+</main>
+</body>
+</html>

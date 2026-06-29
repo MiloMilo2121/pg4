@@ -1,0 +1,45 @@
+{
+  "_note": "TEMPLATE del golden set (§15), ETEROGENEO A BLOCCHI. Disegno: N categorie diverse × ~6-8 aziende ciascuna, ogni blocco stratificato sui 4 quadranti (target A+B-, controllo A+B+, fuffa A-B+, inerte A-B-). Eterogeneo TRA i blocchi (testa la generalizzazione tra modelli), omogeneo DENTRO ogni blocco (il benchmark §17 è la coorte del blocco). `judge:eval` raggruppa per `categoria` e dà precision/recall PER BLOCCO — mai un numero globale (la A di un ristorante ≠ la A di un dentista). Etichetta A e B ALLA CIECA, con la rubrica v2 di QUELLA categoria. Copia in tests/fixtures/judgment_golden.json e RIEMPI. Esegui: pnpm run judge:eval -- --golden tests/fixtures/judgment_golden.json",
+  "_schema": {
+    "id": "string univoco",
+    "categoria": "LABEL DEL BLOCCO per il raggruppamento eval (es. 'ristorazione_padova', 'dentale_padova', 'food_design_veneto'). Distinta da lead.category; se assente, l'harness usa lead.category.",
+    "lead": "{ company_name, category, official_website?, city?, province?, vat_code? }",
+    "expectedTarget": "'yes' | 'no' | 'borderline' (il verdetto umano)",
+    "expectedQuadrant": "opzionale: 'A+B-' | 'A+B+' | 'A-B+' | 'A-B-' (etichetta i +/- canonici; il sistema può uscire A?/B? se un asse non è misurato)",
+    "expectedALevel": "opzionale: 'high' | 'mid' | 'low' (forza intrinseca giudicata a mano da fonti TERZE — la SUA forma cambia per categoria: recensioni per la ristorazione, credenziali/anzianità per il dentale)",
+    "expectedBLevel": "opzionale: 'high' | 'mid' | 'low' (qualità espressione digitale)",
+    "expectedModel": "opzionale: 'B2B_manufacturing' | 'B2C_product' | 'professional_local' | 'hospitality_retail' | 'B2B2C'"
+  },
+  "items": [
+    {
+      "id": "manifattura-fornitore-silente",
+      "categoria": "manifattura_padova",
+      "lead": { "company_name": "Esempio Meccanica Srl", "category": "produzione macchinari", "official_website": "https://esempio-meccanica.it", "city": "Padova", "province": "PD" },
+      "expectedTarget": "yes",
+      "expectedQuadrant": "A+B-",
+      "expectedALevel": "high",
+      "expectedBLevel": "low",
+      "expectedModel": "B2B_manufacturing"
+    },
+    {
+      "id": "ecommerce-fuffa",
+      "categoria": "ecommerce_brand",
+      "lead": { "company_name": "Esempio Rivendita Online", "category": "e-commerce accessori", "official_website": "https://esempio-shop.it", "city": "Milano", "province": "MI" },
+      "expectedTarget": "no",
+      "expectedQuadrant": "A-B+",
+      "expectedALevel": "low",
+      "expectedBLevel": "high",
+      "expectedModel": "B2C_product"
+    },
+    {
+      "id": "arredo-maturo",
+      "categoria": "ecommerce_brand",
+      "lead": { "company_name": "Esempio Brand Spa", "category": "arredo design", "official_website": "https://esempio-brand.it", "city": "Treviso", "province": "TV" },
+      "expectedTarget": "no",
+      "expectedQuadrant": "A+B+",
+      "expectedALevel": "high",
+      "expectedBLevel": "high",
+      "expectedModel": "B2B2C"
+    }
+  ]
+}

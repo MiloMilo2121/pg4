@@ -1,0 +1,51 @@
+{
+  "name": "pg4",
+  "version": "0.1.0",
+  "description": "pg4 \u2014 clean lead generation & enrichment pipeline (Italian SMBs)",
+  "private": true,
+  "type": "commonjs",
+  "packageManager": "pnpm@10.33.2",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run tests/unit --reporter=dot",
+    "test:smoke": "RUN_SMOKE=1 vitest run tests/smoke --reporter=dot",
+    "test:all": "pnpm run test && pnpm run test:smoke",
+    "scrape": "tsx src/cli/scrape.ts",
+    "enrich": "tsx src/cli/enrich.ts",
+    "run": "tsx src/cli/run.ts",
+    "benchmark": "tsx src/cli/benchmark.ts",
+    "judge": "tsx src/cli/judge.ts",
+    "judge:eval": "tsx src/scripts/judgment_eval.ts",
+    "validate:output": "tsx src/scripts/validate_output.ts",
+    "lookup": "tsx src/cli/lookup.ts",
+    "serve": "tsx src/server/api_server.ts",
+    "mcp": "tsx src/server/mcp_server.ts",
+    "lint": "eslint src tests scripts",
+    "test:coverage": "vitest run tests/unit --coverage --reporter=dot"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "cheerio": "^1.0.0",
+    "csv-parse": "^5.5.6",
+    "csv-stringify": "^6.5.2",
+    "dotenv": "^16.4.5",
+    "pino": "^9.5.0",
+    "pino-pretty": "^11.3.0",
+    "playwright": "^1.48.0",
+    "undici": "^6.20.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^22.7.0",
+    "@vitest/coverage-v8": "^2.1.9",
+    "eslint": "^9.39.4",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0",
+    "typescript-eslint": "^8.61.0",
+    "vitest": "^2.1.0"
+  }
+}

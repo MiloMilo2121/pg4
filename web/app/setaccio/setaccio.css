@@ -1,0 +1,244 @@
+/* ============================================================================
+   Setaccio — Intelligence Commerciale
+   Faithful implementation of the "Antigravity" Claude Design prototype.
+
+   Design system: Marco Milanello — warm cream paper + terracotta accent,
+   Spectral (serif) for voice, Hanken Grotesk (sans) for UI.
+
+   Everything is scoped under `.setaccio-root` so it never leaks into the
+   existing dark `pg4` dashboard that shares this Next.js app.
+   ========================================================================== */
+
+@import url('https://fonts.googleapis.com/css2?family=Spectral:ital,wght@0,400;0,500;0,600;1,400;1,500&family=Hanken+Grotesk:wght@400;500;600;700&display=swap');
+
+.setaccio-root {
+  /* ---- Paper / surfaces ---- */
+  --paper: #faf7f2;
+  --paper-2: #f4eee5;
+  --paper-3: #efe7da;
+  --white: #ffffff;
+
+  /* ---- Ink ---- */
+  --ink: #211b14;
+  --ink-2: #5a5046;
+  --ink-3: #8c8175;
+
+  /* ---- Accent (warm sienna / terracotta) ---- */
+  --accent: #97582f;
+  --accent-2: #b47a4c;
+  --accent-deep: #6c3d20;
+  --milo-brown: #4e3320;
+
+  /* ---- Lines ---- */
+  --line: rgba(33, 27, 20, 0.12);
+  --line-soft: rgba(33, 27, 20, 0.07);
+
+  /* ---- Accent washes ---- */
+  --accent-wash: rgba(151, 88, 47, 0.05);
+  --accent-wash-2: rgba(151, 88, 47, 0.1);
+  --accent-line: rgba(151, 88, 47, 0.35);
+  --select: rgba(151, 88, 47, 0.18);
+
+  /* ---- Status ---- */
+  --ok: #4a8f5e;
+  --error: #b3422f;
+
+  /* ---- Type ---- */
+  --serif: 'Spectral', Georgia, 'Times New Roman', serif;
+  --sans: 'Hanken Grotesk', system-ui, -apple-system, sans-serif;
+
+  /* ---- Radii ---- */
+  --r-pill: 999px;
+
+  /* ---- Shadows (warm ink, low alpha, soft spread) ---- */
+  --shadow-sm: 0 2px 6px -4px rgba(33, 27, 20, 0.15);
+  --shadow-card: 0 14px 30px -22px rgba(33, 27, 20, 0.4), 0 2px 6px -4px rgba(33, 27, 20, 0.15);
+  --shadow-lift: 0 18px 40px -28px rgba(33, 27, 20, 0.4);
+  --shadow-pop: 0 22px 48px -32px rgba(33, 27, 20, 0.45);
+  --shadow-modal: 0 30px 70px -30px rgba(33, 27, 20, 0.55);
+  --shadow-accent: 0 8px 22px -12px rgba(151, 88, 47, 0.7);
+
+  /* ---- Motion ---- */
+  --dur-fast: 0.2s;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+
+  position: fixed;
+  inset: 0;
+  font-family: var(--sans);
+  color: var(--ink);
+  background: var(--paper);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  line-height: 1.6;
+}
+
+.setaccio-root *,
+.setaccio-root *::before,
+.setaccio-root *::after {
+  box-sizing: border-box;
+}
+.setaccio-root button {
+  font-family: inherit;
+  cursor: pointer;
+  border: none;
+  background: none;
+  color: inherit;
+}
+.setaccio-root input {
+  font-family: inherit;
+}
+.setaccio-root svg {
+  display: block;
+}
+.setaccio-root ::selection {
+  background: var(--select);
+}
+.setaccio-root :focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
+/* ---- The signature spaced-caps kicker ---- */
+.setaccio-root .kicker {
+  font-family: var(--sans);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+.setaccio-root .kicker--muted {
+  color: var(--ink-3);
+}
+
+/* ---- Buttons (pill, solid + outline) ---- */
+.setaccio-root .btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  white-space: nowrap;
+  font-family: var(--sans);
+  font-weight: 600;
+  font-size: 0.92rem;
+  padding: 0.8rem 1.4rem;
+  border-radius: var(--r-pill);
+  transition: background var(--dur-fast), color var(--dur-fast),
+    border-color var(--dur-fast), transform var(--dur-fast);
+}
+.setaccio-root .btn .gl {
+  font-size: 0.85rem;
+  transition: transform var(--dur-fast);
+}
+.setaccio-root .btn:hover .gl {
+  transform: translateX(3px);
+}
+.setaccio-root .btn-solid {
+  background: var(--accent);
+  color: var(--white);
+  box-shadow: var(--shadow-accent);
+}
+.setaccio-root .btn-solid:hover {
+  background: var(--accent-deep);
+  transform: translateY(-1px);
+}
+.setaccio-root .btn-outline {
+  border: 1px solid var(--line);
+  color: var(--ink);
+}
+.setaccio-root .btn-outline:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.setaccio-root .link-u {
+  color: var(--accent);
+  font-weight: 600;
+  border-bottom: 1px solid rgba(151, 88, 47, 0.35);
+  transition: border-color var(--dur-fast);
+  cursor: pointer;
+}
+.setaccio-root .link-u:hover {
+  border-color: var(--accent);
+}
+
+/* ---- Pencil sketch primitives (the Setaccio logo mark) ---- */
+.setaccio-root .sketch {
+  display: block;
+  overflow: visible;
+}
+.setaccio-root .sketch .ink {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+.setaccio-root .sketch .node {
+  fill: var(--accent);
+  stroke: none;
+}
+
+/* ---- Entrance animation (fade + slide up) ---- */
+@keyframes agfade {
+  from {
+    transform: translateY(7px);
+  }
+  to {
+    transform: none;
+  }
+}
+.setaccio-root .agfade {
+  animation: agfade 0.34s cubic-bezier(0.16, 1, 0.3, 1) both;
+  opacity: 1;
+}
+
+/* ---- Warm scrollbar ---- */
+.setaccio-root .ag-scroll::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
+}
+.setaccio-root .ag-scroll::-webkit-scrollbar-thumb {
+  background: rgba(151, 88, 47, 0.32);
+  border-radius: 6px;
+}
+.setaccio-root .ag-scroll {
+  scrollbar-color: rgba(151, 88, 47, 0.4) transparent;
+  scrollbar-width: thin;
+}
+
+/* ---- Hover affordances (must live in CSS, not inline) ---- */
+.setaccio-root .ag-tile {
+  transition: filter 0.25s ease, transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  cursor: pointer;
+}
+.setaccio-root .ag-tile:hover {
+  filter: brightness(1.04);
+}
+.setaccio-root .ag-nav:hover {
+  background: var(--accent-wash) !important;
+}
+.setaccio-root .ag-row:hover {
+  background: var(--accent-wash) !important;
+}
+.setaccio-root .ag-card-h {
+  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.25s,
+    box-shadow 0.25s;
+}
+.setaccio-root .ag-card-h:hover {
+  transform: translateY(-3px);
+  border-color: var(--accent-line) !important;
+  box-shadow: var(--shadow-lift);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .setaccio-root .agfade {
+    animation: none;
+  }
+  .setaccio-root .ag-tile,
+  .setaccio-root .ag-card-h,
+  .setaccio-root .btn,
+  .setaccio-root .btn .gl {
+    transition: none;
+  }
+}

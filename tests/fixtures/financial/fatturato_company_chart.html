@@ -1,0 +1,27 @@
+<!--
+  SYNTHETIC fixture — models a fatturatoitalia.it company-detail page that
+  exposes the embedded JS chart series (the cleanest extraction path).
+  Not captured from the live site; structure mirrors what pg3's
+  FatturatoItaliaProvider documents. Safe to commit (no real scraped data).
+-->
+<!DOCTYPE html>
+<html lang="it">
+  <head><title>ESEMPIO SPA — Fatturato e Bilancio</title></head>
+  <body>
+    <h1>ESEMPIO SPA</h1>
+    <p>Partita IVA 01654010345 — Sede legale: Parma (PR)</p>
+
+    <div class="row">
+      <div class="col-xs-5">Ragione sociale</div>
+      <div class="col-xs-7">ESEMPIO SPA</div>
+      <div class="col-xs-5">N. Dipendenti</div>
+      <div class="col-xs-7">8.200</div>
+    </div>
+
+    <script>
+      var labelChart         = ["2023", "2022", "2021", "2020", "2019"];
+      var datiChartFatturato = [40503424402, 39245672100, 38000000000, 35000000000, 34000000000];
+      var datiChartUtile     = [1200000000, 1100000000, 1000000000, 900000000, 850000000];
+    </script>
+  </body>
+</html>

@@ -1,0 +1,7 @@
+{
+  "https://atlasmeccanica.example.test": "<!doctype html><html><head><title>Atlas Meccanica Srl</title></head><body><h1>Atlas Meccanica Srl</h1><p>Componenti meccanici per aziende industriali a Bergamo. Partita IVA 99900000001.</p></body></html>",
+  "https://nordvalvole.example.test": "<!doctype html><html><head><title>Nord Valvole Spa</title></head><body><h1>Nord Valvole Spa</h1><p>Valvole industriali e sistemi di controllo a Vicenza. P.IVA 99900000002.</p></body></html>",
+  "https://lariocomponenti.example.test": "<!doctype html><html><head><title>Lario Componenti Srl</title></head><body><h1>Lario Componenti Srl</h1><p>Lavorazioni conto terzi e minuterie metalliche a Lecco. Partita IVA 99900000003.</p></body></html>",
+  "https://adriaticapackaging.example.test": "<!doctype html><html><head><title>Adriatica Packaging Srl</title></head><body><h1>Adriatica Packaging Srl</h1><p>Packaging alimentare e confezionamento per PMI a Rimini. P.IVA 99900000004.</p></body></html>",
+  "https://etnaautomazioni.example.test": "<!doctype html><html><head><title>Etna Automazioni Srl</title></head><body><h1>Etna Automazioni Srl</h1><p>Automazione industriale, quadri elettrici e assistenza a Catania. Partita IVA 99900000005.</p></body></html>"
+}

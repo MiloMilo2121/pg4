@@ -1,0 +1,28 @@
+node_modules/
+dist/
+.env
+*.log
+output/
+leads/
+tests/fixtures/baseline_pg3.jsonl
+tmp/
+.browser-state/
+.pnpm-store/
+coverage/
+*.tsbuildinfo
+.DS_Store
+
+# --- export hardening: dati, segreti, profili browser MAI nel repo ---
+leads/
+output/
+*.csv
+*.jsonl
+.env
+.env.*
+!.env.example
+.browser-state/
+**/Default/
+**/temp_profiles/
+**/Cookies
+**/Login Data
+**/*.leveldb
