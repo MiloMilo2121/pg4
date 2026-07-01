@@ -22,6 +22,7 @@
     "judge:eval": "tsx src/scripts/judgment_eval.ts",
     "validate:output": "tsx src/scripts/validate_output.ts",
     "lookup": "tsx src/cli/lookup.ts",
+    "coverage": "tsx src/cli/coverage.ts",
     "serve": "tsx src/server/api_server.ts",
     "dev": "node scripts/dev.mjs",
     "mcp": "tsx src/server/mcp_server.ts",

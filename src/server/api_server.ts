@@ -22,6 +22,8 @@ import { emptyBundle } from '../judgment/harvest/source_harvest';
 import type { HarvestContext } from '../judgment/harvest/source_harvest';
 import { buildPageFetcher } from '../judgment/harvest/page_fetcher';
 import { InMemoryEnrichmentCache } from '../persistence/enrichment_cache';
+import { buildCoverageReport } from '../coverage/coverage_engine';
+import { buildBacklog } from '../coverage/backlog';
 
 /**
  * pg4 dev API server — single-tenant, local, zero-cloud. Wraps the REAL engine
@@ -334,6 +336,16 @@ function computeMarkets() {
   return { markets: [...byCat.values()].sort((a, b) => b.total - a.total) };
 }
 
+/** Gap map = copertura industry x area (Nord Italia): have/universo/coverage%/
+ *  sufficienza-campione/enrichment + backlog prioritizzato (scrape vs enrich).
+ *  Riusa il motore di coverage sui dati seeded reali. Feeds la vista Coverage. */
+function computeGapMap() {
+  const leads = companies().map((c) => c.row as unknown as Lead);
+  const report = buildCoverageReport(leads);
+  const backlog = buildBacklog(report);
+  return { meta: { generated: report.generated, summary: report.summary }, buckets: report.buckets, regionRollup: report.regionRollup, cells: report.cells, backlog };
+}
+
 /** Judgment roll-up: quadrant histogram + target tally + judged/unjudged counts.
  *  Feeds the Valutazione (matrice/coda) + Analytics/giudizio views. */
 function computeJudgmentSummary() {
@@ -579,6 +591,7 @@ async function handle(req: http.IncomingMessage, res: http.ServerResponse): Prom
   // ---- derived read-only views (feed the Italia / Mercati / Valutazione / Liste UI) ----
   if (p === '/api/coverage' && req.method === 'GET') return json(res, 200, computeCoverage());
   if (p === '/api/markets' && req.method === 'GET') return json(res, 200, computeMarkets());
+  if (p === '/api/gap-map' && req.method === 'GET') return json(res, 200, computeGapMap());
   if (p === '/api/judgment-summary' && req.method === 'GET') return json(res, 200, computeJudgmentSummary());
   if (p === '/api/companies.csv' && req.method === 'GET') {
     res.writeHead(200, {

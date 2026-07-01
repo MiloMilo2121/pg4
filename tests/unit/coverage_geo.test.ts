@@ -1,0 +1,38 @@
+import { describe, it, expect } from 'vitest';
+import { PROVINCE_CODES } from '../../src/discovery/sources/italy_geo';
+import {
+  NORD_REGIONS,
+  NORD_ITALIA_PROVINCES,
+  isNordProvince,
+  regionForProvince,
+  macroForProvince,
+} from '../../src/coverage/geo_regions';
+
+describe('geo_regions (Nord Italia)', () => {
+  it('mappa 8 regioni e 47 province', () => {
+    expect(NORD_REGIONS).toHaveLength(8);
+    expect(NORD_ITALIA_PROVINCES.size).toBe(47);
+  });
+
+  it('ogni sigla del Nord esiste in PROVINCE_CODES', () => {
+    for (const p of NORD_ITALIA_PROVINCES) expect(PROVINCE_CODES.has(p)).toBe(true);
+  });
+
+  it('classifica le province (case-insensitive)', () => {
+    expect(isNordProvince('mi')).toBe(true);
+    expect(regionForProvince('PD')).toBe('Veneto');
+    expect(macroForProvince('PD')).toBe('Nord-Est');
+    expect(macroForProvince('MI')).toBe('Nord-Ovest');
+  });
+
+  it('esclude province non-Nord', () => {
+    expect(isNordProvince('RM')).toBe(false);
+    expect(isNordProvince('NA')).toBe(false);
+    expect(regionForProvince('RM')).toBeUndefined();
+  });
+
+  it('nessuna provincia in due regioni', () => {
+    const all = NORD_REGIONS.flatMap((r) => r.provinces);
+    expect(new Set(all).size).toBe(all.length);
+  });
+});
