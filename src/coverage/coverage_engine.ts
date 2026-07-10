@@ -22,6 +22,7 @@ import {
   macroForProvince,
   isNordProvince,
 } from './geo_regions';
+import { provinceForComune } from './comune_lookup';
 import type { MacroArea } from './geo_regions';
 import {
   DEFAULT_COVERAGE_CONFIG,
@@ -200,7 +201,17 @@ export function buildCoverageReport(leads: Iterable<Lead>, opts: CoverageEngineO
 
   for (const lead of leads) {
     total += 1;
-    const province = normProvince(typeof lead.province === 'string' ? lead.province : '');
+    let province = normProvince(typeof lead.province === 'string' ? lead.province : '');
+    if (!province) {
+      // Il parser Maps non risolve la sigla: recuperala dal nome comune
+      // (city → business_city → query_location). Solo quando la provincia è
+      // VUOTA — un lead che dichiara una provincia fuori Nord resta fuori scope.
+      province =
+        provinceForComune(typeof lead.city === 'string' ? lead.city : undefined) ??
+        provinceForComune(typeof lead.business_city === 'string' ? lead.business_city : undefined) ??
+        provinceForComune(typeof lead.query_location === 'string' ? lead.query_location : undefined) ??
+        '';
+    }
     if (!isNordProvince(province)) {
       outOfScope += 1;
       const p = province || '—';

@@ -19,18 +19,27 @@ const leads: Lead[] = [
   { company_name: 'E', category: 'agenzie immobiliari', province: 'RM' },
   // non classificabile (categoria ignota) ma in Nord
   { company_name: 'F', category: 'categoria ignota xyz', province: 'PD' },
+  // caso MAPS reale: provincia VUOTA ma city valorizzata → risolta via comune_lookup
+  { company_name: 'G', category: 'ristorante', city: 'Padova' },
 ];
 
 describe('buildCoverageReport', () => {
   const report = buildCoverageReport(leads, { universe: SAMPLE });
 
   it('conta scope/out-of-scope/unclassified senza drop silenziosi', () => {
-    expect(report.summary.totalLeads).toBe(6);
+    expect(report.summary.totalLeads).toBe(7);
     expect(report.summary.outOfScope).toBe(1);
     expect(report.summary.unclassified).toBe(1);
-    expect(report.summary.inScope).toBe(4);
+    expect(report.summary.inScope).toBe(5);
     expect(report.buckets.outOfScope.byProvince.RM).toBe(1);
     expect(report.buckets.unclassified.count).toBe(1);
+  });
+
+  it('lead senza provincia ma con city nota viene risolto (caso Maps)', () => {
+    // G: ristorante, city=Padova, province vuota → cella 56|PD
+    const cell = report.cells.find((c) => c.division === '56' && c.province === 'PD');
+    expect(cell).toBeDefined();
+    expect(cell!.have).toBe(1);
   });
 
   it('cella 68|PD: have, universo, addressable, coverage, campione', () => {
