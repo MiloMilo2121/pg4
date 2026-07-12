@@ -19,8 +19,10 @@ OUT="${OUTDIR:-output/recall}"; mkdir -p "$OUT"
 CHECK_EVERY="${CHECK_EVERY:-60}"
 PROVINCES=("$@"); [ ${#PROVINCES[@]} -eq 0 ] && PROVINCES=(PD VR VI VE TV RO BL)
 
-# slugs dei settori richiesti (rispetta il filtro SECTORS)
-mapfile -t SLUGS < <(node -e '
+# slugs dei settori richiesti (rispetta il filtro SECTORS).
+# read-loop invece di `mapfile` (assente in bash 3.2 di macOS).
+SLUGS=()
+while IFS= read -r __s; do [ -n "$__s" ] && SLUGS+=("$__s"); done < <(node -e '
   const fs=require("fs");
   const f=(process.env.SECTORS||"").split(",").map(x=>x.trim()).filter(Boolean);
   for(const s of JSON.parse(fs.readFileSync("data/reference/sectors.json","utf8")).sectors){

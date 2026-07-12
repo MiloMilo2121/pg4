@@ -43,7 +43,9 @@ fi
 [ -f "$SECTORS_JSON" ] || { echo "manca $SECTORS_JSON" >&2; exit 2; }
 PROVINCES=("$@"); [ ${#PROVINCES[@]} -eq 0 ] && PROVINCES=(PD VR VI VE TV RO BL)
 
-mapfile -t SECTOR_ROWS < <(node -e '
+# read-loop invece di `mapfile` (assente in bash 3.2 di macOS)
+SECTOR_ROWS=()
+while IFS= read -r __row; do [ -n "$__row" ] && SECTOR_ROWS+=("$__row"); done < <(node -e '
   const fs=require("fs");
   const cat=JSON.parse(fs.readFileSync(process.argv[1],"utf8")).sectors||[];
   const filter=(process.argv[2]||"").split(",").map(s=>s.trim()).filter(Boolean);
