@@ -727,10 +727,30 @@ async function handle(req: http.IncomingMessage, res: http.ServerResponse): Prom
   return json(res, 404, { error: 'not found', path: p });
 }
 
+/** Auto-load the accumulated campaign dataset so the dashboard is never empty.
+ *  Runs only when no explicit PG4_SEED_FILE was given AND the default seed was
+ *  absent (seed.loaded === 0). Ingests every raw JSONL from the campaign output
+ *  dirs; upsertCompany collapses the baseline/recall overlap on the dedup key. */
+async function autoLoadCampaignData(): Promise<number> {
+  let added = 0;
+  for (const d of ['output/recall', 'output/veneto']) {
+    const abs = path.join(REPO_ROOT, d);
+    if (!fs.existsSync(abs)) continue;
+    for (const f of fs.readdirSync(abs)) {
+      if (f.endsWith('_raw.jsonl')) added += await ingestJsonlIntoDb(path.join(abs, f));
+    }
+  }
+  return added;
+}
+
 async function main(): Promise<void> {
   process.stderr.write('[api] seeding from real free-gold output…\n');
   seed = await loadSeed(REPO_ROOT, process.env.PG4_SEED_FILE);
   process.stderr.write(`[api] seeded ${seed.loaded} companies (${seed.rejected} rejected) from ${seed.sourceFile}\n`);
+  if (!process.env.PG4_SEED_FILE && seed.loaded === 0) {
+    const auto = await autoLoadCampaignData();
+    if (auto > 0) process.stderr.write(`[api] auto-loaded ${auto} companies from campaign output (recall+veneto)\n`);
+  }
   if (seed.providerDead.length) {
     process.stderr.write(`[api] provider-health: ${seed.providerDead.map((d) => `${d.provider}(${d.calls},${d.dominant_kind})`).join(', ')}\n`);
   }

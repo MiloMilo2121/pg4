@@ -136,6 +136,12 @@ export function useMarkets(): Market[] {
   });
 }
 
+/** Gap map industry × area (copertura vs universo ISTAT + backlog). Alimenta la
+ *  vista Italia con i "modi mappa" reali (copertura per cella, priorità, backlog). */
+export function useGapMap() {
+  return useQuery({ queryKey: ['gap-map'], queryFn: () => api.gapMap() });
+}
+
 /** Real coverage mapped onto the static Veneto province layout (svg col/row kept,
  *  numbers from real data). Provinces with no real rows keep 0 — surfaced, not hidden. */
 export function useProvincesCoverage(): Province[] {
