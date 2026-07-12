@@ -10,6 +10,7 @@ import { rehydrateFromPriorRun } from './resume_prior_run';
 import type { Lead } from '../types/lead';
 import { SCHEMA_VERSION } from '../types/lead';
 import { normalizeLeadPhone } from './phone';
+import { provinceForComune } from '../geo/comune_lookup';
 
 /**
  * Scrape pipeline (Phase 4.4 cleanup): all orchestration logic lives here,
@@ -77,7 +78,10 @@ export async function runFixtureMode(input: FixtureModeInput): Promise<void> {
     }
   }
   // Phase C.2 — same normalization the live path applies in ingestBatch.
-  for (const lead of all) normalizeLeadPhone(lead);
+  for (const lead of all) {
+    normalizeLeadPhone(lead);
+    fillProvinceFromComune(lead);
+  }
   await emitCsvJsonl(input.out, dedupeLeads(all), {
     fixtures: sources.length,
     total_cards: totalCards,
@@ -193,7 +197,12 @@ export async function runLiveMode(a: LiveModeInput): Promise<LiveModeSummary> {
     throw new Error('Live mode needs --province (curated list) or --comuni "C1,C2,...".');
   }
 
-  const checkpointPath = a.checkpointPath ?? path.join(path.dirname(a.out), `.scrape-checkpoint-${slug(a.category)}.json`);
+  // Default checkpoint co-located with the output (1:1 with the target): two
+  // provinces of the same category never share a checkpoint file. The old
+  // category-only path (`.scrape-checkpoint-<slug>.json`) was shared across
+  // provinces and poisoned resume → MissingPriorJsonlError (post-mortem: 31
+  // occurrences, 30 Veneto cells zeroed). Drivers no longer need --checkpoint.
+  const checkpointPath = a.checkpointPath ?? defaultCheckpointPath(a.out);
   const jsonlOut = a.out.replace(/\.csv$/i, '') + '.jsonl';
 
   // --fresh: wipe the prior run's artifacts so the next run is clean.
@@ -219,6 +228,7 @@ export async function runLiveMode(a: LiveModeInput): Promise<LiveModeSummary> {
   // operator passes --allow-missing-jsonl.
   const resumed = await rehydrateFromPriorRun({
     jsonlPath: jsonlOut,
+    csvPath: a.out,
     checkpoint,
     dedup,
     sink: allLeads,
@@ -230,6 +240,9 @@ export async function runLiveMode(a: LiveModeInput): Promise<LiveModeSummary> {
   let comuniWithOverflow = 0;
   let comuniWithCapLikely = 0;
   let interrupted = false;
+  // Set when the Maps preflight degrades (Maps down but PG healthy) → the Maps
+  // stage is skipped and the run proceeds PG-only instead of aborting.
+  let mapsDegraded = false;
   // Phase A.4 — per-comune pre-dedupe yields. Feeds the run record so the
   // yield-anomaly check can compare against historical averages.
   const comuniYield: Record<string, number> = {};
@@ -251,7 +264,13 @@ export async function runLiveMode(a: LiveModeInput): Promise<LiveModeSummary> {
     // still closes the browser) and maps to exit code 3 in the CLI.
     if (!a.skipPreflight) {
       const { runScrapePreflight } = await import('./preflight');
-      await runScrapePreflight(factory, { checkMaps: !!a.runMaps });
+      const pf = await runScrapePreflight(factory, { checkMaps: !!a.runMaps });
+      // PG failure still throws inside the preflight (real markup safety net).
+      // Maps failure is non-fatal: degrade to PG-only for this run.
+      if (a.runMaps && pf.maps_feed_present === false) {
+        mapsDegraded = true;
+        logger.warn('[scrape] Maps degraded at preflight — running PG-only this run (Maps stage skipped)');
+      }
     } else {
       logger.warn('[scrape] preflight skipped by operator (--skip-preflight)');
     }
@@ -262,28 +281,39 @@ export async function runLiveMode(a: LiveModeInput): Promise<LiveModeSummary> {
         interrupted = true;
         break;
       }
-      const r = await scrapePgLocation(factory, {
-        category: a.category,
-        location: comune,
-        maxPages: a.maxPages,
-        checkpoint,
-        interPageDelayMs: a.interDelayMs,
-        abortSignal: a.abortSignal,
-      });
-      totalCards += r.total_cards;
-      dropped += r.dropped;
-      if (r.overflow) comuniWithOverflow += 1;
-      parsedLeadsBeforeDedupe += r.results.length;
-      comuniYield[comune] = (comuniYield[comune] ?? 0) + r.results.length;
-      ingestBatch(allLeads, dedup, r.results);
-      // Save state after each comune so an interrupted run resumes cleanly.
-      await factory.saveSessionState();
+      // Per-comune isolation: a comune that throws (e.g. a browser-restart
+      // failure surfacing past the in-navigator retries) is logged and skipped
+      // so the run continues instead of dying on one bad comune.
+      try {
+        const r = await scrapePgLocation(factory, {
+          category: a.category,
+          location: comune,
+          maxPages: a.maxPages,
+          checkpoint,
+          interPageDelayMs: a.interDelayMs,
+          abortSignal: a.abortSignal,
+          // Novelty vs the run's accumulated deduper: PG serves province-wide
+          // results, so a comune adding 0 new leads is re-scraping firms we
+          // already have → early-stop paginating it.
+          isNew: (lead) => !dedup.find(lead),
+        });
+        totalCards += r.total_cards;
+        dropped += r.dropped;
+        if (r.overflow) comuniWithOverflow += 1;
+        parsedLeadsBeforeDedupe += r.results.length;
+        comuniYield[comune] = (comuniYield[comune] ?? 0) + r.results.length;
+        ingestBatch(allLeads, dedup, r.results);
+        // Save state after each comune so an interrupted run resumes cleanly.
+        await factory.saveSessionState();
+      } catch (err) {
+        logger.error({ comune, err: (err as Error).message }, '[scrape] PG comune failed — skipping to next (run continues)');
+      }
     }
     // Stage 2 (optional): Maps per comune.
     // R5 — when `mapsCoverage='full'`, expand the category to multiple
     // sector-keyword variants and run each as its own scroll session.
     // The Deduplicator collapses cross-variant overlap.
-    if (a.runMaps && !interrupted) {
+    if (a.runMaps && !interrupted && !mapsDegraded) {
       const { expandMapsQueryVariants, hasFullCoverageVariants } = await import('./sources/maps_coverage');
       const coverage = a.mapsCoverage ?? 'default';
       const queryVariants = expandMapsQueryVariants(a.category, coverage);
@@ -299,18 +329,22 @@ export async function runLiveMode(a: LiveModeInput): Promise<LiveModeSummary> {
             interrupted = true;
             break outer;
           }
-          const r = await scrapeMapsLocation(factory, {
-            category: queryCategory,
-            location: comune,
-            checkpoint,
-          });
-          totalCards += r.total_cards;
-          dropped += r.dropped;
-          if (r.cap_likely) comuniWithCapLikely += 1;
-          parsedLeadsBeforeDedupe += r.results.length;
-          comuniYield[comune] = (comuniYield[comune] ?? 0) + r.results.length;
-          ingestBatch(allLeads, dedup, r.results);
-          await factory.saveSessionState();
+          try {
+            const r = await scrapeMapsLocation(factory, {
+              category: queryCategory,
+              location: comune,
+              checkpoint,
+            });
+            totalCards += r.total_cards;
+            dropped += r.dropped;
+            if (r.cap_likely) comuniWithCapLikely += 1;
+            parsedLeadsBeforeDedupe += r.results.length;
+            comuniYield[comune] = (comuniYield[comune] ?? 0) + r.results.length;
+            ingestBatch(allLeads, dedup, r.results);
+            await factory.saveSessionState();
+          } catch (err) {
+            logger.error({ comune, queryCategory, err: (err as Error).message }, '[scrape] Maps comune failed — skipping to next (run continues)');
+          }
         }
       }
     }
@@ -354,6 +388,7 @@ export async function runLiveMode(a: LiveModeInput): Promise<LiveModeSummary> {
     checkpoint_done: checkpoint.countDone(),
     resumed_from_prior_jsonl: resumed,
     interrupted,
+    maps_degraded: mapsDegraded,
     factory: factory.describe(),
   });
 
@@ -399,12 +434,28 @@ export function resolveComuniList(
   return [];
 }
 
+/**
+ * Fill `province` (2-letter sigla) from the comune name when the parser left it
+ * empty — chiefly the Google Maps path, whose card address rarely carries the
+ * "(PD)" sigla. Never overwrites an address-parsed province; leaves it empty on
+ * omonimie (provinceForComune returns undefined → no guessing).
+ */
+export function fillProvinceFromComune(lead: Lead): void {
+  if (lead.province) return;
+  const prov =
+    provinceForComune(typeof lead.business_city === 'string' ? lead.business_city : undefined) ??
+    provinceForComune(typeof lead.city === 'string' ? lead.city : undefined) ??
+    provinceForComune(typeof lead.query_location === 'string' ? lead.query_location : undefined);
+  if (prov) lead.province = prov;
+}
+
 function ingestBatch(allLeads: Lead[], dedup: Deduplicator, batch: Lead[]): void {
   for (const lead of batch) {
     // Phase C.2 — normalize phones to E.164 BEFORE dedupe so the output is
     // consistent regardless of which source format arrived first. The
     // deduper's own phone key is format-tolerant either way.
     normalizeLeadPhone(lead);
+    fillProvinceFromComune(lead);
     const existing = dedup.find(lead);
     if (existing) {
       dedup.merge(existing, lead);
@@ -445,6 +496,15 @@ export async function emitCsvJsonl(
     },
     '[scrape] complete'
   );
+}
+
+/**
+ * Default checkpoint path — co-located with the output CSV so it is 1:1 with
+ * the run target. Two provinces of the same category produce different output
+ * files → different checkpoints → no cross-province poisoning.
+ */
+export function defaultCheckpointPath(outCsv: string): string {
+  return outCsv.replace(/\.csv$/i, '') + '.checkpoint.json';
 }
 
 export function slug(s: string): string {

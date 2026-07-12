@@ -51,6 +51,20 @@ describe('expandMapsQueryVariants', () => {
   });
 });
 
+describe('varianti data-driven da sectors.json (fix: --coverage full era no-op su 4/5 settori)', () => {
+  it('ora TUTTI i settori del catalogo si espandono in full mode', () => {
+    for (const kw of ['ristorante', 'impresa edile', 'carpenteria metallica', 'centro estetico']) {
+      expect(hasFullCoverageVariants(kw), kw).toBe(true);
+      expect(expandMapsQueryVariants(kw, 'full').length, kw).toBeGreaterThan(1);
+    }
+  });
+  it('ristorante espande ai suoi sinonimi (pizzeria, trattoria, …)', () => {
+    const r = expandMapsQueryVariants('ristorante', 'full');
+    expect(r[0]).toBe('ristorante'); // canonica per prima
+    expect(r).toContain('pizzeria');
+  });
+});
+
 describe('hasFullCoverageVariants', () => {
   it('reports true for the curated real-estate category', () => {
     expect(hasFullCoverageVariants('agenzie immobiliari')).toBe(true);

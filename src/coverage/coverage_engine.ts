@@ -15,14 +15,15 @@ import { atecoDivisionOf, atecoIndex } from './ateco';
 import type { AtecoDivision } from './ateco';
 import { Crosswalk } from './crosswalk';
 import { IstatAsiaUniverse } from './universe';
-import type { UniverseSource, UniverseProvenance } from './universe';
+import type { UniverseSource, UniverseProvenance, UniverseCount } from './universe';
+import { loadSectors } from './sectors';
 import {
   normProvince,
   regionForProvince,
   macroForProvince,
   isNordProvince,
 } from './geo_regions';
-import { provinceForComune } from './comune_lookup';
+import { provinceForComune } from '../geo/comune_lookup';
 import type { MacroArea } from './geo_regions';
 import {
   DEFAULT_COVERAGE_CONFIG,
@@ -188,6 +189,34 @@ export function buildCoverageReport(leads: Iterable<Lead>, opts: CoverageEngineO
   const config: CoverageConfig = { ...DEFAULT_COVERAGE_CONFIG, ...opts.config };
   const ateco: ReadonlyMap<string, AtecoDivision> = atecoIndex();
 
+  // Settori multi-divisione (es. edilizia = ATECO 41+43): mappa ogni divisione
+  // del settore alla lista completa, così il denominatore somma l'universo di
+  // TUTTE le divisioni coperte (i lead "impresa edile" classificano solo su 41
+  // via crosswalk, ma il settore copre anche 43 → altrimenti copertura >100%).
+  const divisionGroup = new Map<string, string[]>();
+  for (const s of loadSectors()) {
+    if (s.atecoDivisions.length > 1) for (const d of s.atecoDivisions) divisionGroup.set(d, s.atecoDivisions);
+  }
+  const universeForCell = (division: string, province: string): UniverseCount | null => {
+    const divs = divisionGroup.get(division) ?? [division];
+    let firms = 0;
+    let known = false;
+    let anySample = false;
+    let istat = false;
+    let year: number | undefined;
+    for (const d of divs) {
+      const u = universe.count(d, province);
+      if (!u) continue;
+      known = true;
+      firms += u.activeFirms;
+      if (u.provenance === 'sample') anySample = true;
+      else istat = true;
+      year = u.year ?? year;
+    }
+    if (!known) return null;
+    return { activeFirms: firms, year, provenance: anySample ? 'sample' : istat ? 'istat-asia' : 'unknown' };
+  };
+
   const cellAcc = new Map<string, Accum>(); // key = division|province
   const outByProvince: Record<string, number> = {};
   const unclassByCategory: Record<string, number> = {};
@@ -251,7 +280,7 @@ export function buildCoverageReport(leads: Iterable<Lead>, opts: CoverageEngineO
     const section = def?.section ?? '?';
     const region = regionForProvince(province) ?? '?';
     const macroArea = macroForProvince(province) ?? 'Nord-Ovest';
-    const u = universe.count(division, province);
+    const u = universeForCell(division, province);
     const universeKnown = u !== null;
     if (universeKnown) cellsUniverseKnown += 1;
     if (u?.provenance === 'sample') usesSampleUniverse = true;

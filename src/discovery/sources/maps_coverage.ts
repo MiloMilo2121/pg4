@@ -23,6 +23,8 @@
  * be interrupted early without losing the highest-yield query.
  */
 
+import { loadSectors } from '../../coverage/sectors';
+
 export type CoverageMode = 'default' | 'full';
 
 const MAPS_FULL_COVERAGE_VARIANTS: Record<string, string[]> = {
@@ -56,6 +58,36 @@ function normaliseCategory(category: string): string {
 }
 
 /**
+ * Variant lookup keyed by normalised sector keyword, sourced from the SINGLE
+ * catalog `data/reference/sectors.json` (via loadSectors), with the hardcoded
+ * table as fallback. This is what makes `--coverage full` actually work for
+ * every sector: previously only 'agenzie immobiliari' had variants here, so the
+ * flag was a silent no-op for the other 4 sectors (post-mortem finding). Adding
+ * a sector to sectors.json now enables its Maps expansion automatically.
+ */
+let sectorVariantCache: Map<string, string[]> | undefined;
+function sectorVariantLookup(): Map<string, string[]> {
+  if (sectorVariantCache) return sectorVariantCache;
+  const m = new Map<string, string[]>();
+  try {
+    for (const s of loadSectors()) {
+      if (Array.isArray(s.queryVariants) && s.queryVariants.length > 0) {
+        m.set(normaliseCategory(s.keyword), s.queryVariants);
+      }
+    }
+  } catch {
+    /* sectors.json missing/unreadable → fall back to the hardcoded table only */
+  }
+  sectorVariantCache = m;
+  return m;
+}
+
+function variantsFor(category: string): string[] | undefined {
+  const key = normaliseCategory(category);
+  return sectorVariantLookup().get(key) ?? MAPS_FULL_COVERAGE_VARIANTS[key];
+}
+
+/**
  * Expand a category into a list of Maps query variants based on the
  * coverage mode. Always returns at least one variant (the original
  * category) — falls back to the original when no expansion is known.
@@ -67,8 +99,7 @@ function normaliseCategory(category: string): string {
  */
 export function expandMapsQueryVariants(category: string, mode: CoverageMode): string[] {
   if (mode === 'default') return [category];
-  const key = normaliseCategory(category);
-  const variants = MAPS_FULL_COVERAGE_VARIANTS[key];
+  const variants = variantsFor(category);
   if (!variants || variants.length === 0) return [category];
   // Defensive copy so callers can't mutate the table.
   return [...variants];
@@ -76,10 +107,10 @@ export function expandMapsQueryVariants(category: string, mode: CoverageMode): s
 
 /**
  * True when the requested category has a curated full-coverage
- * variant table. R5 logs a warning when the operator passes
- * `--coverage full` for a category we don't know how to expand —
- * the run still proceeds with the single default query.
+ * variant table (from sectors.json or the hardcoded fallback). R5 logs a
+ * warning when the operator passes `--coverage full` for a category we don't
+ * know how to expand — the run still proceeds with the single default query.
  */
 export function hasFullCoverageVariants(category: string): boolean {
-  return Boolean(MAPS_FULL_COVERAGE_VARIANTS[normaliseCategory(category)]);
+  return Boolean(variantsFor(category));
 }

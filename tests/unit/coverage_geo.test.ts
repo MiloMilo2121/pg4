@@ -38,7 +38,7 @@ describe('geo_regions (Nord Italia)', () => {
 });
 
 describe('provinceForComune (lookup comune → sigla)', async () => {
-  const { provinceForComune } = await import('../../src/coverage/comune_lookup');
+  const { provinceForComune } = await import('../../src/geo/comune_lookup');
 
   it('risolve i capoluoghi e i comuni minori (case/accent-insensitive)', () => {
     expect(provinceForComune('Padova')).toBe('PD');

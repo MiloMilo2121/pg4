@@ -7,6 +7,7 @@ import { logger } from '../../runtime/logger';
 import { DEFAULTS } from '../../config/defaults';
 import { buildMapsSearchUrl } from './maps_url';
 import { parseGoogleMapsResults } from './google_maps_parser';
+import { withRetry } from '../../runtime/retry';
 
 /**
  * Live Google Maps navigator. Scrolls `div[role="feed"]` until the count
@@ -51,56 +52,67 @@ export async function scrapeMapsLocation(
   }
 
   const url = buildMapsSearchUrl(opts.category, opts.location);
-  const page = await factory.getPage();
-  let scrollAttempts = 0;
   try {
-    logger.info({ url }, '[maps_live] navigating');
-    await page.goto(url, { waitUntil: 'domcontentloaded' });
-    await acceptConsent(page, 'maps');
-    await wait(2500); // initial render
-    const hasFeed = await page.$(FEED_SELECTOR);
-    if (!hasFeed) {
-      logger.warn({ url }, '[maps_live] no result feed (single place or blocked)');
-      cp?.set(cpKey, { status: 'failed', reason: 'no_feed' });
-      factory.noteNavigation();
-      return { results: [], total_cards: 0, parsed: 0, dropped: 0, cap_likely: false, scroll_attempts: 0 };
-    }
-    scrollAttempts = await scrollFeedToEnd(page, maxAttempts, pauseMs);
-    factory.noteNavigation();
-    const feedHandle = await page.$(FEED_SELECTOR);
-    const html = feedHandle ? await feedHandle.innerHTML() : '';
-    // Wrap in role=feed shell so the existing parser finds the container.
-    const wrapped = `<html><body><div role="feed">${html}</div></body></html>`;
-    const parsed = parseGoogleMapsResults(wrapped, { category: opts.category, cityHint: opts.location });
-    cp?.set(cpKey, {
-      status: 'done',
-      total_cards: parsed.total_cards,
-      parsed: parsed.results.length,
-      dropped: parsed.dropped,
-      cap_likely: parsed.cap_likely,
-    });
-    logger.info(
-      {
-        total: parsed.total_cards,
-        parsed: parsed.results.length,
-        dropped: parsed.dropped,
-        cap_likely: parsed.cap_likely,
-        scroll_attempts: scrollAttempts,
+    // Retry the whole comune session on transient network drops (post-mortem:
+    // wifi flap / macOS sleep). getPage() lives inside so a fresh page is used
+    // on each attempt. The "no feed" case returns a result (not a throw) → no
+    // wasted retry; only real network errors are retried.
+    return await withRetry(
+      async (attempt) => {
+        const page = await factory.getPage();
+        logger.info({ url, attempt }, '[maps_live] navigating');
+        await page.goto(url, { waitUntil: 'domcontentloaded' });
+        await acceptConsent(page, 'maps');
+        await wait(2500); // initial render
+        const hasFeed = await page.$(FEED_SELECTOR);
+        if (!hasFeed) {
+          logger.warn({ url }, '[maps_live] no result feed (single place or blocked)');
+          cp?.set(cpKey, { status: 'failed', reason: 'no_feed' });
+          factory.noteNavigation();
+          return { results: [], total_cards: 0, parsed: 0, dropped: 0, cap_likely: false, scroll_attempts: 0 };
+        }
+        const scrollAttempts = await scrollFeedToEnd(page, maxAttempts, pauseMs);
+        factory.noteNavigation();
+        const feedHandle = await page.$(FEED_SELECTOR);
+        const html = feedHandle ? await feedHandle.innerHTML() : '';
+        // Wrap in role=feed shell so the existing parser finds the container.
+        const wrapped = `<html><body><div role="feed">${html}</div></body></html>`;
+        const parsed = parseGoogleMapsResults(wrapped, { category: opts.category, cityHint: opts.location });
+        cp?.set(cpKey, {
+          status: 'done',
+          total_cards: parsed.total_cards,
+          parsed: parsed.results.length,
+          dropped: parsed.dropped,
+          cap_likely: parsed.cap_likely,
+        });
+        logger.info(
+          {
+            total: parsed.total_cards,
+            parsed: parsed.results.length,
+            dropped: parsed.dropped,
+            cap_likely: parsed.cap_likely,
+            scroll_attempts: scrollAttempts,
+          },
+          '[maps_live] feed parsed'
+        );
+        return {
+          results: parsed.results,
+          total_cards: parsed.total_cards,
+          parsed: parsed.results.length,
+          dropped: parsed.dropped,
+          cap_likely: parsed.cap_likely,
+          scroll_attempts: scrollAttempts,
+        };
       },
-      '[maps_live] feed parsed'
+      {
+        onRetry: ({ attempt, delayMs, err }) =>
+          logger.warn({ url, attempt, delayMs, err: (err as Error).message }, '[maps_live] nav retry (network?)'),
+      },
     );
-    return {
-      results: parsed.results,
-      total_cards: parsed.total_cards,
-      parsed: parsed.results.length,
-      dropped: parsed.dropped,
-      cap_likely: parsed.cap_likely,
-      scroll_attempts: scrollAttempts,
-    };
   } catch (err) {
-    logger.warn({ url, err: (err as Error).message }, '[maps_live] navigation error');
+    logger.warn({ url, err: (err as Error).message }, '[maps_live] navigation error — comune skipped after retries');
     cp?.set(cpKey, { status: 'failed', reason: (err as Error).message });
-    return { results: [], total_cards: 0, parsed: 0, dropped: 0, cap_likely: false, scroll_attempts: scrollAttempts };
+    return { results: [], total_cards: 0, parsed: 0, dropped: 0, cap_likely: false, scroll_attempts: 0 };
   }
 }
 

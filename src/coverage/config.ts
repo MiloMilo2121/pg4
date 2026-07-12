@@ -7,6 +7,9 @@
  * quindi quella cella riceve un boost di priorita'.
  */
 
+import fs from 'fs';
+import path from 'path';
+
 export interface CoverageConfig {
   /** Frazione di copertura target sull'universo INDIRIZZABILE (0..1). */
   targetCoverage: number;
@@ -64,7 +67,28 @@ export const DIRECTORY_FACTOR_BY_SECTION: Record<string, number> = {
 
 export const DEFAULT_DIRECTORY_FACTOR = 0.5;
 
+/**
+ * Hook di calibrazione EMPIRICA. Se esiste
+ * `data/reference/directory_factor_calibrated.json` (mappa sezione→fattore,
+ * stimata da `have/universeTotal` osservato su celle affidabili — sampleOk +
+ * universo istat-asia), i suoi valori vincono sull'euristica. Assente ⇒
+ * nessun cambiamento (fallback all'euristica). Letto una volta e cachato.
+ */
+let calibratedFactors: Record<string, number> | null | undefined;
+function loadCalibratedFactors(): Record<string, number> | null {
+  if (calibratedFactors !== undefined) return calibratedFactors;
+  try {
+    const p = path.join(path.resolve(__dirname, '..', '..'), 'data', 'reference', 'directory_factor_calibrated.json');
+    calibratedFactors = fs.existsSync(p) ? (JSON.parse(fs.readFileSync(p, 'utf8')) as Record<string, number>) : null;
+  } catch {
+    calibratedFactors = null;
+  }
+  return calibratedFactors;
+}
+
 export function directoryFactorForSection(section: string | undefined): number {
   if (!section) return DEFAULT_DIRECTORY_FACTOR;
+  const cal = loadCalibratedFactors();
+  if (cal && typeof cal[section] === 'number') return cal[section];
   return DIRECTORY_FACTOR_BY_SECTION[section] ?? DEFAULT_DIRECTORY_FACTOR;
 }

@@ -94,10 +94,15 @@ export async function runScrapePreflight(
       mapsFeed = (await mp.$(FEED_SELECTOR)) !== null;
       factory.noteNavigation();
     } catch (err) {
-      throw new PreflightError('maps', FEED_SELECTOR, `Navigation error: ${(err as Error).message}.`);
+      // The Maps canary is NON-FATAL. A transient Maps outage (feed missing /
+      // network blip) must NOT abort a run whose PG backbone is healthy —
+      // post-mortem: this all-or-nothing preflight killed 10 cells (PG included)
+      // and wasted 6 retries on estetica_VE. Degrade to PG-only instead.
+      logger.warn({ url: mapsUrl, err: (err as Error).message }, '[preflight] Maps canary error — degrading to PG-only');
+      mapsFeed = false;
     }
     if (!mapsFeed) {
-      throw new PreflightError('maps', FEED_SELECTOR, 'The page loaded but the result feed container is missing.');
+      logger.warn({ selector: FEED_SELECTOR }, '[preflight] Maps feed absent on canary — this run degrades to PG-only');
     }
   }
 
