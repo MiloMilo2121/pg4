@@ -11,6 +11,13 @@ import type { Lead } from '../types/lead';
 import { SCHEMA_VERSION } from '../types/lead';
 import { normalizeLeadPhone } from './phone';
 import { provinceForComune } from '../geo/comune_lookup';
+import {
+  completionMarkerPath,
+  coverageManifestPath,
+  recoveryEnvelopePath,
+  type CoverageManifest,
+  writeCoverageArtifacts,
+} from '../runtime/run_coverage';
 
 /**
  * Scrape pipeline (Phase 4.4 cleanup): all orchestration logic lives here,
@@ -112,6 +119,7 @@ export function resolveFixtureSources(fixtureFlag: string, sourceFlag?: string):
 // ============================================================
 
 export interface LiveModeInput {
+  runId: string;
   out: string;
   category: string;
   province?: string;
@@ -180,6 +188,7 @@ export interface LiveModeSummary {
   interrupted: boolean;
   output_csv: string;
   output_jsonl: string;
+  coverage: CoverageManifest;
 }
 
 export async function runLiveMode(a: LiveModeInput): Promise<LiveModeSummary> {
@@ -204,10 +213,11 @@ export async function runLiveMode(a: LiveModeInput): Promise<LiveModeSummary> {
   // occurrences, 30 Veneto cells zeroed). Drivers no longer need --checkpoint.
   const checkpointPath = a.checkpointPath ?? defaultCheckpointPath(a.out);
   const jsonlOut = a.out.replace(/\.csv$/i, '') + '.jsonl';
+  const diagnosticsDir = a.out.replace(/\.csv$/i, '') + '.diagnostics';
 
   // --fresh: wipe the prior run's artifacts so the next run is clean.
   if (a.fresh) {
-    for (const f of [a.out, jsonlOut, checkpointPath]) {
+    for (const f of [a.out, jsonlOut, checkpointPath, coverageManifestPath(a.out), completionMarkerPath(a.out), recoveryEnvelopePath(a.out)]) {
       try { fs.unlinkSync(f); } catch { /* ignore missing */ }
     }
     logger.info({ out: a.out, jsonl: jsonlOut, checkpoint: checkpointPath }, '[scrape] --fresh: wiped prior run artifacts');
@@ -269,7 +279,19 @@ export async function runLiveMode(a: LiveModeInput): Promise<LiveModeSummary> {
       // Maps failure is non-fatal: degrade to PG-only for this run.
       if (a.runMaps && pf.maps_feed_present === false) {
         mapsDegraded = true;
+        checkpoint.set(
+          Checkpoint.buildKey({ provider: 'maps', category: a.category, location: '__preflight__' }),
+          { status: 'failed', reason: 'maps_preflight_no_feed', attempts: 1 },
+        );
         logger.warn('[scrape] Maps degraded at preflight — running PG-only this run (Maps stage skipped)');
+      } else if (a.runMaps && pf.maps_feed_present === true) {
+        // A prior degraded run left an explicit failed preflight checkpoint.
+        // Once the canary succeeds, replace that failure so a resumed Maps
+        // scrape can genuinely reach completion after its failed queries pass.
+        checkpoint.set(
+          Checkpoint.buildKey({ provider: 'maps', category: a.category, location: '__preflight__' }),
+          { status: 'done', parsed: 0, attempts: 1 },
+        );
       }
     } else {
       logger.warn('[scrape] preflight skipped by operator (--skip-preflight)');
@@ -290,6 +312,7 @@ export async function runLiveMode(a: LiveModeInput): Promise<LiveModeSummary> {
           location: comune,
           maxPages: a.maxPages,
           checkpoint,
+          diagnosticsDir,
           interPageDelayMs: a.interDelayMs,
           abortSignal: a.abortSignal,
           // Novelty vs the run's accumulated deduper: PG serves province-wide
@@ -334,6 +357,7 @@ export async function runLiveMode(a: LiveModeInput): Promise<LiveModeSummary> {
               category: queryCategory,
               location: comune,
               checkpoint,
+              diagnosticsDir,
             });
             totalCards += r.total_cards;
             dropped += r.dropped;
@@ -392,6 +416,16 @@ export async function runLiveMode(a: LiveModeInput): Promise<LiveModeSummary> {
     factory: factory.describe(),
   });
 
+  const coverage = writeCoverageArtifacts({ outCsv: a.out, runId: a.runId, checkpoint });
+  if (coverage.status === 'partial') {
+    logger.warn(
+      { failed_query_count: coverage.failed_query_count, recovery: recoveryEnvelopePath(a.out) },
+      '[scrape] coverage partial — output is NOT complete and recovery is required',
+    );
+  } else {
+    logger.info({ completion_marker: completionMarkerPath(a.out) }, '[scrape] coverage complete');
+  }
+
   // Phase C.3 — near-duplicate candidates for operator review (never
   // auto-merged). Written only when the run produced any.
   const reviewCandidates = dedup.getReviewCandidates();
@@ -417,6 +451,7 @@ export async function runLiveMode(a: LiveModeInput): Promise<LiveModeSummary> {
     interrupted,
     output_csv: path.resolve(a.out),
     output_jsonl: path.resolve(jsonlOut),
+    coverage,
   };
 }
 

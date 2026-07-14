@@ -33,7 +33,10 @@ all_cells_done() {
   local prov slug
   for prov in "${PROVINCES[@]}"; do
     for slug in "${SLUGS[@]}"; do
-      [ -f "$OUT/${slug}_${prov}_raw.csv" ] || return 1
+      node - "$OUT/${slug}_${prov}_raw.csv" <<'NODE' >/dev/null 2>&1 || return 1
+const fs = require('fs'); const marker = process.argv[2].replace(/\.csv$/i, '.complete.json');
+const m = JSON.parse(fs.readFileSync(marker, 'utf8')); process.exit(m.status === 'complete' && m.failed_query_count === 0 ? 0 : 1);
+NODE
     done
   done
   return 0
@@ -48,6 +51,22 @@ while true; do
   if all_cells_done; then
     echo "[watchdog $(date +%H:%M:%S)] tutte le celle presenti — fine"
     break
+  fi
+  if bash scripts/recovery_coordinator.sh blocked --out "$OUT"; then
+    echo "[watchdog $(date +%H:%M:%S)] recovery bloccata — intervento manuale richiesto"
+    sleep "$CHECK_EVERY"
+    continue
+  fi
+  if bash scripts/recovery_coordinator.sh pending --out "$OUT"; then
+    echo "[watchdog $(date +%H:%M:%S)] recovery pending — waiting for GitHub Actions"
+    # Cells are resumed by the coordinator after a successful auto-merge.
+    for state in "$OUT"/.recovery/*.json; do
+      [ -f "$state" ] || continue
+      cell="$(basename "$state" .json)"
+      bash scripts/recovery_coordinator.sh wait-and-resume --out "$OUT" --cell "$cell" || true
+    done
+    sleep "$CHECK_EVERY"
+    continue
   fi
   if ! campaign_running; then
     restarts=$((restarts+1))

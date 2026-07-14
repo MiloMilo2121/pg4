@@ -78,6 +78,7 @@ async function main(): Promise<number> {
     let scrapeSummary;
     try {
       scrapeSummary = await runLiveMode({
+        runId,
         out: rawCsv,
         category,
         province,
@@ -118,6 +119,20 @@ async function main(): Promise<number> {
     if (scrapeSummary.interrupted) {
       recorder.finish('interrupted', EXIT.INTERRUPTED, { leads_out: scrapeSummary.leads });
       return EXIT.INTERRUPTED;
+    }
+    if (scrapeSummary.coverage.status === 'partial') {
+      recorder.finish('partial', EXIT.PARTIAL, {
+        leads_out: scrapeSummary.leads,
+        failed_query_count: scrapeSummary.coverage.failed_query_count,
+        coverage_manifest: rawCsv.replace(/\.csv$/i, '') + '.coverage.json',
+      });
+      getNotifier().notify({
+        kind: 'run_partial',
+        title: 'Campaign scrape coverage partial',
+        body: `${scrapeSummary.coverage.failed_query_count} scrape queries require recovery; enrichment was not started.`,
+        meta: { run_id: runId, out: path.resolve(rawCsv) },
+      });
+      return EXIT.PARTIAL;
     }
 
     // ---- Stage 2: enrich ----

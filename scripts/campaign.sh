@@ -6,7 +6,7 @@
 # Ora che la pipeline è indurita (checkpoint unico di default, retry in-pipeline,
 # preflight che degrada a PG-only) il driver è SEMPLICE: niente più --checkpoint,
 # --skip-preflight o pulizia manuale dei checkpoint. Resta:
-#   - SKIP idempotente (cella con <slug>_<PROV>_raw.csv già presente = fatta)
+#   - SKIP idempotente solo con marker <slug>_<PROV>_raw.complete.json
 #   - un retry leggero di BACKSTOP per crash dell'intera cella (il resume riprende)
 #   - self-wrap in `caffeinate -i` su macOS → il Mac non si sospende durante il run
 #     (post-mortem: la sospensione era la causa #1 delle disconnessioni di rete).
@@ -53,7 +53,25 @@ while IFS= read -r __row; do [ -n "$__row" ] && SECTOR_ROWS+=("$__row"); done < 
 ' "$SECTORS_JSON" "$SECTOR_FILTER")
 maps_flags=""; [ "$MAPS" = "1" ] && maps_flags="--maps --coverage full"
 
+cell_complete() {
+  local csv="$1"
+  node - "$csv" <<'NODE'
+const fs = require('fs'); const csv = process.argv[2];
+const marker = csv.replace(/\.csv$/i, '.complete.json');
+try { const m = JSON.parse(fs.readFileSync(marker, 'utf8')); process.exit(m.status === 'complete' && m.failed_query_count === 0 ? 0 : 1); } catch { process.exit(1); }
+NODE
+}
+
+cell_pending_recovery() {
+  local cell="$1" state="$OUT/.recovery/$1.json"
+  [ -f "$state" ] && node - "$state" <<'NODE'
+const fs = require('fs'); try { process.exit(['pending', 'blocked'].includes(JSON.parse(fs.readFileSync(process.argv[2], 'utf8')).status) ? 0 : 1); } catch { process.exit(1); }
+NODE
+}
+
 echo "[$(date +%H:%M:%S)] CAMPAIGN START — province: ${PROVINCES[*]} · settori: ${#SECTOR_ROWS[@]} · MAPS=$MAPS · MAXPAGES=$MAXPAGES · suppression=${SUPPRESSION_LIST:-auto}" >> "$LOG"
+campaign_partial=0
+campaign_blocked=0
 for prov in "${PROVINCES[@]}"; do
   comuni=$(node -e 'const fs=require("fs");const j=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));process.stdout.write((j[process.argv[2]]||[]).join(","));' "$COMUNI_JSON" "$prov")
   ncom=$(node -e 'const fs=require("fs");const j=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));process.stdout.write(String((j[process.argv[2]]||[]).length));' "$COMUNI_JSON" "$prov")
@@ -61,8 +79,12 @@ for prov in "${PROVINCES[@]}"; do
   for row in "${SECTOR_ROWS[@]}"; do
     slug="${row%%$'\t'*}"; kw="${row#*$'\t'}"
     out="$OUT/${slug}_${prov}_raw.csv"
-    if [ -f "$out" ]; then
+    if cell_complete "$out"; then
       echo "[$(date +%H:%M:%S)] SKIP $slug $prov (gia' fatto: $(($(wc -l < "$out")-1)) lead)" >> "$LOG"; continue
+    fi
+    if cell_pending_recovery "${slug}_${prov}"; then
+      campaign_blocked=1
+      echo "[$(date +%H:%M:%S)] BLOCKED $slug $prov (recovery agent pending)" >> "$LOG"; continue
     fi
     echo "[$(date +%H:%M:%S)] START $slug $prov ($ncom comuni)" >> "$LOG"
     try=0; rc=1; backoff=$BASE_BACKOFF
@@ -72,6 +94,13 @@ for prov in "${PROVINCES[@]}"; do
         --out "$out" --max-pages "$MAXPAGES" $maps_flags >> "$OUT/${slug}_${prov}.runlog" 2>&1
       rc=$?
       [ $rc -eq 0 ] && break
+      if [ $rc -eq 1 ]; then
+        command_json="$(node -e 'const [kw,comuni,out,max,maps]=process.argv.slice(1);const a=["pnpm","run","scrape","--","--category",kw,"--comuni",comuni,"--out",out,"--max-pages",max];if(maps==="1")a.push("--maps","--coverage","full");console.log(JSON.stringify(a));' "$kw" "$comuni" "$out" "$MAXPAGES" "$MAPS")"
+        bash scripts/recovery_coordinator.sh enqueue --out "$OUT" --cell "${slug}_${prov}" --envelope "${out%.csv}.recovery.json" --command-json "$command_json" >> "$OUT/_recovery.log" 2>&1 || true
+        echo "[$(date +%H:%M:%S)] PARTIAL $slug $prov rc=1 — recovery queued" >> "$LOG"
+        campaign_partial=1
+        break
+      fi
       echo "[$(date +%H:%M:%S)] RETRY $slug $prov try=$try rc=$rc — attendo ${backoff}s (backstop cella)" >> "$LOG"
       sleep "$backoff"; backoff=$(( backoff*2 )); [ $backoff -gt 1800 ] && backoff=1800
     done
@@ -79,4 +108,8 @@ for prov in "${PROVINCES[@]}"; do
     echo "[$(date +%H:%M:%S)] DONE  $slug $prov rc=$rc leads=$n tries=$try" >> "$LOG"
   done
 done
+if [ "$campaign_partial" -eq 1 ] || [ "$campaign_blocked" -eq 1 ]; then
+  echo "[$(date +%H:%M:%S)] CAMPAIGN PARTIAL — province: ${PROVINCES[*]} (recovery pending)" >> "$LOG"
+  exit 1
+fi
 echo "[$(date +%H:%M:%S)] CAMPAIGN COMPLETE — province: ${PROVINCES[*]}" >> "$LOG"

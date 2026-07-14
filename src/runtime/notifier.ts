@@ -16,6 +16,7 @@ import { logger } from './logger';
 
 export type NotifyKind =
   | 'run_complete'
+  | 'run_partial'
   | 'run_failed'
   | 'run_interrupted'
   | 'preflight_failed'

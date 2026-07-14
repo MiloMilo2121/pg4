@@ -8,6 +8,7 @@ import { DEFAULTS } from '../../config/defaults';
 import { buildPgSearchUrl } from './pg_url';
 import { parsePagineGialleResults } from './pagine_gialle_parser';
 import { withRetry } from '../../runtime/retry';
+import { capturePageEvidence } from '../../runtime/page_evidence';
 
 /**
  * Live PG navigator. Pure side-effects: navigation + DOM extraction.
@@ -49,6 +50,7 @@ export interface PgLiveOptions {
    * paginating this comune. Omitted → no early-stop (every parsed lead counts).
    */
   isNew?: (lead: Lead) => boolean;
+  diagnosticsDir?: string;
 }
 
 export interface PgLiveResult {
@@ -66,6 +68,14 @@ export interface PgLiveResult {
 
 export const PG_RESULTS_SELECTOR = '.search-itm';
 const PG_CONTAINER_SELECTORS = ['.search-results', '.search-itm-list', 'main'];
+// A page without cards is only a verified empty result if PG rendered one of
+// its explicit result-state messages. Arbitrary blank/block pages must never
+// become an "empty_verified" query in the completion manifest.
+const PG_EMPTY_RESULT_MARKER = /nessun[oa]?\s+(?:risultat[oi]|attivit[àa])|non\s+abbiamo\s+trovato/i;
+
+export function hasVerifiedPgEmptyResults(html: string): boolean {
+  return PG_EMPTY_RESULT_MARKER.test(html.replace(/<[^>]*>/g, ' '));
+}
 
 export async function scrapePgLocation(
   factory: BrowserFactory,
@@ -95,6 +105,8 @@ export async function scrapePgLocation(
     }
     const url = buildPgSearchUrl(opts.category, opts.location, page);
     let html: string | undefined;
+    let pageForEvidence: import('playwright').Page | undefined;
+    let lastAttempt = 0;
     try {
       // Retry the SAME page on transient network drops (post-mortem: 3.6k
       // net::ERR disconnects from the laptop's wifi). getPage() lives INSIDE
@@ -103,6 +115,8 @@ export async function scrapePgLocation(
       html = await withRetry(
         async (attempt) => {
           const pwPage = await factory.getPage();
+          pageForEvidence = pwPage;
+          lastAttempt = attempt;
           logger.info({ url, page, attempt }, '[pg_live] navigating');
           await pwPage.goto(url, { waitUntil: 'domcontentloaded' });
           // Best-effort consent (no-op after first time once storage state persists).
@@ -126,18 +140,48 @@ export async function scrapePgLocation(
         },
       );
     } catch (err) {
+      const evidence = await capturePageEvidence(pageForEvidence, opts.diagnosticsDir, cpKey);
       logger.warn({ url, err: (err as Error).message }, '[pg_live] navigation error — page skipped after retries');
-      cp?.set(cpKey, { status: 'failed', page, reason: (err as Error).message });
+      cp?.set(cpKey, { status: 'failed', page, reason: (err as Error).message, attempts: lastAttempt + 1, evidence_fingerprint: evidence.fingerprint });
       // exhausted retries on this page: try the next page rather than aborting
       await wait(interDelay);
       continue;
     }
     pagesVisited += 1;
 
-    const parsed = parsePagineGialleResults(html, {
-      category: opts.category,
-      queryLocation: opts.location,
-    });
+    let parsed: ReturnType<typeof parsePagineGialleResults>;
+    try {
+      parsed = parsePagineGialleResults(html, {
+        category: opts.category,
+        queryLocation: opts.location,
+      });
+    } catch (err) {
+      const evidence = await capturePageEvidence(pageForEvidence, opts.diagnosticsDir, cpKey);
+      cp?.set(cpKey, {
+        status: 'failed',
+        page,
+        reason: `parser_error: ${(err as Error).message}`,
+        attempts: lastAttempt + 1,
+        evidence_fingerprint: evidence.fingerprint,
+      });
+      logger.warn({ url, page, err: (err as Error).message }, '[pg_live] parser error — page marked failed');
+      break;
+    }
+    if (parsed.total_cards === 0 && !hasVerifiedPgEmptyResults(html)) {
+      const evidence = await capturePageEvidence(pageForEvidence, opts.diagnosticsDir, cpKey);
+      cp?.set(cpKey, {
+        status: 'failed',
+        page,
+        reason: 'selector_missing_or_unverified_empty_results',
+        attempts: lastAttempt + 1,
+        evidence_fingerprint: evidence.fingerprint,
+      });
+      logger.warn({ url, page }, '[pg_live] no cards and no verified empty-result marker — page marked failed');
+      // A selector drift/block page will recur on subsequent pages; preserve
+      // partial output and defer to recovery instead of generating a noisy
+      // run of identical failed page requests.
+      break;
+    }
     totalCards += parsed.total_cards;
     dropped += parsed.dropped;
     out.push(...parsed.results);
@@ -150,6 +194,7 @@ export async function scrapePgLocation(
       parsed: parsed.results.length,
       dropped: parsed.dropped,
       overflow: parsed.overflow,
+      attempts: lastAttempt + 1,
     });
     logger.info(
       {

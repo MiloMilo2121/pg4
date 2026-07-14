@@ -8,6 +8,7 @@ import { DEFAULTS } from '../../config/defaults';
 import { buildMapsSearchUrl } from './maps_url';
 import { parseGoogleMapsResults } from './google_maps_parser';
 import { withRetry } from '../../runtime/retry';
+import { capturePageEvidence } from '../../runtime/page_evidence';
 
 /**
  * Live Google Maps navigator. Scrolls `div[role="feed"]` until the count
@@ -25,6 +26,7 @@ export interface MapsLiveOptions {
   maxScrollAttempts?: number;
   scrollPauseMs?: number;
   checkpoint?: Checkpoint;
+  diagnosticsDir?: string;
 }
 
 export interface MapsLiveResult {
@@ -52,6 +54,8 @@ export async function scrapeMapsLocation(
   }
 
   const url = buildMapsSearchUrl(opts.category, opts.location);
+  let pageForEvidence: import('playwright').Page | undefined;
+  let lastAttempt = 0;
   try {
     // Retry the whole comune session on transient network drops (post-mortem:
     // wifi flap / macOS sleep). getPage() lives inside so a fresh page is used
@@ -60,14 +64,17 @@ export async function scrapeMapsLocation(
     return await withRetry(
       async (attempt) => {
         const page = await factory.getPage();
+        pageForEvidence = page;
+        lastAttempt = attempt;
         logger.info({ url, attempt }, '[maps_live] navigating');
         await page.goto(url, { waitUntil: 'domcontentloaded' });
         await acceptConsent(page, 'maps');
         await wait(2500); // initial render
         const hasFeed = await page.$(FEED_SELECTOR);
         if (!hasFeed) {
+          const evidence = await capturePageEvidence(page, opts.diagnosticsDir, cpKey);
           logger.warn({ url }, '[maps_live] no result feed (single place or blocked)');
-          cp?.set(cpKey, { status: 'failed', reason: 'no_feed' });
+          cp?.set(cpKey, { status: 'failed', reason: 'no_feed', attempts: attempt + 1, evidence_fingerprint: evidence.fingerprint });
           factory.noteNavigation();
           return { results: [], total_cards: 0, parsed: 0, dropped: 0, cap_likely: false, scroll_attempts: 0 };
         }
@@ -84,6 +91,7 @@ export async function scrapeMapsLocation(
           parsed: parsed.results.length,
           dropped: parsed.dropped,
           cap_likely: parsed.cap_likely,
+          attempts: attempt + 1,
         });
         logger.info(
           {
@@ -110,8 +118,9 @@ export async function scrapeMapsLocation(
       },
     );
   } catch (err) {
+    const evidence = await capturePageEvidence(pageForEvidence, opts.diagnosticsDir, cpKey);
     logger.warn({ url, err: (err as Error).message }, '[maps_live] navigation error — comune skipped after retries');
-    cp?.set(cpKey, { status: 'failed', reason: (err as Error).message });
+    cp?.set(cpKey, { status: 'failed', reason: (err as Error).message, attempts: lastAttempt + 1, evidence_fingerprint: evidence.fingerprint });
     return { results: [], total_cards: 0, parsed: 0, dropped: 0, cap_likely: false, scroll_attempts: 0 };
   }
 }

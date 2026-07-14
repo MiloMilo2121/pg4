@@ -25,6 +25,7 @@
     "coverage": "tsx src/cli/coverage.ts",
     "campaign": "bash scripts/campaign.sh",
     "watchdog": "bash scripts/watchdog.sh",
+    "recovery": "bash scripts/recovery_coordinator.sh",
     "serve": "tsx src/server/api_server.ts",
     "dev": "node scripts/dev.mjs",
     "mcp": "tsx src/server/mcp_server.ts",
