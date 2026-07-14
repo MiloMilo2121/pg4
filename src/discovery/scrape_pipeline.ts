@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import { logger } from '../runtime/logger';
@@ -225,7 +226,12 @@ export async function runLiveMode(a: LiveModeInput): Promise<LiveModeSummary> {
 
   const checkpoint = new Checkpoint(checkpointPath);
   const factory = new BrowserFactory({
-    id: `scrape-${slug(a.category)}`,
+    // Session state belongs to an output target, not to a category. Campaign
+    // cells for the same category run concurrently (e.g. PD + VR): a
+    // category-only id made both processes overwrite the same cookie/storage
+    // JSON and leak consent/WAF state across cells. The output lock is already
+    // scoped to this target, so this id gives the browser state the same owner.
+    id: browserSessionId(a.out, a.category),
     headless: a.headless,
     restartEvery: a.restartEvery,
   });
@@ -358,6 +364,7 @@ export async function runLiveMode(a: LiveModeInput): Promise<LiveModeSummary> {
               location: comune,
               checkpoint,
               diagnosticsDir,
+              abortSignal: a.abortSignal,
             });
             totalCards += r.total_cards;
             dropped += r.dropped;
@@ -416,7 +423,7 @@ export async function runLiveMode(a: LiveModeInput): Promise<LiveModeSummary> {
     factory: factory.describe(),
   });
 
-  const coverage = writeCoverageArtifacts({ outCsv: a.out, runId: a.runId, checkpoint });
+  const coverage = writeCoverageArtifacts({ outCsv: a.out, runId: a.runId, checkpoint, forcePartial: interrupted });
   if (coverage.status === 'partial') {
     logger.warn(
       { failed_query_count: coverage.failed_query_count, recovery: recoveryEnvelopePath(a.out) },
@@ -540,6 +547,16 @@ export async function emitCsvJsonl(
  */
 export function defaultCheckpointPath(outCsv: string): string {
   return outCsv.replace(/\.csv$/i, '') + '.checkpoint.json';
+}
+
+/**
+ * Stable, target-scoped browser-storage id. The readable category prefix helps
+ * operators inspect `.browser-state`; the resolved output hash makes the id
+ * collision-resistant without exposing the full local filesystem path.
+ */
+export function browserSessionId(outCsv: string, category: string): string {
+  const targetHash = crypto.createHash('sha256').update(path.resolve(outCsv)).digest('hex').slice(0, 12);
+  return `scrape-${slug(category) || 'target'}-${targetHash}`;
 }
 
 export function slug(s: string): string {

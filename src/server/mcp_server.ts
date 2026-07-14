@@ -9,10 +9,10 @@
  *
  * Run: `pnpm run mcp`  (or `npx tsx src/server/mcp_server.ts`)
  *
- * ponytail: this file is EXCLUDED from `tsc -p tsconfig.json`. The SDK's
- * `tool()` generics blow up the typechecker (TS2589 + a >4min/6GB OOM over the
- * whole project). It runs via tsx (esbuild, no typecheck). All real logic lives
- * in mcp_args.ts (typechecked + tested); this file is declarative wiring.
+ * The MCP SDK used to make this file impractical to typecheck. Current SDK and
+ * TypeScript versions compile it under the normal root `tsconfig`, so CI covers
+ * the stdio bridge as well as `mcp_args.ts`. The latter remains a small pure
+ * helper for argument-policy tests.
  */
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';

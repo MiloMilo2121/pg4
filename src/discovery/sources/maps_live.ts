@@ -27,6 +27,8 @@ export interface MapsLiveOptions {
   scrollPauseMs?: number;
   checkpoint?: Checkpoint;
   diagnosticsDir?: string;
+  /** Cooperative cancellation passed through from the run-level lifecycle. */
+  abortSignal?: AbortSignal;
 }
 
 export interface MapsLiveResult {
@@ -52,6 +54,9 @@ export async function scrapeMapsLocation(
   if (cp?.isDone(cpKey)) {
     return { results: [], total_cards: 0, parsed: 0, dropped: 0, cap_likely: false, scroll_attempts: 0 };
   }
+  // See the PG navigator: a durable pending entry is intentionally visible to
+  // the coverage manifest if a process disappears mid-navigation.
+  cp?.set(cpKey, { status: 'pending', attempts: 0, reason: 'navigation_in_progress' });
 
   const url = buildMapsSearchUrl(opts.category, opts.location);
   let pageForEvidence: import('playwright').Page | undefined;
@@ -113,6 +118,7 @@ export async function scrapeMapsLocation(
         };
       },
       {
+        abortSignal: opts.abortSignal,
         onRetry: ({ attempt, delayMs, err }) =>
           logger.warn({ url, attempt, delayMs, err: (err as Error).message }, '[maps_live] nav retry (network?)'),
       },

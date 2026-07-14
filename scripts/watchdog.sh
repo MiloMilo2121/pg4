@@ -35,7 +35,10 @@ all_cells_done() {
     for slug in "${SLUGS[@]}"; do
       node - "$OUT/${slug}_${prov}_raw.csv" <<'NODE' >/dev/null 2>&1 || return 1
 const fs = require('fs'); const marker = process.argv[2].replace(/\.csv$/i, '.complete.json');
-const m = JSON.parse(fs.readFileSync(marker, 'utf8')); process.exit(m.status === 'complete' && m.failed_query_count === 0 ? 0 : 1);
+const csv = process.argv[2]; const m = JSON.parse(fs.readFileSync(marker, 'utf8'));
+const queries = Array.isArray(m.queries) ? m.queries : [];
+const failed = queries.filter(q => q && q.status === 'failed').length;
+process.exit(m.version === 1 && m.output_csv === require('path').resolve(csv) && m.status === 'complete' && queries.length > 0 && m.failed_query_count === 0 && failed === 0 ? 0 : 1);
 NODE
     done
   done

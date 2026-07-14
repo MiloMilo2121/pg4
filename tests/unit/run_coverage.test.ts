@@ -57,6 +57,41 @@ describe('run coverage manifest', () => {
     });
   });
 
+  it('never creates a completion marker for pending or interrupted work', () => {
+    const { outCsv, checkpoint } = fixture();
+    checkpoint.set('pg:agenzie immobiliari:belluno:p1', { status: 'pending', page: 1, attempts: 0 });
+
+    const pending = writeCoverageArtifacts({ outCsv, runId: 'run-pending', checkpoint });
+    expect(pending.status).toBe('partial');
+    expect(pending.failed_query_count).toBe(1);
+    expect(pending.queries[0]).toMatchObject({ status: 'failed', error_class: 'checkpoint_integrity', attempts: 0 });
+    expect(isCompletedOutput(outCsv)).toBe(false);
+
+    checkpoint.clear();
+    const interrupted = writeCoverageArtifacts({ outCsv, runId: 'run-interrupted', checkpoint, forcePartial: true });
+    expect(interrupted).toMatchObject({ status: 'partial', failed_query_count: 0, incomplete_reason: 'interrupted' });
+    expect(fs.existsSync(completionMarkerPath(outCsv))).toBe(false);
+    expect(fs.existsSync(recoveryEnvelopePath(outCsv))).toBe(false);
+  });
+
+  it('rejects a copied or malformed completion marker', () => {
+    const { outCsv, checkpoint } = fixture();
+    checkpoint.set('pg:agenzie immobiliari:belluno:p1', { status: 'done', parsed: 1 });
+    writeCoverageArtifacts({ outCsv, runId: 'run-ok', checkpoint });
+    expect(isCompletedOutput(outCsv)).toBe(true);
+
+    const markerPath = completionMarkerPath(outCsv);
+    const marker = JSON.parse(fs.readFileSync(markerPath, 'utf8')) as Record<string, unknown>;
+    marker.output_csv = path.join(path.dirname(outCsv), 'other.csv');
+    fs.writeFileSync(markerPath, JSON.stringify(marker));
+    expect(isCompletedOutput(outCsv)).toBe(false);
+
+    marker.output_csv = path.resolve(outCsv);
+    marker.queries = [];
+    fs.writeFileSync(markerPath, JSON.stringify(marker));
+    expect(isCompletedOutput(outCsv)).toBe(false);
+  });
+
   it('classifies known failure families without treating verified emptiness as a failure', () => {
     expect(classifyRecoveryError('page.goto: Timeout 32000ms exceeded')).toBe('network_exhausted');
     expect(classifyRecoveryError('no_feed')).toBe('maps_no_feed');

@@ -103,6 +103,10 @@ export async function scrapePgLocation(
       pagesVisited += 1;
       continue;
     }
+    // Persist intent before navigating. If the process is killed while a page
+    // is in flight, coverage turns this non-terminal checkpoint into a partial
+    // run instead of claiming completion from only the pages seen so far.
+    cp?.set(cpKey, { status: 'pending', page, attempts: 0, reason: 'navigation_in_progress' });
     const url = buildPgSearchUrl(opts.category, opts.location, page);
     let html: string | undefined;
     let pageForEvidence: import('playwright').Page | undefined;

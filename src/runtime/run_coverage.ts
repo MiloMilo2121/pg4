@@ -33,6 +33,8 @@ export interface CoverageManifest {
   generated_at: string;
   output_csv: string;
   status: 'complete' | 'partial';
+  /** Present when the run ended before every planned query could terminate. */
+  incomplete_reason?: 'interrupted';
   queries: CoverageQuery[];
   failed_query_count: number;
 }
@@ -67,7 +69,7 @@ export function classifyRecoveryError(reason: string | undefined): RecoveryError
   if (/consent|cookie/.test(value)) return 'consent_wall';
   if (/captcha|unusual traffic|access denied|forbidden|blocked|cloudflare/.test(value)) return 'blocked_or_captcha';
   if (/selector|markup|matched 0 elements/.test(value)) return 'selector_drift';
-  if (/checkpoint|missingpriorjsonl|prior jsonl/.test(value)) return 'checkpoint_integrity';
+  if (/checkpoint|missingpriorjsonl|prior jsonl|navigation_in_progress/.test(value)) return 'checkpoint_integrity';
   return 'unknown';
 }
 
@@ -85,16 +87,23 @@ function parseCheckpointKey(key: string): { provider: 'pg' | 'maps'; category: s
 
 function toCoverageQuery(key: string, entry: CheckpointEntry): CoverageQuery | undefined {
   const parsed = parseCheckpointKey(key);
-  if (!parsed || entry.status === 'pending' || entry.status === 'skipped') return undefined;
-  const status: CoverageStatus = entry.status === 'failed'
+  if (!parsed) return undefined;
+  // A checkpoint may be durable but not terminal when the process is stopped
+  // between setting `pending` and writing its final result. It must remain
+  // visible as a failed query: omitting it would let a partial run create a
+  // false completion marker.
+  const terminalStateMissing = entry.status === 'pending' || entry.status === 'skipped';
+  const status: CoverageStatus = entry.status === 'failed' || terminalStateMissing
     ? 'failed'
     : (entry.parsed ?? 0) === 0 ? 'empty_verified' : 'success';
-  const reason = entry.reason;
+  const reason = terminalStateMissing
+    ? entry.reason ?? `checkpoint_${entry.status}_without_terminal_result`
+    : entry.reason;
   return {
     key,
     ...parsed,
     status,
-    attempts: entry.attempts ?? 1,
+    attempts: entry.attempts ?? (terminalStateMissing ? 0 : 1),
     error_class: status === 'failed' ? classifyRecoveryError(reason) : undefined,
     reason,
     evidence_fingerprint: entry.evidence_fingerprint,
@@ -108,18 +117,26 @@ function writeJsonAtomically(filePath: string, value: unknown): void {
   fs.renameSync(tmp, filePath);
 }
 
-export function writeCoverageArtifacts(input: { outCsv: string; runId: string; checkpoint: Checkpoint }): CoverageManifest {
+export function writeCoverageArtifacts(input: {
+  outCsv: string;
+  runId: string;
+  checkpoint: Checkpoint;
+  /** A graceful interrupt leaves unstarted queries outside the checkpoint. */
+  forcePartial?: boolean;
+}): CoverageManifest {
   const queries = input.checkpoint.entries()
     .map(([key, entry]) => toCoverageQuery(key, entry))
     .filter((query): query is CoverageQuery => query !== undefined)
     .sort((a, b) => a.key.localeCompare(b.key));
   const failures = queries.filter((query) => query.status === 'failed');
+  const interrupted = input.forcePartial === true;
   const manifest: CoverageManifest = {
     version: 1,
     run_id: input.runId,
     generated_at: new Date().toISOString(),
     output_csv: path.resolve(input.outCsv),
-    status: failures.length === 0 ? 'complete' : 'partial',
+    status: failures.length === 0 && !interrupted ? 'complete' : 'partial',
+    ...(interrupted ? { incomplete_reason: 'interrupted' as const } : {}),
     queries,
     failed_query_count: failures.length,
   };
@@ -127,7 +144,7 @@ export function writeCoverageArtifacts(input: { outCsv: string; runId: string; c
   if (manifest.status === 'complete') {
     writeJsonAtomically(completionMarkerPath(input.outCsv), manifest);
     try { fs.unlinkSync(recoveryEnvelopePath(input.outCsv)); } catch { /* absent is fine */ }
-  } else {
+  } else if (failures.length > 0) {
     try { fs.unlinkSync(completionMarkerPath(input.outCsv)); } catch { /* absent is fine */ }
     const incidentSeed = `${manifest.output_csv}:${failures.map((failure) => `${failure.key}:${failure.error_class}:${failure.evidence_fingerprint ?? ''}`).join('|')}`;
     const envelope: RecoveryEnvelope = {
@@ -141,6 +158,12 @@ export function writeCoverageArtifacts(input: { outCsv: string; runId: string; c
       })),
     };
     writeJsonAtomically(recoveryEnvelopePath(input.outCsv), envelope);
+  } else {
+    // An interrupt is resumable by the campaign/watchdog; it is not a parser
+    // incident that the code-recovery agent can remedy. Do not dispatch an
+    // empty recovery envelope for it.
+    try { fs.unlinkSync(completionMarkerPath(input.outCsv)); } catch { /* absent is fine */ }
+    try { fs.unlinkSync(recoveryEnvelopePath(input.outCsv)); } catch { /* absent is fine */ }
   }
   return manifest;
 }
@@ -149,7 +172,14 @@ export function writeCoverageArtifacts(input: { outCsv: string; runId: string; c
 export function isCompletedOutput(outCsv: string): boolean {
   try {
     const marker = JSON.parse(fs.readFileSync(completionMarkerPath(outCsv), 'utf8')) as CoverageManifest;
-    return marker.version === 1 && marker.status === 'complete' && marker.failed_query_count === 0;
+    const queries = Array.isArray(marker.queries) ? marker.queries : [];
+    const failed = queries.filter((query) => query?.status === 'failed').length;
+    return marker.version === 1 &&
+      marker.output_csv === path.resolve(outCsv) &&
+      marker.status === 'complete' &&
+      queries.length > 0 &&
+      marker.failed_query_count === 0 &&
+      failed === 0;
   } catch {
     return false;
   }

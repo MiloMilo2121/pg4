@@ -1,6 +1,9 @@
 # pg4 — Architecture
 
-> Status as of Phase 4.4 (structure cleanup). 256 unit tests, 1 placeholder, 0 network in CI. Phase 4.3 PG live canary on Belluno **passed** (47 unique leads, checkpoint resumes correctly, no captcha loops).
+> Current shape: a TypeScript scraping/enrichment core, a deliberately local
+> dashboard adapter, and a durable recovery control plane. CI validates both
+> the core and the independent `web/` application; browser/network smoke tests
+> remain opt-in.
 
 ## Folder responsibilities
 
@@ -14,8 +17,7 @@ src/
   types/           Canonical shapes. ONE Lead type. Reason-code / discovery-method
                    taxonomies as TS const objects so the compiler catches typos.
 
-  runtime/         Cross-cutting infrastructure — the parts that don't know about
-                   PG vs Maps vs anything domain-specific:
+  runtime/         Cross-cutting infrastructure and durable operational safety:
                      logger        single pino logger
                      cost_ledger   in-memory + JSONL append per call (canonical
                                    per-lead cost source)
@@ -25,6 +27,10 @@ src/
                      run_context   per-run + per-lead containers; tierCapForLead()
                      rate_limiter  per-key token bucket
                      checkpoint    file-backed JSON, atomic write
+                     run_coverage  completion marker + recovery envelope contract.
+                                   It carries PG/Maps query labels, but lives here
+                                   because it is the cross-process boundary shared
+                                   by checkpoint, campaign, watchdog and recovery.
                      errors        thrown-error → reason_code classifier
 
   browser/         Playwright integration ONLY. No parsing, no domain logic.
@@ -71,6 +77,18 @@ src/
   io/              CSV reader, CSV writer, JSONL reader/writer, output_manager.
                    Schemas (RAW_CSV_COLUMNS, ENRICHED_CSV_COLUMNS) live in types/lead.
 
+  server/          Local dashboard adapter and MCP stdio bridge. `api_server.ts`
+                   is intentionally single-tenant and loopback-only; it is not a
+                   production HTTP service.
+
+  api/             Framework-neutral, tenant-scoped control-plane contracts.
+                   They are the future authenticated adapter boundary, not the
+                   runtime used by the local dashboard today.
+
+web/               Independent Next.js dashboard project with its own lockfile,
+                   TypeScript, Next-aware lint and production-build gates. It
+                   speaks only to the local API adapter through `web/lib/api.ts`.
+
 tests/
   fixtures/        Synthetic + real HTML, sample CSVs, RDAP JSON, baseline files.
   unit/            ZERO network. Mocks/fixtures only. Run on every typecheck.
@@ -112,7 +130,8 @@ CLI argv → cli/enrich.ts
 ```
 
 ### run / benchmark (Phase 5+)
-- `cli/run.ts` — composes scrape → enrich end-to-end. Stub today.
+- `cli/run.ts` — composes scrape → enrich end-to-end. It refuses to start
+  enrichment until the scrape coverage manifest is complete.
 - `cli/benchmark.ts` — pg4 vs pg3 on the same fixture set. Stub today.
 
 ## Invariants
@@ -162,7 +181,26 @@ CLI argv → cli/enrich.ts
    `city`, `business_city`, `address` at the parser boundary. Apostrophes
    and Italian accented letters pass through unchanged.
 
-## Current live rollout state
+10. **One target owns one durable state bundle.** The output CSV path scopes
+    its output lock, checkpoint, coverage manifest, completion marker,
+    recovery envelope and persistent browser storage. Two campaign cells for
+    the same category cannot share cookies or overwrite one another's resume
+    state.
+
+11. **Completion is explicit.** A CSV/JSONL is an artifact, not proof of a
+    complete scrape. Only a valid `<target>.complete.json` with no failed query
+    permits a campaign/watchdog to skip a cell.
+
+12. **The dashboard adapter stays local.** `api_server.ts` has no auth and
+    binds only to loopback. A future remotely reachable API must use the
+    authenticated `src/api/` control-plane boundary and durable job storage;
+    CORS alone is not access control.
+
+## Historical live-validation evidence
+
+These entries document observed canaries, not a claim that a deployment is
+currently healthy. Consult a fresh manifest, diagnostics and run record before
+using a result operationally.
 
 | Step | State |
 |---|---|

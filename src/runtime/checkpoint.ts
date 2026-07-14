@@ -26,6 +26,21 @@ export interface CheckpointEntry {
   evidence_fingerprint?: string;
 }
 
+/**
+ * A broken checkpoint is a data-integrity incident, not an empty checkpoint.
+ * Treating it as fresh can overwrite the prior JSONL with only the later
+ * partial work, so callers must stop or explicitly use `--fresh`.
+ */
+export class CheckpointIntegrityError extends Error {
+  readonly filePath: string;
+
+  constructor(filePath: string, detail: string) {
+    super(`Checkpoint integrity error at "${filePath}": ${detail}. Preserve the existing artifacts and re-run with --fresh only after review.`);
+    this.name = 'CheckpointIntegrityError';
+    this.filePath = filePath;
+  }
+}
+
 export class Checkpoint {
   private state: Record<string, CheckpointEntry> = {};
 
@@ -81,16 +96,24 @@ export class Checkpoint {
   }
 
   private load(): void {
+    let raw: string;
     try {
-      const raw = fs.readFileSync(this.filePath, 'utf8');
-      const parsed = JSON.parse(raw);
-      if (parsed && typeof parsed === 'object') {
-        this.state = parsed as Record<string, CheckpointEntry>;
-      }
-    } catch {
-      // Missing / corrupt file is not fatal — start fresh.
-      this.state = {};
+      raw = fs.readFileSync(this.filePath, 'utf8');
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') return;
+      throw new CheckpointIntegrityError(this.filePath, `cannot read checkpoint: ${(err as Error).message}`);
     }
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+    } catch (err) {
+      throw new CheckpointIntegrityError(this.filePath, `invalid JSON: ${(err as Error).message}`);
+    }
+    if (!isCheckpointState(parsed)) {
+      throw new CheckpointIntegrityError(this.filePath, 'invalid checkpoint shape');
+    }
+    this.state = parsed;
   }
 
   private flushSync(): void {
@@ -99,4 +122,15 @@ export class Checkpoint {
     fs.writeFileSync(tmp, JSON.stringify(this.state, null, 2), 'utf8');
     fs.renameSync(tmp, this.filePath);
   }
+}
+
+function isCheckpointState(value: unknown): value is Record<string, CheckpointEntry> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const allowedStatuses = new Set<CheckpointEntry['status']>(['pending', 'done', 'failed', 'skipped']);
+  return Object.values(value).every((entry) => {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return false;
+    const candidate = entry as Partial<CheckpointEntry>;
+    return allowedStatuses.has(candidate.status as CheckpointEntry['status']) &&
+      typeof candidate.ts === 'number' && Number.isFinite(candidate.ts);
+  });
 }

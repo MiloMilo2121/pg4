@@ -58,7 +58,12 @@ cell_complete() {
   node - "$csv" <<'NODE'
 const fs = require('fs'); const csv = process.argv[2];
 const marker = csv.replace(/\.csv$/i, '.complete.json');
-try { const m = JSON.parse(fs.readFileSync(marker, 'utf8')); process.exit(m.status === 'complete' && m.failed_query_count === 0 ? 0 : 1); } catch { process.exit(1); }
+try {
+  const m = JSON.parse(fs.readFileSync(marker, 'utf8'));
+  const queries = Array.isArray(m.queries) ? m.queries : [];
+  const failed = queries.filter(q => q && q.status === 'failed').length;
+  process.exit(m.version === 1 && m.output_csv === require('path').resolve(csv) && m.status === 'complete' && queries.length > 0 && m.failed_query_count === 0 && failed === 0 ? 0 : 1);
+} catch { process.exit(1); }
 NODE
 }
 
@@ -72,6 +77,7 @@ NODE
 echo "[$(date +%H:%M:%S)] CAMPAIGN START — province: ${PROVINCES[*]} · settori: ${#SECTOR_ROWS[@]} · MAPS=$MAPS · MAXPAGES=$MAXPAGES · suppression=${SUPPRESSION_LIST:-auto}" >> "$LOG"
 campaign_partial=0
 campaign_blocked=0
+campaign_failed=0
 for prov in "${PROVINCES[@]}"; do
   comuni=$(node -e 'const fs=require("fs");const j=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));process.stdout.write((j[process.argv[2]]||[]).join(","));' "$COMUNI_JSON" "$prov")
   ncom=$(node -e 'const fs=require("fs");const j=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));process.stdout.write(String((j[process.argv[2]]||[]).length));' "$COMUNI_JSON" "$prov")
@@ -105,11 +111,24 @@ for prov in "${PROVINCES[@]}"; do
       sleep "$backoff"; backoff=$(( backoff*2 )); [ $backoff -gt 1800 ] && backoff=1800
     done
     n=0; [ -f "$out" ] && n=$(( $(wc -l < "$out") - 1 ))
-    echo "[$(date +%H:%M:%S)] DONE  $slug $prov rc=$rc leads=$n tries=$try" >> "$LOG"
+    if [ "$rc" -eq 0 ] || [ "$rc" -eq 1 ]; then
+      echo "[$(date +%H:%M:%S)] DONE  $slug $prov rc=$rc leads=$n tries=$try" >> "$LOG"
+    else
+      campaign_failed=1
+      echo "[$(date +%H:%M:%S)] FAILED $slug $prov rc=$rc leads=$n tries=$try" >> "$LOG"
+      # A fatal/preflight/timeout condition cannot be made healthy by the
+      # watchdog starting the same cell forever. Persist an explicit incident
+      # and let the operator inspect it; SIGINT/SIGTERM remains restartable.
+      if [ "$rc" -ne 130 ]; then
+        bash scripts/recovery_coordinator.sh block --out "$OUT" --cell "${slug}_${prov}" \
+          --reason "scrape exited $rc after $try campaign attempt(s)" >> "$OUT/_recovery.log" 2>&1 || true
+        campaign_blocked=1
+      fi
+    fi
   done
 done
-if [ "$campaign_partial" -eq 1 ] || [ "$campaign_blocked" -eq 1 ]; then
-  echo "[$(date +%H:%M:%S)] CAMPAIGN PARTIAL — province: ${PROVINCES[*]} (recovery pending)" >> "$LOG"
+if [ "$campaign_partial" -eq 1 ] || [ "$campaign_blocked" -eq 1 ] || [ "$campaign_failed" -eq 1 ]; then
+  echo "[$(date +%H:%M:%S)] CAMPAIGN INCOMPLETE — province: ${PROVINCES[*]} (recovery pending, blocked incident, or interrupted cell)" >> "$LOG"
   exit 1
 fi
 echo "[$(date +%H:%M:%S)] CAMPAIGN COMPLETE — province: ${PROVINCES[*]}" >> "$LOG"

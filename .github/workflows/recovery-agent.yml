@@ -1,5 +1,5 @@
 name: Recovery agent
-run-name: Recovery ${{ github.event.client_payload.incident_id || inputs.incident_id }}
+run-name: Recovery ${{ github.event.client_payload.incident_id || inputs.incident_id }} attempt ${{ github.event.client_payload.recovery_attempt || 'manual' }}
 
 on:
   repository_dispatch:
@@ -19,11 +19,6 @@ permissions:
 jobs:
   diagnose-fix-review-merge:
     runs-on: ubuntu-latest
-    env:
-      OPENROUTER_ENABLED: 'true'
-      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-      OPENROUTER_MODEL: anthropic/claude-opus-4-8
-      INCIDENT_PAYLOAD: ${{ toJson(github.event.client_payload) }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -37,6 +32,8 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - name: Materialize sanitized incident envelope
+        env:
+          INCIDENT_PAYLOAD: ${{ toJson(github.event.client_payload) }}
         run: |
           mkdir -p .recovery
           if [ "${{ github.event_name }}" = repository_dispatch ]; then
@@ -47,6 +44,10 @@ jobs:
       - name: Create recovery branch
         run: git checkout -b "recovery/${{ github.event.client_payload.incident_id || inputs.incident_id }}"
       - name: Generate constrained patch
+        env:
+          OPENROUTER_ENABLED: 'true'
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          OPENROUTER_MODEL: anthropic/claude-opus-4-8
         run: pnpm exec tsx src/scripts/recovery_agent.ts patch .recovery/incident.json
       - name: Mechanical pre-review
         run: |
@@ -55,6 +56,10 @@ jobs:
           pnpm test
           pnpm run lint
       - name: Independent AI pre-review
+        env:
+          OPENROUTER_ENABLED: 'true'
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          OPENROUTER_MODEL: anthropic/claude-opus-4-8
         run: pnpm exec tsx src/scripts/recovery_agent.ts review .recovery/incident.json
       - name: Commit, create PR, auto-merge
         env:
@@ -66,5 +71,6 @@ jobs:
           git add src tests
           git commit -m "fix(recovery): remediate ${{ github.event.client_payload.incident_id || inputs.incident_id }}"
           git push --set-upstream origin HEAD
-          gh pr create --base main --head "$(git branch --show-current)" --title "fix(recovery): ${{ github.event.client_payload.incident_id || inputs.incident_id }}" --body "Automated recovery patch. CI, regression tests and independent pre-review passed."
-          gh pr merge --merge --delete-branch --admin
+          PR_URL="$(gh pr create --base main --head "$(git branch --show-current)" --title "fix(recovery): ${{ github.event.client_payload.incident_id || inputs.incident_id }}" --body "Automated recovery patch. CI, regression tests and independent pre-review passed.")"
+          gh pr checks "$PR_URL" --watch --fail-fast
+          gh pr merge "$PR_URL" --merge --delete-branch --match-head-commit "$(git rev-parse HEAD)"

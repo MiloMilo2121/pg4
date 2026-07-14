@@ -3,9 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import { OpenRouterProvider } from '../providers/llm/openrouter';
 import type { RecoveryEnvelope } from '../runtime/run_coverage';
-
-const ALLOWED_PREFIXES = ['src/discovery/', 'src/browser/', 'src/runtime/', 'tests/unit/'];
-const FORBIDDEN_TEXT = [/--skip-preflight/i, /OPENROUTER_API_KEY/i, /GITHUB_TOKEN/i, /\.github\/workflows/i];
+import { assertSafeRecoveryPatch } from '../runtime/recovery_patch_guard';
 
 interface PatchResponse {
   summary: string;
@@ -23,18 +21,6 @@ function readJson(filePath: string): RecoveryEnvelope {
 
 function stripFence(value: string): string {
   return value.replace(/^```[^\n]*\n?/i, '').replace(/\s*```$/, '').trim();
-}
-
-function assertSafePatch(patch: string): void {
-  if (!patch || !patch.includes('diff --git ')) throw new Error('recovery agent did not return a unified diff');
-  for (const line of patch.split('\n')) {
-    if (!line.startsWith('+++ b/')) continue;
-    const target = line.slice('+++ b/'.length);
-    if (!ALLOWED_PREFIXES.some((prefix) => target.startsWith(prefix))) {
-      throw new Error(`recovery patch touches forbidden path: ${target}`);
-    }
-  }
-  if (FORBIDDEN_TEXT.some((rule) => rule.test(patch))) throw new Error('recovery patch contains forbidden bypass or credential text');
 }
 
 function sourceContext(): string {
@@ -55,7 +41,7 @@ async function askForPatch(incident: RecoveryEnvelope): Promise<PatchResponse> {
     system: [
       'You are a constrained production recovery engineer.',
       'Return strict JSON with keys summary and patch. patch must be a unified git diff.',
-      'Only change src/discovery, src/browser, src/runtime, or tests/unit.',
+      'Only change src/discovery/sources, src/browser/consent_handler.ts, src/runtime/retry.ts, src/runtime/checkpoint.ts, src/runtime/page_evidence.ts, or tests/unit.',
       'Never disable preflight or validation, never include secrets, and add a focused regression test.',
       'If the evidence cannot support a safe code fix, return an empty patch.',
     ].join(' '),
@@ -97,7 +83,7 @@ async function main(): Promise<void> {
   if (mode === 'patch') {
     const response = await askForPatch(incident);
     const patch = stripFence(response.patch);
-    assertSafePatch(patch);
+    assertSafeRecoveryPatch(patch);
     const patchPath = path.resolve('.recovery-agent.patch');
     fs.writeFileSync(patchPath, patch, 'utf8');
     execFileSync('git', ['apply', '--check', patchPath], { stdio: 'inherit' });

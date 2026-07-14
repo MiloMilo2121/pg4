@@ -59,10 +59,16 @@ src/io/           CSV and JSONL readers/writers
 ## Quick Start
 
 ```bash
-git clone https://github.com/MiloMilo2121/PG-scraper.git
-cd PG-scraper/pg4
+git clone https://github.com/MiloMilo2121/pg-omega.git
+cd pg-omega
 pnpm install
 cp .env.example .env
+```
+
+The dashboard is a separate pnpm project; install it before `pnpm run dev`:
+
+```bash
+pnpm --dir web install
 ```
 
 Run the offline example first. It uses a mock HTTP fixture, so it does not need API keys, browser access, or network access.
@@ -138,7 +144,9 @@ total=5 with_website=5 errors=0 total_cost_eur=0
 pnpm run run -- --category "agenzie immobiliari" --province BL --out output/campaign
 ```
 
-Current status: this command is reserved for the end-to-end scrape -> enrich workflow and currently logs the intended campaign. Use `scrape` and `enrich` separately for production runs until it is wired.
+This command performs scrape -> enrich under one run id. It stops after scrape
+with exit `1` if any PG/Maps query is partial or failed, preserving the raw
+artifacts and recovery evidence instead of enriching an incomplete dataset.
 
 ### benchmark
 
@@ -178,15 +186,20 @@ Benchmark policy:
 - pg4 benchmark cells remain `TBD - to be measured` until a comparable real run exists.
 - Never infer accuracy from a found-count alone; use `TBD` unless there is a validated truth set.
 
-CI runs `pnpm install --frozen-lockfile`, `pnpm run typecheck`, and `pnpm test`. Smoke tests and secrets are excluded from CI.
+CI has two independent gates:
+
+- Core: frozen install, typecheck (including MCP), offline unit tests, lint,
+  and production dependency audit.
+- Dashboard: frozen `web/` install, typecheck, Next-aware lint, production build, and
+  production dependency audit.
+
+Smoke tests and secrets are excluded from CI.
 
 ## Project Layout
 
 ```text
 repo root/
-  .github/workflows/ci.yml      GitHub Actions unit gate for pg4
-
-pg4/
+  .github/workflows/ci.yml      Core + dashboard CI gates
   examples/                     offline CSV + mock HTTP example
   docs/                         audit notes and recalibration reports
   scripts/                      local audit/report helpers, not CI entrypoints
@@ -204,9 +217,10 @@ pg4/
     fixtures/                   saved parser fixtures and small CSVs
     smoke/                      RUN_SMOKE=1 live checks
     unit/                       offline unit coverage
+  web/                          independent Next.js local dashboard (own pnpm lockfile)
 ```
 
 ## Roadmap
 
-- Wire `run` into the existing scrape -> enrich components without changing the CLI contract.
 - Produce a real pg4 benchmark on the same target class as the pg3 wave benchmark and update `BENCHMARK.md`.
+- Replace the local dashboard adapter with an authenticated, durable API before any non-loopback deployment.
