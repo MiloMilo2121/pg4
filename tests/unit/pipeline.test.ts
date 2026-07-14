@@ -3,6 +3,7 @@ import { runEnrichmentPipeline } from '../../src/enrichment/enrichment_pipeline'
 import { ProviderRouter } from '../../src/providers/provider_router';
 import { CostLedger } from '../../src/runtime/cost_ledger';
 import { createPerLeadContext, createRun } from '../../src/runtime/run_context';
+import type { Stage } from '../../src/types/enrichment';
 import type { HttpProvider, HttpFetchResult } from '../../src/types/providers';
 
 class StubFetch implements HttpProvider {
@@ -23,6 +24,12 @@ class StubFetch implements HttpProvider {
 // Default DNS mock for unit tests: every host is dead. Real DNS is forbidden
 // in unit tests; the smoke suite covers live resolution.
 const deadDns = async (_host: string) => Promise.reject(new Error('ENOTFOUND'));
+const offlineRdap: Stage = {
+  name: 'rdap',
+  async run() {
+    return { stage: 'rdap', status: 'not_found', duration_ms: 0, detail: 'offline_test_stub' };
+  },
+};
 
 describe('enrichment pipeline (vertical slice)', () => {
   it('produces a row with status + reason_code on EVERY input — happy path PIVA match', async () => {
@@ -34,7 +41,7 @@ describe('enrichment pipeline (vertical slice)', () => {
     });
     const router = new ProviderRouter([], [stub], [], ledger);
     const lead = { company_name: 'Acme SRL', city: 'Milano', province: 'MI', vat_code: '12345678901', website: 'https://acme.it' };
-    const result = await runEnrichmentPipeline({ run, perLead: createPerLeadContext(run), router, lead, dnsResolver: deadDns });
+    const result = await runEnrichmentPipeline({ run, perLead: createPerLeadContext(run), router, lead, dnsResolver: deadDns, rdapStage: offlineRdap });
     expect(result.lead.status).toBe('FOUND_WEBSITE_ONLY');
     expect(result.lead.reason_code).toBe('FOUND_WEBSITE_ONLY');
     expect(result.lead.official_website).toBe('https://acme.it');
@@ -50,7 +57,7 @@ describe('enrichment pipeline (vertical slice)', () => {
     });
     const router = new ProviderRouter([], [stub], [], ledger);
     const lead = { company_name: 'Acme SRL', city: 'Milano', vat_code: '12345678901', website: 'https://wrong.com' };
-    const result = await runEnrichmentPipeline({ run, perLead: createPerLeadContext(run), router, lead, dnsResolver: deadDns });
+    const result = await runEnrichmentPipeline({ run, perLead: createPerLeadContext(run), router, lead, dnsResolver: deadDns, rdapStage: offlineRdap });
     expect(result.lead.status).toBe('NOT_FOUND');
     expect(result.lead.reason_code).toBe('INPUT_WEBSITE_NOT_VERIFIED');
     expect(result.lead.official_website).toBeUndefined();
@@ -61,7 +68,7 @@ describe('enrichment pipeline (vertical slice)', () => {
     const ledger = new CostLedger();
     const router = new ProviderRouter([], [], [], ledger);
     const lead = { company_name: 'Solo Nome' };
-    const result = await runEnrichmentPipeline({ run, perLead: createPerLeadContext(run), router, lead, dnsResolver: deadDns });
+    const result = await runEnrichmentPipeline({ run, perLead: createPerLeadContext(run), router, lead, dnsResolver: deadDns, rdapStage: offlineRdap });
     expect(result.lead.status).toBe('SKIPPED');
     expect(result.lead.reason_code).toBe('INPUT_QUALITY_TOO_LOW');
   });
@@ -76,6 +83,7 @@ describe('enrichment pipeline (vertical slice)', () => {
       router,
       lead: { company_name: '' },
       ingestError: 'Missing company_name',
+      rdapStage: offlineRdap,
     });
     expect(result.lead.status).toBe('ERROR');
     expect(result.lead.reason_code).toBe('ERROR_INVALID_INPUT_ROW');
@@ -86,7 +94,7 @@ describe('enrichment pipeline (vertical slice)', () => {
     const ledger = new CostLedger();
     const router = new ProviderRouter([], [], [], ledger);
     const lead = { company_name: 'Acme', city: 'Milano', province: 'MI', phone: '021', vat_code: '12345678901', website: 'https://linkedin.com/company/acme' };
-    const result = await runEnrichmentPipeline({ run, perLead: createPerLeadContext(run), router, lead, dnsResolver: deadDns });
+    const result = await runEnrichmentPipeline({ run, perLead: createPerLeadContext(run), router, lead, dnsResolver: deadDns, rdapStage: offlineRdap });
     expect(result.lead.status).toBe('NOT_FOUND');
     expect(result.lead.reason_code).toBe('INPUT_WEBSITE_DIRECTORY_OR_SOCIAL');
   });
@@ -96,7 +104,7 @@ describe('enrichment pipeline (vertical slice)', () => {
     const ledger = new CostLedger();
     const router = new ProviderRouter([], [], [], ledger);
     const lead = { company_name: 'Solo Nome' };
-    const result = await runEnrichmentPipeline({ run, perLead: createPerLeadContext(run), router, lead, dnsResolver: deadDns });
+    const result = await runEnrichmentPipeline({ run, perLead: createPerLeadContext(run), router, lead, dnsResolver: deadDns, rdapStage: offlineRdap });
     expect(typeof result.lead.duration_ms).toBe('number');
     expect(Array.isArray(result.lead.providers_used)).toBe(true);
   });
