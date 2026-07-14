@@ -54,6 +54,18 @@ describe('Gate-0 — forced preflight failure', () => {
     expect(r.pg_cards).toBe(42);
   });
 
+  it('Maps canary absent DEGRADES to PG-only (no throw) — PG healthy is enough', async () => {
+    // fakeFactory.$ always returns null → no Maps feed. PG passes (42 cards).
+    // Post-mortem fix: a Maps blip must not abort a healthy PG run.
+    const r = await runScrapePreflight(fakeFactory(42), { checkMaps: true });
+    expect(r.pg_cards).toBe(42);
+    expect(r.maps_feed_present).toBe(false); // degraded, but NOT fatal
+  });
+
+  it('PG failure is STILL fatal even when Maps is also checked', async () => {
+    await expect(runScrapePreflight(fakeFactory(0), { checkMaps: true })).rejects.toBeInstanceOf(PreflightError);
+  });
+
   it('PreflightError maps to the dedicated exit code 3 (scheduler signal)', () => {
     // src/cli/scrape.ts: `if (err instanceof PreflightError) → finish(preflight_failed, EXIT.PREFLIGHT_FAILED)`
     expect(EXIT.PREFLIGHT_FAILED).toBe(3);

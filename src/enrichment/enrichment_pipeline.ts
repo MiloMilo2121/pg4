@@ -58,6 +58,11 @@ export interface PipelineInput {
    */
   pgHarvester?: PgDetailHarvester;
   /**
+   * Optional RDAP rescue stage. Unit tests inject a no-network implementation;
+   * production retains the default live RDAP stage.
+   */
+  rdapStage?: Stage;
+  /**
    * R13.1 — financial enrichment stage. Runs AFTER the website discovery
    * ladder, UNCONDITIONALLY (it is orthogonal to website success). Defaults
    * to an enabled, NO-NETWORK instance that only promotes a checksum-valid
@@ -138,7 +143,7 @@ export async function runEnrichmentPipeline(input: PipelineInput): Promise<Enric
     new PgDetailStage(router, harvester),
     new HyperGuesserStage(router, input.dnsResolver),
     new SerpStage(router, { paidFallbackEnabled: perLead.paidEnabled === true }),
-    new RdapBoostStage(),
+    input.rdapStage ?? new RdapBoostStage(),
   ];
 
   const stageOutcomes: Record<string, StageOutcome> = {};

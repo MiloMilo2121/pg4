@@ -8,6 +8,6 @@ tests/fixtures/baseline_pg3.jsonl
 tmp/
 .browser-state/
 .pnpm-store/
-coverage/
+/coverage/
 *.tsbuildinfo
 .DS_Store

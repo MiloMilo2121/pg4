@@ -20,6 +20,10 @@ export interface CheckpointEntry {
   cap_likely?: boolean;
   ts: number;
   reason?: string;
+  /** Navigation attempts consumed before this terminal checkpoint state. */
+  attempts?: number;
+  /** Hash of a redacted DOM/title diagnostic, never raw page content. */
+  evidence_fingerprint?: string;
 }
 
 export class Checkpoint {
@@ -39,6 +43,11 @@ export class Checkpoint {
 
   get(key: string): CheckpointEntry | undefined {
     return this.state[key];
+  }
+
+  /** Immutable snapshot for coverage manifests and recovery tooling. */
+  entries(): Array<[string, CheckpointEntry]> {
+    return Object.entries(this.state).map(([key, entry]) => [key, { ...entry }]);
   }
 
   /** Persist a new entry and flush to disk. Synchronous on purpose: a

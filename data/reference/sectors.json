@@ -1,0 +1,50 @@
+{
+  "_meta": {
+    "purpose": "Catalogo UNICO dei settori scrapabili. Fonte di verita' condivisa tra i driver di scraping e l'analisi di copertura. Aggiungi un settore QUI e tutto lo usa: nessuna modifica sparsa.",
+    "howToAddSector": [
+      "1) Aggiungi un oggetto a `sectors` con: slug (id breve), label, keyword (query PG/Maps principale), queryVariants (sinonimi per --coverage full su Maps), atecoDivisions (una o piu' divisioni ATECO 2 cifre).",
+      "2) Assicurati che le atecoDivisions siano classificabili: la keyword deve mappare a una di esse in category_ateco_map.json (il test coverage_sectors lo verifica).",
+      "3) Rilancia il driver generalizzato (output/run_recall.sh): usera' automaticamente il nuovo settore. Nessun altro cambiamento."
+    ],
+    "howToAddRegionOrProvince": "Nessuna modifica al catalogo: i driver accettano qualunque sigla provincia del Nord come argomento (i comuni completi sono in comuni_nord.json, 47 province, 8 regioni). Es: bash output/run_recall.sh MI BG BS.",
+    "howToAddAtecoToCoverage": "Per far comparire una divisione nella gap-map anche senza scraping dedicato, basta che l'universo ISTAT (istat_asia_universe.csv) la contenga; per classificarci i lead scrapati, aggiungi tokens/keyword in category_ateco_map.json.",
+    "notes": "queryVariants: oggi il scraper espande su Maps solo i settori presenti in src/discovery/sources/maps_coverage.ts. Follow-up sicuro (a run fermo): rendere maps_coverage.ts data-driven da questo file cosi' i variants valgono per ogni settore. atecoDivisions con piu' voci (es. edilizia 41+43) documentano che la keyword spanna piu' divisioni."
+  },
+  "sectors": [
+    {
+      "slug": "immobiliare",
+      "label": "Agenzie immobiliari",
+      "keyword": "agenzie immobiliari",
+      "atecoDivisions": ["68"],
+      "queryVariants": ["agenzie immobiliari", "agenzia immobiliare", "consulenza immobiliare", "compravendita immobiliare", "mediatore immobiliare"]
+    },
+    {
+      "slug": "ristorazione",
+      "label": "Ristorazione",
+      "keyword": "ristorante",
+      "atecoDivisions": ["56"],
+      "queryVariants": ["ristorante", "pizzeria", "trattoria", "osteria", "bar"]
+    },
+    {
+      "slug": "edilizia",
+      "label": "Edilizia e costruzioni",
+      "keyword": "impresa edile",
+      "atecoDivisions": ["41", "43"],
+      "queryVariants": ["impresa edile", "impresa di costruzioni", "costruzioni edili"]
+    },
+    {
+      "slug": "metalmecc",
+      "label": "Carpenteria e metalmeccanica",
+      "keyword": "carpenteria metallica",
+      "atecoDivisions": ["25"],
+      "queryVariants": ["carpenteria metallica", "officina meccanica", "lavorazione metalli", "fabbro"]
+    },
+    {
+      "slug": "estetica",
+      "label": "Estetica e cura della persona",
+      "keyword": "centro estetico",
+      "atecoDivisions": ["96"],
+      "queryVariants": ["centro estetico", "parrucchiere", "barbiere", "salone di bellezza"]
+    }
+  ]
+}

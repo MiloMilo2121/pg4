@@ -103,6 +103,7 @@ async function main(): Promise<number> {
   const outputLock = acquireOutputLock(out, { command: 'scrape', mode: 'live', category });
   try {
     const summary = await runLiveMode({
+      runId,
       out,
       category,
       province: optString(args, 'province'),
@@ -147,6 +148,8 @@ async function main(): Promise<number> {
       comuni_yield: summary.comuni_yield,
       suspect: yieldCheck.suspect || undefined,
       suspect_comuni: yieldCheck.suspect ? yieldCheck.suspectComuni : undefined,
+      failed_query_count: summary.coverage.failed_query_count || undefined,
+      coverage_manifest: out.replace(/\.csv$/i, '') + '.coverage.json',
     });
 
     // Phase B.2 — automatic output validation (warn-only).
@@ -166,6 +169,17 @@ async function main(): Promise<number> {
         meta: { run_id: runId },
       });
       return EXIT.INTERRUPTED;
+    }
+
+    if (summary.coverage.status === 'partial') {
+      recorder.finish('partial', EXIT.PARTIAL);
+      getNotifier().notify({
+        kind: 'run_partial',
+        title: 'Scrape coverage partial',
+        body: `${summary.coverage.failed_query_count} query failed. Output retained but not complete; recovery envelope is ready.`,
+        meta: { run_id: runId, out_csv: out },
+      });
+      return EXIT.PARTIAL;
     }
 
     recorder.finish('ok', EXIT.OK);
@@ -224,7 +238,7 @@ Observability (Phase A):
   NOTIFY env                local (default) | off. Completion/anomaly events.
   Run history               One record per run appended to <outdir>/_runs.jsonl.
 
-Exit codes: 0 ok | 2 fatal | 3 preflight failed | 130 interrupted.
+Exit codes: 0 complete | 1 partial coverage | 2 fatal | 3 preflight failed | 130 interrupted.
 `);
 }
 

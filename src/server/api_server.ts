@@ -22,6 +22,8 @@ import { emptyBundle } from '../judgment/harvest/source_harvest';
 import type { HarvestContext } from '../judgment/harvest/source_harvest';
 import { buildPageFetcher } from '../judgment/harvest/page_fetcher';
 import { InMemoryEnrichmentCache } from '../persistence/enrichment_cache';
+import { buildCoverageReport } from '../coverage/coverage_engine';
+import { buildBacklog } from '../coverage/backlog';
 
 /**
  * pg4 dev API server — single-tenant, local, zero-cloud. Wraps the REAL engine
@@ -334,6 +336,16 @@ function computeMarkets() {
   return { markets: [...byCat.values()].sort((a, b) => b.total - a.total) };
 }
 
+/** Gap map = copertura industry x area (Nord Italia): have/universo/coverage%/
+ *  sufficienza-campione/enrichment + backlog prioritizzato (scrape vs enrich).
+ *  Riusa il motore di coverage sui dati seeded reali. Feeds la vista Coverage. */
+function computeGapMap() {
+  const leads = companies().map((c) => c.row as unknown as Lead);
+  const report = buildCoverageReport(leads);
+  const backlog = buildBacklog(report);
+  return { meta: { generated: report.generated, summary: report.summary }, buckets: report.buckets, regionRollup: report.regionRollup, cells: report.cells, backlog };
+}
+
 /** Judgment roll-up: quadrant histogram + target tally + judged/unjudged counts.
  *  Feeds the Valutazione (matrice/coda) + Analytics/giudizio views. */
 function computeJudgmentSummary() {
@@ -579,6 +591,7 @@ async function handle(req: http.IncomingMessage, res: http.ServerResponse): Prom
   // ---- derived read-only views (feed the Italia / Mercati / Valutazione / Liste UI) ----
   if (p === '/api/coverage' && req.method === 'GET') return json(res, 200, computeCoverage());
   if (p === '/api/markets' && req.method === 'GET') return json(res, 200, computeMarkets());
+  if (p === '/api/gap-map' && req.method === 'GET') return json(res, 200, computeGapMap());
   if (p === '/api/judgment-summary' && req.method === 'GET') return json(res, 200, computeJudgmentSummary());
   if (p === '/api/companies.csv' && req.method === 'GET') {
     res.writeHead(200, {
@@ -714,10 +727,30 @@ async function handle(req: http.IncomingMessage, res: http.ServerResponse): Prom
   return json(res, 404, { error: 'not found', path: p });
 }
 
+/** Auto-load the accumulated campaign dataset so the dashboard is never empty.
+ *  Runs only when no explicit PG4_SEED_FILE was given AND the default seed was
+ *  absent (seed.loaded === 0). Ingests every raw JSONL from the campaign output
+ *  dirs; upsertCompany collapses the baseline/recall overlap on the dedup key. */
+async function autoLoadCampaignData(): Promise<number> {
+  let added = 0;
+  for (const d of ['output/recall', 'output/veneto']) {
+    const abs = path.join(REPO_ROOT, d);
+    if (!fs.existsSync(abs)) continue;
+    for (const f of fs.readdirSync(abs)) {
+      if (f.endsWith('_raw.jsonl')) added += await ingestJsonlIntoDb(path.join(abs, f));
+    }
+  }
+  return added;
+}
+
 async function main(): Promise<void> {
   process.stderr.write('[api] seeding from real free-gold output…\n');
   seed = await loadSeed(REPO_ROOT, process.env.PG4_SEED_FILE);
   process.stderr.write(`[api] seeded ${seed.loaded} companies (${seed.rejected} rejected) from ${seed.sourceFile}\n`);
+  if (!process.env.PG4_SEED_FILE && seed.loaded === 0) {
+    const auto = await autoLoadCampaignData();
+    if (auto > 0) process.stderr.write(`[api] auto-loaded ${auto} companies from campaign output (recall+veneto)\n`);
+  }
   if (seed.providerDead.length) {
     process.stderr.write(`[api] provider-health: ${seed.providerDead.map((d) => `${d.provider}(${d.calls},${d.dominant_kind})`).join(', ')}\n`);
   }

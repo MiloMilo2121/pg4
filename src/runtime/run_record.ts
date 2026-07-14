@@ -54,6 +54,9 @@ export interface RunRecord {
    * (the dns_mx/crtsh silent-failure class). Empty/absent when all healthy.
    */
   provider_dead?: string[];
+  /** Failed PG/Maps queries from the durable coverage manifest. */
+  failed_query_count?: number;
+  coverage_manifest?: string;
   error?: string;
 }
 

@@ -87,6 +87,39 @@ describe('rehydrateFromPriorRun: missing JSONL', () => {
     expect(sink.map((l) => l.company_name).sort()).toEqual(['Acme', 'Studio Foo']);
   });
 
+  it('AUTO-FRESH: checkpoint has done entries but BOTH csv and jsonl absent → resets + cold start (no throw)', async () => {
+    const dir = tmpDir();
+    const cp = new Checkpoint(path.join(dir, 'cp.json'));
+    cp.set('pg:cat:loc:p1', { status: 'done' });
+    expect(cp.countDone()).toBe(1);
+    const loaded = await rehydrateFromPriorRun({
+      jsonlPath: path.join(dir, 'absent.jsonl'),
+      csvPath: path.join(dir, 'absent.csv'), // BOTH artifacts missing → orphaned checkpoint
+      checkpoint: cp,
+      dedup: new Deduplicator(),
+      sink: [],
+    });
+    expect(loaded).toBe(0);
+    expect(cp.countDone()).toBe(0); // checkpoint was reset → next run starts clean
+  });
+
+  it('HARD ERROR still fires when CSV exists but JSONL is missing (its leads are unrecoverable)', async () => {
+    const dir = tmpDir();
+    const cp = new Checkpoint(path.join(dir, 'cp.json'));
+    cp.set('pg:cat:loc:p1', { status: 'done' });
+    const csv = path.join(dir, 'out.csv');
+    fs.writeFileSync(csv, 'company_name\nAcme\n');
+    await expect(
+      rehydrateFromPriorRun({
+        jsonlPath: path.join(dir, 'absent.jsonl'),
+        csvPath: csv, // CSV present, JSONL missing → still a hard stop
+        checkpoint: cp,
+        dedup: new Deduplicator(),
+        sink: [],
+      })
+    ).rejects.toBeInstanceOf(MissingPriorJsonlError);
+  });
+
   it('error message points the operator at --fresh and --allow-missing-jsonl', async () => {
     const dir = tmpDir();
     const cp = new Checkpoint(path.join(dir, 'cp.json'));

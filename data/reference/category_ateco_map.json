@@ -1,0 +1,71 @@
+{
+  "_meta": {
+    "purpose": "Crosswalk categoria di scraping <-> divisione ATECO. Ponte tra il campo `category` dei lead e le righe dell'universo ISTAT.",
+    "forward": "tokens[] classifica una categoria free-text nella divisione (overlap token, case/accent-insensitive).",
+    "reverse": "scrapeKeywords[] sono le query reali da lanciare su PagineGialle/Maps per coprire la divisione (alimentano il backlog).",
+    "status": "Seed incrementale: parte dalle categorie gia' in produzione (category_match.ts + maps_coverage.ts). Si espande guidati dalla gap map.",
+    "ordering": "scrapeKeywords ordinate piu'-generale -> piu'-specifica (come maps_coverage.ts), cosi' un run interrotto non perde la query a piu' alto rendimento."
+  },
+  "entries": [
+    {
+      "division": "68",
+      "tokens": ["immobiliare", "immobiliari", "agenzia immobiliare", "agenzie immobiliari", "mediatore immobiliare", "compravendita", "real estate", "property"],
+      "scrapeKeywords": ["agenzie immobiliari", "agenzia immobiliare", "consulenza immobiliare", "compravendita immobiliare", "mediatore immobiliare"]
+    },
+    {
+      "division": "56",
+      "tokens": ["ristorante", "ristoranti", "trattoria", "osteria", "pizzeria", "bar", "ristorazione", "restaurant"],
+      "scrapeKeywords": ["ristorante", "pizzeria", "trattoria", "osteria", "bar"]
+    },
+    {
+      "division": "96",
+      "tokens": ["estetic", "centro estetico", "parrucchiere", "parrucchiera", "barbiere", "salone", "acconciatura", "epilazione", "beauty", "salone di bellezza"],
+      "scrapeKeywords": ["centro estetico", "parrucchiere", "barbiere", "salone di bellezza"]
+    },
+    {
+      "division": "86",
+      "tokens": ["dentista", "dentistico", "odontoiatr", "studio dentistico", "poliambulatorio", "fisioterapist", "medico", "dentist"],
+      "scrapeKeywords": ["studio dentistico", "studio medico", "poliambulatorio", "fisioterapista"]
+    },
+    {
+      "division": "25",
+      "tokens": ["carpenteria", "carpenteria metallica", "lavorazione metalli", "officina meccanica", "fabbro", "serramenti metallici", "prodotti in metallo"],
+      "scrapeKeywords": ["carpenteria metallica", "officina meccanica", "lavorazione metalli", "fabbro"]
+    },
+    {
+      "division": "41",
+      "tokens": ["impresa edile", "costruzioni", "edilizia", "costruzione edifici", "impresa di costruzioni"],
+      "scrapeKeywords": ["impresa edile", "impresa di costruzioni", "costruzioni edili"]
+    },
+    {
+      "division": "43",
+      "tokens": ["idraulico", "elettricista", "imbianchino", "ristrutturazioni", "installazione impianti", "cartongesso", "pavimenti", "lavori edili specializzati"],
+      "scrapeKeywords": ["idraulico", "elettricista", "ristrutturazioni", "installazione impianti"]
+    },
+    {
+      "division": "31",
+      "tokens": ["mobili", "mobilificio", "falegnameria", "arredamenti", "fabbricazione mobili"],
+      "scrapeKeywords": ["mobilificio", "falegnameria", "arredamenti"]
+    },
+    {
+      "division": "62",
+      "tokens": ["software", "informatica", "sviluppo software", "agenzia web", "web agency", "consulenza informatica", "it"],
+      "scrapeKeywords": ["software house", "web agency", "consulenza informatica", "assistenza informatica"]
+    },
+    {
+      "division": "49",
+      "tokens": ["autotrasporti", "trasporti", "corriere", "spedizioni", "trasporto merci", "ditta di trasporti"],
+      "scrapeKeywords": ["autotrasporti", "ditta di trasporti", "trasporto merci"]
+    },
+    {
+      "division": "47",
+      "tokens": ["negozio", "commercio al dettaglio", "abbigliamento", "ferramenta", "boutique", "rivendita"],
+      "scrapeKeywords": ["negozio abbigliamento", "ferramenta", "negozio calzature"]
+    },
+    {
+      "division": "10",
+      "tokens": ["alimentari", "panificio", "pasticceria", "salumificio", "caseificio", "industria alimentare", "gelateria"],
+      "scrapeKeywords": ["panificio", "pasticceria", "salumificio", "caseificio"]
+    }
+  ]
+}

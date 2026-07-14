@@ -1,0 +1,70 @@
+name: Recovery agent
+run-name: Recovery ${{ github.event.client_payload.incident_id || inputs.incident_id }}
+
+on:
+  repository_dispatch:
+    types: [pg4_recovery_requested]
+  workflow_dispatch:
+    inputs:
+      incident_id:
+        description: Incident id for a manually prepared .recovery/incident.json
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: read
+
+jobs:
+  diagnose-fix-review-merge:
+    runs-on: ubuntu-latest
+    env:
+      OPENROUTER_ENABLED: 'true'
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+      OPENROUTER_MODEL: anthropic/claude-opus-4-8
+      INCIDENT_PAYLOAD: ${{ toJson(github.event.client_payload) }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Materialize sanitized incident envelope
+        run: |
+          mkdir -p .recovery
+          if [ "${{ github.event_name }}" = repository_dispatch ]; then
+            printf '%s' "$INCIDENT_PAYLOAD" | node -e 'let x="";process.stdin.on("data",d=>x+=d).on("end",()=>{const p=JSON.parse(x);process.stdout.write(JSON.stringify(p.envelope));})' > .recovery/incident.json
+          else
+            test -f .recovery/incident.json
+          fi
+      - name: Create recovery branch
+        run: git checkout -b "recovery/${{ github.event.client_payload.incident_id || inputs.incident_id }}"
+      - name: Generate constrained patch
+        run: pnpm exec tsx src/scripts/recovery_agent.ts patch .recovery/incident.json
+      - name: Mechanical pre-review
+        run: |
+          git diff --check
+          pnpm run typecheck
+          pnpm test
+          pnpm run lint
+      - name: Independent AI pre-review
+        run: pnpm exec tsx src/scripts/recovery_agent.ts review .recovery/incident.json
+      - name: Commit, create PR, auto-merge
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          test -n "$(git status --short)"
+          git config user.name "pg4-recovery-agent[bot]"
+          git config user.email "pg4-recovery-agent[bot]@users.noreply.github.com"
+          git add src tests
+          git commit -m "fix(recovery): remediate ${{ github.event.client_payload.incident_id || inputs.incident_id }}"
+          git push --set-upstream origin HEAD
+          gh pr create --base main --head "$(git branch --show-current)" --title "fix(recovery): ${{ github.event.client_payload.incident_id || inputs.incident_id }}" --body "Automated recovery patch. CI, regression tests and independent pre-review passed."
+          gh pr merge --merge --delete-branch --admin

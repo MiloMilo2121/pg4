@@ -7,6 +7,12 @@ import type { Lead } from '../types/lead';
 
 export interface RehydrateInput {
   jsonlPath: string;
+  /**
+   * The run's output CSV path. Used to distinguish a recoverable partial
+   * (CSV present, JSONL missing → hard error) from an ORPHANED checkpoint
+   * (both CSV and JSONL absent → nothing to lose → auto-reset + cold start).
+   */
+  csvPath?: string;
   checkpoint: Checkpoint;
   dedup: Deduplicator;
   sink: Lead[];
@@ -46,9 +52,24 @@ export class MissingPriorJsonlError extends Error {
  * for why a silent partial CSV is worse than a stop.
  */
 export async function rehydrateFromPriorRun(args: RehydrateInput): Promise<number> {
-  const { jsonlPath, checkpoint, dedup, sink, allowMissingJsonl } = args;
+  const { jsonlPath, csvPath, checkpoint, dedup, sink, allowMissingJsonl } = args;
   if (checkpoint.countDone() === 0) return 0;
   if (!fs.existsSync(jsonlPath)) {
+    // ORPHANED checkpoint: done entries but NEITHER the JSONL nor the CSV exist
+    // (e.g. a run killed before it ever emitted, or a stale cross-province
+    // checkpoint). There is demonstrably nothing to preserve → reset and cold
+    // start instead of aborting. Post-mortem: this trap cost an rc=2 every time
+    // a run was force-killed mid-cell.
+    if (csvPath && !fs.existsSync(csvPath)) {
+      logger.warn(
+        { jsonl: jsonlPath, csv: csvPath, checkpoint_done: checkpoint.countDone() },
+        '[scrape] orphaned checkpoint (done entries but no CSV/JSONL to recover) — resetting checkpoint and starting cold'
+      );
+      checkpoint.clear();
+      return 0;
+    }
+    // CSV present but JSONL missing: the CSV holds leads that resume cannot
+    // rehydrate into the deduper, so skipping done pages WOULD drop them.
     if (!allowMissingJsonl) {
       throw new MissingPriorJsonlError(jsonlPath, checkpoint.countDone());
     }

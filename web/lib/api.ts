@@ -59,6 +59,38 @@ export interface Markets {
   markets: Array<{ category: string; total: number; withWebsite: number; provinces: Record<string, number> }>;
 }
 
+// ---- gap map (industry × area vs universo ISTAT) ----
+export interface GapMapCell {
+  division: string;
+  atecoLabel: string;
+  section: string;
+  province: string;
+  region: string;
+  macroArea: string;
+  have: number;
+  withWebsite: number;
+  universeTotal: number | null;
+  addressable: number | null;
+  coveragePct: number | null; // 0..1 (null se universo ignoto)
+  sampleOk: boolean;
+  priorityScore: number | null;
+  enrichment: { score: number };
+}
+export interface GapMap {
+  meta: { summary: { totalLeads: number; inScope: number; cells: number; usesSampleUniverse: boolean } };
+  regionRollup: Array<{
+    region: string;
+    division: string;
+    atecoLabel: string;
+    have: number;
+    coveragePct: number | null;
+    priorityScore: number | null;
+    sampleOk: boolean;
+  }>;
+  cells: GapMapCell[];
+  backlog: Array<{ rank: number; action: 'scrape' | 'enrich'; region: string; atecoLabel: string; reason: string; coveragePct: number | null }>;
+}
+
 export interface JudgmentSummary {
   total: number;
   judged: number;
@@ -161,6 +193,7 @@ export const api = {
   metrics: () => get<Metrics>('/api/metrics'),
   coverage: () => get<Coverage>('/api/coverage'),
   markets: () => get<Markets>('/api/markets'),
+  gapMap: () => get<GapMap>('/api/gap-map'),
   judgmentSummary: () => get<JudgmentSummary>('/api/judgment-summary'),
   providerHealth: () => get<ProviderHealth>('/api/provider-health'),
   dedupReview: () => get<{ candidates: unknown[] }>('/api/dedup-review'),
