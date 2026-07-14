@@ -7,7 +7,9 @@ import { DEFAULTS } from '../../config/defaults';
 import type { ProviderRouter } from '../../providers/provider_router';
 import { PgDetailHarvester } from '../../discovery/sources/pagine_gialle_detail_harvester';
 import type { PgDetailHarvest } from '../../discovery/sources/pagine_gialle_detail_harvester';
-import { verifyCandidates } from './verify_candidates';
+import { verifyCandidates, type VerifyCandidatesOpts } from './verify_candidates';
+
+type PgDetailVerifyOptions = Pick<VerifyCandidatesOpts, 'rdapProbe' | 'corroborateWithRdap'>;
 
 /**
  * R1 — PG detail pre-stage. Runs BEFORE HyperGuesser/SERP whenever
@@ -37,6 +39,8 @@ export class PgDetailStage implements Stage {
   constructor(
     private router: ProviderRouter,
     private harvester: PgDetailHarvester = new PgDetailHarvester(),
+    /** Test seam only; runtime keeps verifyCandidates' RDAP defaults. */
+    private verifyOptions: PgDetailVerifyOptions = {},
   ) {}
 
   async run(ctx: PerLeadContext, lead: Lead, normalized: NormalizedLead): Promise<StageOutcome> {
@@ -95,6 +99,7 @@ export class PgDetailStage implements Stage {
       timeoutMs: DEFAULTS.pipeline.requestTimeoutMs,
       meta: { lead_id: ctx.leadId, run_id: ctx.runId, stage: this.name },
       fetchCache: ctx.httpFetchCache,
+      ...this.verifyOptions,
     });
     // R6.1 — REJECT semantic-only verdicts for PG-advertised websites.
     // Audit (PD p_recal_pd_free): "Italy Prime Estates" had PG advertise

@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { PgDetailStage } from '../../src/enrichment/stages/pg_detail_stage';
 import { PgDetailHarvester } from '../../src/discovery/sources/pagine_gialle_detail_harvester';
 import { ProviderRouter } from '../../src/providers/provider_router';
@@ -135,7 +135,8 @@ describe('PgDetailStage', () => {
       // taken from PG's JSON-LD).
       fetchHtml: async () => ({ status: 200, html: PG_DETAIL_HTML('https://www.unrelatedfoo.com') }),
     });
-    const stage = new PgDetailStage(router, harvester);
+    const rdapProbe = vi.fn(async () => ({ confidence: 0, evidence: 'none' as const }));
+    const stage = new PgDetailStage(router, harvester, { rdapProbe });
     const lead: Lead = {
       company_name: longBrand,
       city: 'Padova',
@@ -171,6 +172,9 @@ describe('PgDetailStage', () => {
     expect(lead.official_website).toBeUndefined();
     expect(lead.website_discovery_method).toBeUndefined();
     expect(lead.website_confidence).toBeUndefined();
+    // The stage's RDAP path remains exercised, but the test has no network
+    // dependency and cannot hang on rdap.org in CI.
+    expect(rdapProbe).toHaveBeenCalledTimes(1);
     // Backfill still happens — downstream stages benefit from the PG
     // harvest's deterministic evidence even when the advertised
     // website was rejected.
