@@ -24,6 +24,7 @@ import { buildPageFetcher } from '../judgment/harvest/page_fetcher';
 import { InMemoryEnrichmentCache } from '../persistence/enrichment_cache';
 import { buildCoverageReport } from '../coverage/coverage_engine';
 import { buildBacklog } from '../coverage/backlog';
+import { isAllowedDashboardOrigin, resolveApiHost } from './local_api_access';
 
 /**
  * pg4 dev API server — single-tenant, local, zero-cloud. Wraps the REAL engine
@@ -35,27 +36,7 @@ import { buildBacklog } from '../coverage/backlog';
  */
 
 const PORT = Number(process.env.PG4_API_PORT ?? 8787);
-const LOCAL_API_HOSTS = new Set(['127.0.0.1', '::1', 'localhost']);
-
-/**
- * This server has no authentication layer: it is deliberately a local,
- * single-tenant dashboard adapter. Refuse accidental LAN/public binds rather
- * than relying on a CORS header as an access-control mechanism.
- */
-export function resolveApiHost(value = process.env.PG4_API_HOST): string {
-  const host = (value ?? '127.0.0.1').trim();
-  if (!LOCAL_API_HOSTS.has(host)) {
-    throw new Error(
-      `PG4_API_HOST="${host}" is not allowed: the unauthenticated dev API may bind only to localhost. ` +
-      'Use a local reverse proxy or add an authenticated production adapter before exposing it.',
-    );
-  }
-  return host;
-}
-
 const API_HOST = resolveApiHost();
-const LOCAL_DASHBOARD_ORIGINS = new Set(['http://localhost:3000', 'http://127.0.0.1:3000']);
-const extraDashboardOrigin = process.env.PG4_API_ALLOWED_ORIGIN?.trim();
 const REPO_ROOT = path.resolve(__dirname, '..', '..');
 const FETCH = new DirectFetchProvider();
 // Free SERP (Bing HTML, €0) wired into the judgment A-collector so Axis A is
@@ -231,10 +212,6 @@ async function pool<T>(items: T[], limit: number, worker: (item: T) => Promise<v
 let seed: SeedResult;
 
 // ---------------------------------------------------------------------------
-function isAllowedDashboardOrigin(origin: string | undefined): boolean {
-  return !!origin && (LOCAL_DASHBOARD_ORIGINS.has(origin) || origin === extraDashboardOrigin);
-}
-
 function applyCors(req: http.IncomingMessage, res: http.ServerResponse): boolean {
   const origin = typeof req.headers.origin === 'string' ? req.headers.origin : undefined;
   if (!origin) return true; // CLI/curl clients are local too; CORS is browser-only.

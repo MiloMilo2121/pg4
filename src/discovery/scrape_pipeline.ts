@@ -202,6 +202,9 @@ export async function runLiveMode(a: LiveModeInput): Promise<LiveModeSummary> {
   const { logConsentSummary } = await import('../browser/consent_handler');
   const { getComuniForProvince, parseComuniList } = await import('./sources/italy_geo');
 
+  if (a.maxPages !== undefined && (!Number.isInteger(a.maxPages) || a.maxPages < 1)) {
+    throw new Error('--max-pages must be a positive integer.');
+  }
   const comuni = resolveComuniList(a, getComuniForProvince, parseComuniList);
   if (comuni.length === 0) {
     throw new Error('Live mode needs --province (curated list) or --comuni "C1,C2,...".');
@@ -287,7 +290,7 @@ export async function runLiveMode(a: LiveModeInput): Promise<LiveModeSummary> {
         mapsDegraded = true;
         checkpoint.set(
           Checkpoint.buildKey({ provider: 'maps', category: a.category, location: '__preflight__' }),
-          { status: 'failed', reason: 'maps_preflight_no_feed', attempts: 1 },
+          { status: 'failed', kind: 'preflight', reason: 'maps_preflight_no_feed', attempts: 1 },
         );
         logger.warn('[scrape] Maps degraded at preflight — running PG-only this run (Maps stage skipped)');
       } else if (a.runMaps && pf.maps_feed_present === true) {
@@ -296,7 +299,7 @@ export async function runLiveMode(a: LiveModeInput): Promise<LiveModeSummary> {
         // scrape can genuinely reach completion after its failed queries pass.
         checkpoint.set(
           Checkpoint.buildKey({ provider: 'maps', category: a.category, location: '__preflight__' }),
-          { status: 'done', parsed: 0, attempts: 1 },
+          { status: 'done', kind: 'preflight', parsed: 0, attempts: 1 },
         );
       }
     } else {
@@ -326,6 +329,10 @@ export async function runLiveMode(a: LiveModeInput): Promise<LiveModeSummary> {
           // already have → early-stop paginating it.
           isNew: (lead) => !dedup.find(lead),
         });
+        if (r.interrupted) {
+          interrupted = true;
+          break;
+        }
         totalCards += r.total_cards;
         dropped += r.dropped;
         if (r.overflow) comuniWithOverflow += 1;
@@ -335,6 +342,10 @@ export async function runLiveMode(a: LiveModeInput): Promise<LiveModeSummary> {
         // Save state after each comune so an interrupted run resumes cleanly.
         await factory.saveSessionState();
       } catch (err) {
+        if (aborted()) {
+          interrupted = true;
+          break;
+        }
         logger.error({ comune, err: (err as Error).message }, '[scrape] PG comune failed — skipping to next (run continues)');
       }
     }
@@ -366,6 +377,10 @@ export async function runLiveMode(a: LiveModeInput): Promise<LiveModeSummary> {
               diagnosticsDir,
               abortSignal: a.abortSignal,
             });
+            if (r.interrupted) {
+              interrupted = true;
+              break outer;
+            }
             totalCards += r.total_cards;
             dropped += r.dropped;
             if (r.cap_likely) comuniWithCapLikely += 1;
@@ -374,11 +389,18 @@ export async function runLiveMode(a: LiveModeInput): Promise<LiveModeSummary> {
             ingestBatch(allLeads, dedup, r.results);
             await factory.saveSessionState();
           } catch (err) {
+            if (aborted()) {
+              interrupted = true;
+              break outer;
+            }
             logger.error({ comune, queryCategory, err: (err as Error).message }, '[scrape] Maps comune failed — skipping to next (run continues)');
           }
         }
       }
     }
+    // An abort can arrive immediately after the final terminal checkpoint.
+    // Never let that race turn a graceful shutdown into a completion marker.
+    if (aborted()) interrupted = true;
     if (interrupted) {
       logger.warn(
         { comuni_done: Object.keys(comuniYield).length, comuni_total: comuni.length },
@@ -425,10 +447,17 @@ export async function runLiveMode(a: LiveModeInput): Promise<LiveModeSummary> {
 
   const coverage = writeCoverageArtifacts({ outCsv: a.out, runId: a.runId, checkpoint, forcePartial: interrupted });
   if (coverage.status === 'partial') {
-    logger.warn(
-      { failed_query_count: coverage.failed_query_count, recovery: recoveryEnvelopePath(a.out) },
-      '[scrape] coverage partial — output is NOT complete and recovery is required',
-    );
+    if (coverage.incomplete_reason === 'interrupted') {
+      logger.warn(
+        { failed_query_count: coverage.failed_query_count },
+        '[scrape] coverage interrupted — output is NOT complete; resume pending queries before recovery dispatch',
+      );
+    } else {
+      logger.warn(
+        { failed_query_count: coverage.failed_query_count, recovery: recoveryEnvelopePath(a.out) },
+        '[scrape] coverage partial — output is NOT complete and recovery is required',
+      );
+    }
   } else {
     logger.info({ completion_marker: completionMarkerPath(a.out) }, '[scrape] coverage complete');
   }

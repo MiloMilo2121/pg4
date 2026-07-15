@@ -55,22 +55,23 @@ maps_flags=""; [ "$MAPS" = "1" ] && maps_flags="--maps --coverage full"
 
 cell_complete() {
   local csv="$1"
-  node - "$csv" <<'NODE'
-const fs = require('fs'); const csv = process.argv[2];
-const marker = csv.replace(/\.csv$/i, '.complete.json');
-try {
-  const m = JSON.parse(fs.readFileSync(marker, 'utf8'));
-  const queries = Array.isArray(m.queries) ? m.queries : [];
-  const failed = queries.filter(q => q && q.status === 'failed').length;
-  process.exit(m.version === 1 && m.output_csv === require('path').resolve(csv) && m.status === 'complete' && queries.length > 0 && m.failed_query_count === 0 && failed === 0 ? 0 : 1);
-} catch { process.exit(1); }
-NODE
+  pnpm exec tsx src/scripts/verify_completion.ts "$csv"
 }
 
 cell_pending_recovery() {
   local cell="$1" state="$OUT/.recovery/$1.json"
   [ -f "$state" ] && node - "$state" <<'NODE'
-const fs = require('fs'); try { process.exit(['pending', 'blocked'].includes(JSON.parse(fs.readFileSync(process.argv[2], 'utf8')).status) ? 0 : 1); } catch { process.exit(1); }
+const fs = require('fs');
+try {
+  const state = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+  const valid = state && state.version === 1 && state.cell === process.argv[2].split('/').pop().replace(/\.json$/, '') &&
+    ['pending', 'blocked', 'complete'].includes(state.status);
+  // A corrupted queue must hold the cell for inspection rather than allowing
+  // campaign to run concurrently with an unknown recovery lifecycle.
+  process.exit(valid && ['pending', 'blocked'].includes(state.status) ? 0 : valid ? 1 : 0);
+} catch {
+  process.exit(0);
+}
 NODE
 }
 

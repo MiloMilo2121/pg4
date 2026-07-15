@@ -6,14 +6,22 @@
  * sides of every diff header before passing it to `git apply`.
  */
 
-const ALLOWED_PATH_PREFIXES = [
-  'src/discovery/sources/',
+const ALLOWED_PRODUCTION_PATHS = new Set([
+  // Browser navigators and their parsers are the recovery surface for
+  // selector drift, no-feed, and parser-drop incidents. Preflight remains
+  // read-only: it consumes these selector exports, so an agent can repair a
+  // selector without weakening the preflight safety gate. Keep this explicit:
+  // the source directory also contains unrelated geography/detail harvesters.
+  'src/discovery/sources/maps_live.ts',
+  'src/discovery/sources/pg_live.ts',
+  'src/discovery/sources/google_maps_parser.ts',
+  'src/discovery/sources/pagine_gialle_parser.ts',
+  'src/discovery/sources/category_match.ts',
   'src/browser/consent_handler.ts',
   'src/runtime/retry.ts',
   'src/runtime/checkpoint.ts',
   'src/runtime/page_evidence.ts',
-  'tests/unit/',
-] as const;
+]);
 
 const FORBIDDEN_ADDED_TEXT = [
   /--skip-preflight/i,
@@ -31,19 +39,48 @@ function assertAllowedRelativePath(relativePath: string): void {
   if (!relativePath || relativePath.includes('..') || relativePath.startsWith('/') || relativePath.includes('\\')) {
     throw new Error(`recovery patch contains an unsafe path: ${relativePath}`);
   }
-  const allowed = ALLOWED_PATH_PREFIXES.some((prefix) => prefix.endsWith('/') ? relativePath.startsWith(prefix) : relativePath === prefix);
+  const allowed = relativePath.startsWith('tests/unit/') || ALLOWED_PRODUCTION_PATHS.has(relativePath);
   if (!allowed) {
     throw new Error(`recovery patch touches forbidden path: ${relativePath}`);
   }
 }
 
-function assertHeaderPath(value: string, expectedPrefix: 'a/' | 'b/'): void {
+function headerRelativePath(value: string, expectedPrefix: 'a/' | 'b/'): string | '/dev/null' {
   const filePath = value.split('\t', 1)[0];
-  if (filePath === '/dev/null') return;
+  if (filePath === '/dev/null') return '/dev/null';
   if (!filePath.startsWith(expectedPrefix)) {
     throw new Error(`recovery patch has an invalid file header: ${value}`);
   }
-  assertAllowedRelativePath(filePath.slice(expectedPrefix.length));
+  const relativePath = filePath.slice(expectedPrefix.length);
+  assertAllowedRelativePath(relativePath);
+  return relativePath;
+}
+
+interface DiffState {
+  from: string;
+  to: string;
+  oldHeader?: string | '/dev/null';
+  newHeader?: string | '/dev/null';
+  newFile?: boolean;
+}
+
+function assertCompleteDiff(state: DiffState | undefined): void {
+  if (!state) return;
+  if (state.oldHeader === undefined || state.newHeader === undefined) {
+    throw new Error('recovery patch is missing a complete unified-diff header pair');
+  }
+  if (state.newHeader === '/dev/null') {
+    throw new Error('recovery patch may not delete files');
+  }
+  if (state.oldHeader === '/dev/null') {
+    if (!state.newFile || !state.to.startsWith('tests/unit/') || state.newHeader !== state.to) {
+      throw new Error('recovery patch may only add a new unit regression test');
+    }
+    return;
+  }
+  if (state.newFile || state.oldHeader !== state.from || state.newHeader !== state.to) {
+    throw new Error('recovery patch has mismatched or unsafe file headers');
+  }
 }
 
 /** Reject a patch before it reaches `git apply`. */
@@ -53,25 +90,41 @@ export function assertSafeRecoveryPatch(patch: string): void {
   }
 
   let diffHeaders = 0;
+  let current: DiffState | undefined;
+  let hasRegressionTestAddition = false;
   for (const line of patch.split('\n')) {
     if (line.startsWith('diff --git ')) {
+      assertCompleteDiff(current);
       const match = /^diff --git a\/([^\s]+) b\/([^\s]+)$/.exec(line);
       if (!match) throw new Error(`recovery patch has an invalid diff header: ${line}`);
       assertAllowedRelativePath(match[1]);
       assertAllowedRelativePath(match[2]);
+      current = { from: match[1], to: match[2] };
       diffHeaders += 1;
       continue;
     }
     if (line.startsWith('--- ')) {
-      assertHeaderPath(line.slice(4), 'a/');
+      if (!current) throw new Error('recovery patch has a file header outside a diff block');
+      current.oldHeader = headerRelativePath(line.slice(4), 'a/');
       continue;
     }
     if (line.startsWith('+++ ')) {
-      assertHeaderPath(line.slice(4), 'b/');
+      if (!current) throw new Error('recovery patch has a file header outside a diff block');
+      current.newHeader = headerRelativePath(line.slice(4), 'b/');
       continue;
     }
-    if (/^(?:(?:new|deleted|old) file mode|(?:new|old) mode) 120000$|^GIT binary patch$|^Binary files /.test(line)) {
-      throw new Error('recovery patch may not add, remove, or modify binary/symlink files');
+    if (/^(similarity index |rename from |rename to |copy from |copy to |deleted file mode |old mode |new mode |GIT binary patch$|Binary files )/.test(line)) {
+      throw new Error('recovery patch may not rename, copy, delete, or change file modes');
+    }
+    if (line.startsWith('new file mode ')) {
+      if (!current || line !== 'new file mode 100644') {
+        throw new Error('recovery patch may only add a regular-text unit test file');
+      }
+      current.newFile = true;
+      continue;
+    }
+    if (line.startsWith('+') && !line.startsWith('+++') && current?.to.startsWith('tests/unit/')) {
+      hasRegressionTestAddition = true;
     }
     if (line.startsWith('+') && !line.startsWith('+++') && FORBIDDEN_ADDED_TEXT.some((rule) => rule.test(line.slice(1)))) {
       throw new Error('recovery patch contains forbidden bypass, credential, or network-capable code');
@@ -79,4 +132,6 @@ export function assertSafeRecoveryPatch(patch: string): void {
   }
 
   if (diffHeaders === 0) throw new Error('recovery agent did not return a valid unified diff');
+  assertCompleteDiff(current);
+  if (!hasRegressionTestAddition) throw new Error('recovery patch must add a focused unit regression assertion');
 }

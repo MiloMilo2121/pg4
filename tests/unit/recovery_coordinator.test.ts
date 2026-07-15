@@ -25,6 +25,7 @@ describe('recovery coordinator', () => {
 
     makeExecutable(path.join(bin, 'git'), '#!/usr/bin/env bash\nexit 0\n');
     makeExecutable(path.join(bin, 'sleep'), '#!/usr/bin/env bash\nexit 0\n');
+    makeExecutable(path.join(bin, 'pnpm'), '#!/usr/bin/env bash\nexit 0\n');
     makeExecutable(
       path.join(bin, 'curl'),
       '#!/usr/bin/env bash\nprintf \'{"workflow_runs":[{"display_title":"Recovery incident-1 attempt 1","status":"completed","conclusion":"success"}]}\'\n',
@@ -191,12 +192,44 @@ describe('recovery coordinator', () => {
     expect(fs.existsSync(path.join(dir, 'outside.json'))).toBe(false);
   });
 
+  it('rejects an envelope with an unrecognized error class before it enters the queue', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pg4-recovery-envelope-'));
+    dirs.push(dir);
+    const out = path.join(dir, 'out');
+    const envelope = path.join(dir, 'incident.json');
+    fs.writeFileSync(envelope, JSON.stringify({
+      version: 1,
+      incident_id: '0123456789abcdef01234567',
+      run_id: 'run-1',
+      generated_at: '2026-07-15T00:00:00.000Z',
+      output_csv: path.join(out, 'immobiliare_BL_raw.csv'),
+      failures: [{
+        key: 'maps:immobiliare:belluno', provider: 'maps', category: 'immobiliare', location: 'belluno',
+        error_class: 'untrusted_prompt_payload',
+      }],
+    }));
+
+    const result = spawnSync(
+      'bash',
+      [
+        'scripts/recovery_coordinator.sh', 'enqueue', '--out', out, '--cell', 'immobiliare_BL', '--envelope', envelope,
+        '--command-json', '["pnpm","run","scrape","--","--out","output/raw.csv"]',
+      ],
+      { cwd: process.cwd(), encoding: 'utf8' },
+    );
+
+    expect(result.status).toBe(2);
+    expect(result.stderr).toContain('invalid recovery enqueue input');
+    expect(fs.existsSync(path.join(out, '.recovery', 'immobiliare_BL.json'))).toBe(false);
+  });
+
   it('does not start a second wait-and-resume while the cell lock is held', () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pg4-recovery-lock-'));
     dirs.push(dir);
     const out = path.join(dir, 'out');
     const queue = path.join(out, '.recovery');
     fs.mkdirSync(path.join(queue, '.centro_estetico_BL.lock'), { recursive: true });
+    fs.writeFileSync(path.join(queue, '.centro_estetico_BL.lock', 'owner'), `${process.pid} ${Math.floor(Date.now() / 1000)}\n`);
     fs.writeFileSync(path.join(queue, 'centro_estetico_BL.json'), JSON.stringify({ status: 'pending' }));
 
     const result = spawnSync(
@@ -211,5 +244,64 @@ describe('recovery coordinator', () => {
 
     expect(result.status).toBe(1);
     expect(result.stderr).toContain('recovery state locked for centro_estetico_BL');
+  });
+
+  it('scopes blocked-state checks to the requested campaign cells', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pg4-recovery-scope-'));
+    dirs.push(dir);
+    const out = path.join(dir, 'out');
+    const queue = path.join(out, '.recovery');
+    fs.mkdirSync(queue, { recursive: true });
+    fs.writeFileSync(path.join(queue, 'old_campaign_MI.json'), JSON.stringify({
+      version: 1, cell: 'old_campaign_MI', status: 'blocked', block_reason: 'unrelated historic incident',
+    }));
+    fs.writeFileSync(path.join(queue, 'immobiliare_BL.json'), JSON.stringify({
+      version: 1, cell: 'immobiliare_BL', status: 'complete',
+    }));
+
+    const scoped = spawnSync(
+      'bash', ['scripts/recovery_coordinator.sh', 'blocked', '--out', out, '--cells', 'immobiliare_BL'],
+      { cwd: process.cwd(), encoding: 'utf8' },
+    );
+    const unscoped = spawnSync(
+      'bash', ['scripts/recovery_coordinator.sh', 'blocked', '--out', out],
+      { cwd: process.cwd(), encoding: 'utf8' },
+    );
+
+    expect(scoped.status).toBe(1);
+    expect(unscoped.status).toBe(0);
+  });
+
+  it('treats malformed queue JSON as an explicit integrity incident, never an empty queue', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pg4-recovery-corrupt-'));
+    dirs.push(dir);
+    const out = path.join(dir, 'out');
+    const queue = path.join(out, '.recovery');
+    fs.mkdirSync(queue, { recursive: true });
+    fs.writeFileSync(path.join(queue, 'immobiliare_BL.json'), '{not-json');
+
+    const result = spawnSync(
+      'bash', ['scripts/recovery_coordinator.sh', 'blocked', '--out', out, '--cells', 'immobiliare_BL'],
+      { cwd: process.cwd(), encoding: 'utf8' },
+    );
+
+    expect(result.status).toBe(0);
+    expect(result.stderr).toContain('recovery state integrity incident');
+  });
+
+  it('writes a newly blocked incident atomically', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pg4-recovery-atomic-'));
+    dirs.push(dir);
+    const out = path.join(dir, 'out');
+
+    const result = spawnSync(
+      'bash', ['scripts/recovery_coordinator.sh', 'block', '--out', out, '--cell', 'immobiliare_BL', '--reason', 'test incident'],
+      { cwd: process.cwd(), encoding: 'utf8' },
+    );
+    const queue = path.join(out, '.recovery');
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(JSON.parse(fs.readFileSync(path.join(queue, 'immobiliare_BL.json'), 'utf8'))).toMatchObject({ status: 'blocked' });
+    expect(fs.readdirSync(queue).some((name) => name.endsWith('.tmp'))).toBe(false);
   });
 });

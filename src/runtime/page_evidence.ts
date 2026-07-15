@@ -17,7 +17,9 @@ export async function capturePageEvidence(
   if (!page || page.isClosed()) return {};
   const result: PageEvidence = {};
   try {
-    result.title = await page.title();
+    // Page titles are diagnostic metadata, not payloads. Bound them before the
+    // checkpoint/envelope crosses process and host boundaries.
+    result.title = (await page.title()).slice(0, 500);
     const content = await page.content();
     result.fingerprint = crypto.createHash('sha256').update(`${result.title}\n${content.slice(0, 50_000)}`).digest('hex').slice(0, 24);
   } catch {

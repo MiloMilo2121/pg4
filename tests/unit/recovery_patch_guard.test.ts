@@ -22,6 +22,28 @@ describe('recovery patch guard', () => {
     expect(() => assertSafeRecoveryPatch(allowedPatch)).not.toThrow();
   });
 
+  it('permits parser surfaces while keeping preflight immutable', () => {
+    for (const target of [
+      'src/discovery/sources/google_maps_parser.ts',
+      'src/discovery/sources/pagine_gialle_parser.ts',
+    ]) {
+      const patch = allowedPatch.replaceAll('src/discovery/sources/maps_live.ts', target);
+      expect(() => assertSafeRecoveryPatch(patch)).not.toThrow();
+    }
+
+    const preflightPatch = allowedPatch.replaceAll('src/discovery/sources/maps_live.ts', 'src/discovery/preflight.ts');
+    expect(() => assertSafeRecoveryPatch(preflightPatch)).toThrow('forbidden path');
+  });
+
+  it('rejects unrelated source modules even though they share the discovery source directory', () => {
+    const unrelated = allowedPatch.replaceAll(
+      'src/discovery/sources/maps_live.ts',
+      'src/discovery/sources/pagine_gialle_detail_harvester.ts',
+    );
+
+    expect(() => assertSafeRecoveryPatch(unrelated)).toThrow('forbidden path');
+  });
+
   it('rejects a forbidden deletion even though its +++ header is /dev/null', () => {
     const deletion = [
       'diff --git a/src/config/env.ts b/src/config/env.ts',
@@ -49,5 +71,30 @@ describe('recovery patch guard', () => {
     const lookalike = allowedPatch.replaceAll('src/discovery/sources/maps_live.ts', 'src/runtime/retry.ts.backdoor');
 
     expect(() => assertSafeRecoveryPatch(lookalike)).toThrow('forbidden path');
+  });
+
+  it('rejects a rename that disguises a forbidden source path as an allowed test path', () => {
+    const rename = [
+      'diff --git a/tests/unit/innocent.ts b/tests/unit/renamed.ts',
+      'similarity index 100%',
+      'rename from src/config/env.ts',
+      'rename to tests/unit/renamed.ts',
+    ].join('\n');
+
+    expect(() => assertSafeRecoveryPatch(rename)).toThrow('may not rename, copy, delete, or change file modes');
+  });
+
+  it('allows a new regular-text unit regression test but no new production file', () => {
+    const newUnitTest = [
+      'diff --git a/tests/unit/recovery_regression.test.ts b/tests/unit/recovery_regression.test.ts',
+      'new file mode 100644',
+      'index 0000000..2222222',
+      '--- /dev/null',
+      '+++ b/tests/unit/recovery_regression.test.ts',
+      '@@ -0,0 +1 @@',
+      '+expect(true).toBe(true);',
+    ].join('\n');
+
+    expect(() => assertSafeRecoveryPatch(newUnitTest)).not.toThrow();
   });
 });

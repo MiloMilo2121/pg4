@@ -9,10 +9,11 @@
  *
  * Run: `pnpm run mcp`  (or `npx tsx src/server/mcp_server.ts`)
  *
- * The MCP SDK used to make this file impractical to typecheck. Current SDK and
- * TypeScript versions compile it under the normal root `tsconfig`, so CI covers
- * the stdio bridge as well as `mcp_args.ts`. The latter remains a small pure
- * helper for argument-policy tests.
+ * The SDK's legacy `tool()` overload recursively infers every concrete Zod
+ * shape. Across this server that exhausts TypeScript's heap before CI can
+ * finish. `registerTool()` deliberately narrows that third-party boundary to
+ * `Record<string, ZodTypeAny>` while retaining each handler's explicit local
+ * input type and passing the original runtime Zod schemas unchanged.
  */
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
@@ -28,6 +29,13 @@ const PG4_ROOT = path.resolve(__dirname, '..', '..'); // src/server -> pg4/
 const MAX_OUTPUT = 32 * 1024 * 1024;
 
 type ToolResult = { content: { type: 'text'; text: string }[]; isError?: boolean };
+type ToolSchema = Record<string, z.ZodTypeAny>;
+type ToolHandler<Args> = (args: Args) => ToolResult | Promise<ToolResult>;
+type ErasedMcpToolCallback = (args: Record<string, unknown>) => unknown;
+
+interface ErasedMcpToolRegistrar {
+  tool(name: string, description: string, inputSchema: ToolSchema, callback: ErasedMcpToolCallback): unknown;
+}
 
 const ok = (text: string): ToolResult => ({ content: [{ type: 'text', text: text || '(no output)' }] });
 const err = (text: string): ToolResult => ({ content: [{ type: 'text', text }], isError: true });
@@ -45,10 +53,86 @@ async function runCli(cliFile: string, argv: string[]): Promise<ToolResult> {
 }
 
 const server = new McpServer({ name: 'pg4-mcp-server', version: '0.1.0' });
+const toolRegistrar = server as unknown as ErasedMcpToolRegistrar;
+
+/**
+ * Keep the MCP SDK's expensive generic schema machinery at one deliberately
+ * erased boundary. Runtime validation remains the exact schema supplied by
+ * every caller; handler arguments stay explicit through `Args`.
+ */
+function registerTool<Args>(
+  name: string,
+  description: string,
+  inputSchema: ToolSchema,
+  handler: ToolHandler<Args>,
+): void {
+  toolRegistrar.tool(
+    name,
+    description,
+    inputSchema,
+    handler as unknown as ErasedMcpToolCallback,
+  );
+}
+
+interface ScrapeToolArgs {
+  out: string;
+  category: string;
+  province?: string;
+  comuni?: string;
+  region?: string;
+  maps?: boolean;
+  coverage?: 'default' | 'full';
+  max_pages?: number;
+}
+
+interface EnrichToolArgs {
+  input: string;
+  out: string;
+  enable_paid?: boolean;
+  cost_ceiling_eur?: number;
+  run_cost_ceiling_eur?: number;
+  mock_http?: string;
+}
+
+interface RunToolArgs {
+  category: string;
+  out: string;
+  province?: string;
+  comuni?: string;
+  region?: string;
+  maps?: boolean;
+  coverage?: 'default' | 'full';
+  enable_paid?: boolean;
+  cost_ceiling_eur?: number;
+}
+
+interface JudgeToolArgs {
+  input: string;
+  out: string;
+  two_pass?: boolean;
+  paid?: boolean;
+  limit?: number;
+  category?: string;
+}
+
+interface LookupToolArgs {
+  piva?: string;
+  phone?: string;
+  dir?: string;
+}
+
+interface ListOutputsToolArgs {
+  limit: number;
+}
+
+interface ReadOutputToolArgs {
+  file_path: string;
+  lines: number;
+}
 
 // --- ACTUATORS (the pipeline, one tool per CLI) ---
 
-server.tool(
+registerTool<ScrapeToolArgs>(
   'pg4_scrape',
   'Discover leads for a business category in a geographic scope (PagineGialle + optional Google Maps). Writes a raw CSV. Free by default.',
   {
@@ -73,7 +157,7 @@ server.tool(
   },
 );
 
-server.tool(
+registerTool<EnrichToolArgs>(
   'pg4_enrich',
   'Enrich a raw CSV of leads (website, email, official company data, social). Free by default; paid providers stay off unless enable_paid is set.',
   {
@@ -94,7 +178,7 @@ server.tool(
   },
 );
 
-server.tool(
+registerTool<RunToolArgs>(
   'pg4_run',
   'End-to-end campaign: scrape + enrich in one run. Free by default.',
   {
@@ -121,7 +205,7 @@ server.tool(
   },
 );
 
-server.tool(
+registerTool<JudgeToolArgs>(
   'pg4_judge',
   'Two-axis judgment (A: silent-gem potential, B: website quality) over a CSV. Free at €0; paid enables LLM judges if keys are set.',
   {
@@ -142,7 +226,7 @@ server.tool(
   },
 );
 
-server.tool(
+registerTool<LookupToolArgs>(
   'pg4_lookup',
   'Find an already-scraped/enriched lead in the output folder by VAT (piva) or phone.',
   {
@@ -162,7 +246,7 @@ server.tool(
 
 // --- SENSORS (read-only introspection) ---
 
-server.tool(
+registerTool<ListOutputsToolArgs>(
   'pg4_list_outputs',
   'List recent result files under the output/ folder (newest first).',
   { limit: z.number().default(40).describe('Max entries') },
@@ -186,7 +270,7 @@ server.tool(
   },
 );
 
-server.tool(
+registerTool<ReadOutputToolArgs>(
   'pg4_read_output',
   'Read the last N lines of a result file under output/ (csv/jsonl/log). Path is sandboxed to pg4/.',
   {

@@ -12,6 +12,8 @@ import path from 'path';
 
 export interface CheckpointEntry {
   status: 'pending' | 'done' | 'failed' | 'skipped';
+  /** A preflight probe is operational state, not a scrape query. */
+  kind?: 'query' | 'preflight';
   page?: number;
   total_cards?: number;
   parsed?: number;
@@ -24,6 +26,23 @@ export interface CheckpointEntry {
   attempts?: number;
   /** Hash of a redacted DOM/title diagnostic, never raw page content. */
   evidence_fingerprint?: string;
+  /** Request URL for the query. Stored without page content or credentials. */
+  url?: string;
+  /** Bounded diagnostics for unresolved browser states. */
+  page_title?: string;
+  screenshot_path?: string;
+  /** Explicit proof that a zero-card query rendered a real empty-result state. */
+  empty_verified?: boolean;
+}
+
+/**
+ * A `done` checkpoint alone is not sufficient to skip a query on resume.
+ * Legacy checkpoints could mark a parser/blocked page as `done, parsed: 0`.
+ * Only extracted records or an explicit source-level empty proof are terminal.
+ */
+export function isVerifiedTerminalQuery(entry: CheckpointEntry | undefined): boolean {
+  return entry?.status === 'done' &&
+    (entry.empty_verified === true || (entry.parsed ?? 0) > 0);
 }
 
 /**
@@ -130,7 +149,26 @@ function isCheckpointState(value: unknown): value is Record<string, CheckpointEn
   return Object.values(value).every((entry) => {
     if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return false;
     const candidate = entry as Partial<CheckpointEntry>;
+    const nonNegativeInteger = (value: unknown): boolean =>
+      value === undefined || (typeof value === 'number' && Number.isSafeInteger(value) && value >= 0);
+    const optionalString = (value: unknown): boolean => value === undefined || typeof value === 'string';
+    const emptyProofIsCoherent = candidate.empty_verified === undefined ||
+      (candidate.empty_verified === true && candidate.status === 'done' && (candidate.parsed ?? 0) === 0);
     return allowedStatuses.has(candidate.status as CheckpointEntry['status']) &&
-      typeof candidate.ts === 'number' && Number.isFinite(candidate.ts);
+      typeof candidate.ts === 'number' && Number.isFinite(candidate.ts) &&
+      (candidate.kind === undefined || candidate.kind === 'query' || candidate.kind === 'preflight') &&
+      nonNegativeInteger(candidate.page) &&
+      nonNegativeInteger(candidate.total_cards) &&
+      nonNegativeInteger(candidate.parsed) &&
+      nonNegativeInteger(candidate.dropped) &&
+      nonNegativeInteger(candidate.attempts) &&
+      (candidate.overflow === undefined || typeof candidate.overflow === 'boolean') &&
+      (candidate.cap_likely === undefined || typeof candidate.cap_likely === 'boolean') &&
+      optionalString(candidate.reason) &&
+      optionalString(candidate.evidence_fingerprint) &&
+      optionalString(candidate.url) &&
+      optionalString(candidate.page_title) &&
+      optionalString(candidate.screenshot_path) &&
+      emptyProofIsCoherent;
   });
 }
