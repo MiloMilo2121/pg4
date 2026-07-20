@@ -262,11 +262,12 @@ describe('ENRICHED_CSV_COLUMNS — append-only contract', () => {
     }
     // RAW still ends with the V1 appendix (no v2/v3 on the raw flavor).
     expect(raw.slice(-rawAppendixLen)).toEqual(['phone_raw', 'permanently_closed', '_schema_version']);
-    // ENRICHED ends with the V4 appendix; V3, V2, V1 sit before it (append-only).
-    expect(enriched.slice(-6)).toEqual(['net_profit', 'net_profit_year', 'share_capital', 'legal_form', 'ateco', 'rea']);
-    expect(enriched.slice(-11, -6)).toEqual(['tiktok', 'youtube', 'rating', 'reviews_count', 'founding_year']);
-    expect(enriched.slice(-14, -11)).toEqual(['instagram', 'facebook', 'linkedin']);
-    expect(enriched.slice(-17, -14)).toEqual(['phone_raw', 'permanently_closed', '_schema_version']);
+    // ENRICHED ends with the V5 appendix; V4, V3, V2, V1 sit before it (append-only).
+    expect(enriched.slice(-5)).toEqual(['email_status', 'portal_source', 'portal_listings_count', 'portal_is_paid', 'portal_fiaip']);
+    expect(enriched.slice(-11, -5)).toEqual(['net_profit', 'net_profit_year', 'share_capital', 'legal_form', 'ateco', 'rea']);
+    expect(enriched.slice(-16, -11)).toEqual(['tiktok', 'youtube', 'rating', 'reviews_count', 'founding_year']);
+    expect(enriched.slice(-19, -16)).toEqual(['instagram', 'facebook', 'linkedin']);
+    expect(enriched.slice(-22, -19)).toEqual(['phone_raw', 'permanently_closed', '_schema_version']);
   });
 
   it('CSV writer emits all 4 financial columns in the header', async () => {
