@@ -3,10 +3,11 @@ import type { NormalizedLead } from '../../types/discovery';
 import type { PerLeadContext, Stage } from '../../types/enrichment';
 import type { StageOutcome, ReasonCode } from '../../types/output';
 import { ReasonCode as RC, DiscoveryMethod } from '../../types/output';
-import { InputWebsiteCandidate } from '../../discovery/website/input_website_candidate';
+import { InputWebsiteCandidate, domainMatchesCompanyName } from '../../discovery/website/input_website_candidate';
 import { DEFAULTS } from '../../config/defaults';
 import type { ProviderRouter } from '../../providers/provider_router';
 import { verifyCandidates } from './verify_candidates';
+import { getEnv } from '../../config/env';
 
 /** Verify the input `website` field via direct_fetch + PreVerifyGate. */
 export class InputWebsiteStage implements Stage {
@@ -39,6 +40,16 @@ export class InputWebsiteStage implements Stage {
       lead.website_confidence = verdict.confidence;
       if (verdict.body) ctx.verifiedBody = verdict.body; // Phase 1 free-gold seam
       return { stage: this.name, status: 'success', duration_ms: Date.now() - start, provider: verdict.provider, detail: verdict.detail };
+    }
+    // NAME-MATCH recovery (flag-gated, free): content-verify rejected it, but the
+    // distinctive company name is embedded in the domain (immobiliareziero.it ↔
+    // "Immobiliare Ziero"). Accept the site at a modest confidence so DEEP_PAGES
+    // can mine it; no body captured here, so the deep pass re-fetches it.
+    if (getEnv().INPUT_WEBSITE_NAME_MATCH_ENABLED && domainMatchesCompanyName(assessed.normalized_url ?? website, lead.company_name)) {
+      lead.official_website = assessed.normalized_url ?? assessed.candidates[0] ?? website;
+      lead.website_discovery_method = DiscoveryMethod.INPUT_DOMAIN_NAME_MATCH;
+      lead.website_confidence = DEFAULTS.scoring.nameMatchConfidence;
+      return { stage: this.name, status: 'success', duration_ms: Date.now() - start, detail: `domain_name_match:${lead.official_website}` };
     }
     return {
       stage: this.name,

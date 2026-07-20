@@ -64,6 +64,30 @@ describe('mergeExtractions — fill-first scalars, union arrays (pure)', () => {
     const base: BodyExtraction = { email: 'info@rossi.it', vat_candidates: [], phones: [] };
     expect(mergeExtractions(base, empty())).toEqual([]);
   });
+
+  it('propagates EVERY scalar applyBodyExtraction consumes (a /chi-siamo founder or TikTok must not be dropped)', () => {
+    const base: BodyExtraction = { vat_candidates: [], phones: [] };
+    const extra: BodyExtraction = {
+      tiktok: 'https://tiktok.com/@rossi',
+      youtube: 'https://youtube.com/@rossi',
+      founder: 'Mario Rossi',
+      founding_year: '1988',
+      rating: '4.8',
+      reviews_count: '120',
+      site_name: 'Agenzia Rossi',
+      vat_candidates: [],
+      phones: [],
+    };
+    const added = mergeExtractions(base, extra);
+    expect(base.tiktok).toBe('https://tiktok.com/@rossi');
+    expect(base.youtube).toBe('https://youtube.com/@rossi');
+    expect(base.founder).toBe('Mario Rossi');
+    expect(base.founding_year).toBe('1988');
+    expect(base.rating).toBe('4.8');
+    expect(base.reviews_count).toBe('120');
+    expect(base.site_name).toBe('Agenzia Rossi');
+    expect(added.sort()).toEqual(['founder', 'founding_year', 'rating', 'reviews_count', 'site_name', 'tiktok', 'youtube']);
+  });
 });
 
 describe('deepExtractFromSite — homepage + contact page, the email LIFT', () => {
@@ -86,6 +110,28 @@ describe('deepExtractFromSite — homepage + contact page, the email LIFT', () =
     expect(extraction.vat_candidates).toContain('09999990287'); // from homepage footer
     expect(pagesFetched).toEqual(['https://www.agenziarossi.it', 'https://www.agenziarossi.it/contatti']);
     expect(liftedFields).toContain('email');
+  });
+
+  it('reuses a provided homepage body (verifiedBody) without re-fetching it, still deepens contact pages', async () => {
+    // The pipeline passes the already-fetched verified body as homepageHtml on
+    // strong matches — deepExtractFromSite must NOT re-fetch the homepage, but
+    // must still discover + fetch the contact page from that provided HTML.
+    const requested: string[] = [];
+    const recordingFetcher = async (url: string): Promise<string | undefined> => {
+      requested.push(url.replace(/\/$/, ''));
+      return pages[url.replace(/\/$/, '')];
+    };
+    const { extraction, pagesFetched } = await deepExtractFromSite(
+      'https://www.agenziarossi.it',
+      recordingFetcher,
+      { homepageHtml: pages['https://www.agenziarossi.it'] },
+    );
+    // homepage came from the provided body → the fetcher was never asked for it
+    expect(requested).not.toContain('https://www.agenziarossi.it');
+    expect(requested).toContain('https://www.agenziarossi.it/contatti');
+    expect(extraction.email).toBe('info@agenziarossi.it'); // lifted from /contatti
+    expect(extraction.vat_candidates).toContain('09999990287'); // from the provided homepage footer
+    expect(pagesFetched).toContain('https://www.agenziarossi.it/contatti');
   });
 
   it('degrades gracefully when the homepage is unreachable', async () => {

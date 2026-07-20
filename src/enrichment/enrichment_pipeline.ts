@@ -16,11 +16,14 @@ import { FinancialStage } from './stages/financial_stage';
 import { ApifyMapsStage } from './stages/apify_maps_stage';
 import { PerplexityResolveStage } from './stages/perplexity_resolve_stage';
 import { ApifyRegistroStage } from './stages/apify_registro_stage';
-import { applyFreeGoldExtraction } from './extract/apply_free_gold';
+import { applyFreeGoldExtraction, applyBodyExtraction } from './extract/apply_free_gold';
+import { deepExtractFromSite } from './extract/deep_pages';
+import type { PageFetcher } from './extract/deep_pages';
 import { PgDetailHarvester } from '../discovery/sources/pagine_gialle_detail_harvester';
 import { runFieldCascades } from './fields/run_field_cascade';
 import type { EnrichableField } from '../api/types';
 import { getEnv } from '../config/env';
+import { DEFAULTS } from '../config/defaults';
 
 /**
  * Enrichment pipeline.
@@ -224,6 +227,54 @@ export async function runEnrichmentPipeline(input: PipelineInput): Promise<Enric
     logger.warn({ err: (err as Error).message }, '[pipeline] free-gold extraction threw');
   }
 
+  const fcEnv = getEnv();
+
+  // ---- Deepened free-gold (Phase B.1, opt-in via DEEP_PAGES_ENABLED, FREE) ----
+  // The pass above only mines `perLead.verifiedBody`, set solely on STRONG
+  // (piva/phone) website matches — so a semantically-verified site, or contact
+  // data printed only on /contatti or /chi-siamo, is lost (measured: ~2/3 of
+  // discovered sites are semantic-only → never mined). When DEEP_PAGES_ENABLED,
+  // mine every lead that HAS an official_website multipage, reusing the already
+  // fetched verified body as the homepage when present (one fewer fetch). Uses
+  // router.fetch: direct_fetch → €0 in the free profile; the paid render fallback
+  // applies only when the paid gate is on. Fill-only-empty + wrapped so it can
+  // never break the row; extractFromBody keeps the same-domain email precision.
+  if (fcEnv.DEEP_PAGES_ENABLED && lead.official_website) {
+    try {
+      const deepFetcher: PageFetcher = async (url) => {
+        try {
+          const res = await router.fetch(url, {
+            timeoutMs: DEFAULTS.pipeline.requestTimeoutMs,
+            meta: { lead_id: perLead.leadId, stage: 'deep_pages' },
+          });
+          return res.status >= 200 && res.status < 400 ? res.html : undefined;
+        } catch {
+          return undefined;
+        }
+      };
+      const deep = await deepExtractFromSite(lead.official_website, deepFetcher, {
+        homepageHtml: perLead.verifiedBody,
+      });
+      const filled = applyBodyExtraction(lead, deep.extraction);
+      if (filled.length > 0) {
+        const prev = stageOutcomes['free_gold'];
+        stageOutcomes['free_gold'] = {
+          stage: 'free_gold',
+          status: 'success',
+          duration_ms: 0,
+          detail: [prev?.detail, `deep(pages=${deep.pagesFetched.length}):${filled.join(',')}`]
+            .filter(Boolean)
+            .join(' '),
+        };
+      }
+      // Cost honesty: deep fetches are €0 (direct_fetch) in the free profile, but
+      // sync in case the paid render fallback was engaged.
+      perLead.costEur = run.ledger.costForLead(perLead.leadId);
+    } catch (err) {
+      logger.warn({ err: (err as Error).message }, '[pipeline] deepened free-gold pass threw');
+    }
+  }
+
   // ---- Post-discovery field cascades — official data + email (opt-in, guarded) ----
   // The CANONICAL per-field path (field_registry + run_field_cascade): a
   // VIES-confirmed VAT, fatturatoitalia revenue/employees (franchise-guarded +
@@ -232,7 +283,6 @@ export async function runEnrichmentPipeline(input: PipelineInput): Promise<Enric
   // here. Each field is independently flag-gated and the pass is skipped when
   // nothing is on — so default + offline runs make ZERO extra network calls and
   // stay €0. VAT runs first so pec/revenue/employees can key on vat_code_final.
-  const fcEnv = getEnv();
   const cascadeFields: EnrichableField[] = [];
   if (fcEnv.OFFICIAL_DATA_ENRICH_ENABLED) cascadeFields.push('vat', 'pec', 'revenue', 'employees');
   if (fcEnv.EMAIL_INFERENCE_MX_ENABLED && !lead.email_inferred) cascadeFields.push('email');

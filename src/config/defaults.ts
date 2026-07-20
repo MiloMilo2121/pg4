@@ -53,7 +53,12 @@ export const DEFAULTS = {
     l1MaxMemoryMB: 50,
   },
   http: {
-    userAgent: 'pg4/0.1 (https://github.com/MiloMilo2121)',
+    // Realistic desktop-Chrome UA (was a declared bot `pg4/0.1 (github…)`, which
+    // some sites block or serve stripped). direct_fetch overrides this per-host
+    // via runtime/fingerprint.ts; this default covers the other undici clients
+    // (bing_html SERP, the fatturatoitalia search POST). Keep in sync with
+    // fingerprint.ts pool head (DEFAULT_USER_AGENT).
+    userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
     maxRetries: 2,
     retryBaseMs: 500,
   },
@@ -73,5 +78,8 @@ export const DEFAULTS = {
     semanticMatchConfidence: 0.80,
     llmOracleSemanticConfidence: 0.75,
     rdapBingoConfidence: 0.90,
+    // Input website accepted on domain↔name match only (no live-body confirm):
+    // below semantic — strong ownership signal, but the site was not verified live.
+    nameMatchConfidence: 0.55,
   },
 } as const;

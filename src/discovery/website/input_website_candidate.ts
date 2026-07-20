@@ -1,6 +1,56 @@
 import type { AssessedWebsite, WebsiteClassification } from '../../types/discovery';
 import { isDirectoryOrSocial } from './content_filter';
 
+/**
+ * Generic real-estate/company words that carry NO identifying signal — a domain
+ * sharing only these with the name is a coincidence, not a match. Kept strict so
+ * the name-match recovery trades recall for precision.
+ */
+const GENERIC_NAME_TOKENS = new Set([
+  'immobiliare', 'immobiliari', 'agenzia', 'agenzie', 'studio', 'studi', 'servizi',
+  'casa', 'case', 'gruppo', 'group', 'real', 'estate', 'house', 'home', 'citta',
+  'city', 'srl', 'srls', 'spa', 'snc', 'sas', 'sapa', 'scarl', 'soc', 'coop',
+]);
+
+/** The registrable domain reduced to a single concatenated alnum core, e.g.
+ *  `www.immobiliare-ziero.it` → `immobiliareziero`. Undefined if unparseable. */
+function domainCore(website: string): string | undefined {
+  try {
+    const host = new URL(/^[a-z]+:\/\//i.test(website) ? website : `https://${website}`).hostname
+      .toLowerCase()
+      .replace(/^www\./, '');
+    const labels = host.split('.').filter(Boolean);
+    if (labels.length < 2) return undefined;
+    // drop the TLD (and a ccSLD like co.uk) — keep the identifying labels
+    const core = labels.slice(0, -1).join('');
+    return core.replace(/[^a-z0-9]/g, '') || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * True when a DISTINCTIVE token of the company name (len≥4, not a generic
+ * real-estate/legal word) is embedded in the website's registrable domain —
+ * e.g. "Immobiliare Ziero" ↔ immobiliareziero.it (via "ziero"), "A.B.I.T.A.
+ * Immobiliare" ↔ abitaagenziaimmobiliare.it (via "abita"). This is the
+ * precision gate for the input-website name-match recovery: a surname/brand in
+ * the domain is strong ownership evidence; a shared generic word is not.
+ */
+export function domainMatchesCompanyName(website: string | undefined, companyName: string | undefined): boolean {
+  if (!website || !companyName) return false;
+  const core = domainCore(website);
+  if (!core) return false;
+  // Accented letters (rare in surnames, impossible in domains) collapse to a
+  // separator — good enough; the domain core is pure ASCII anyway.
+  const tokens = companyName
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .split(' ')
+    .filter((t) => t.length >= 4 && !GENERIC_NAME_TOKENS.has(t));
+  return tokens.some((t) => core.includes(t));
+}
+
 const MESSAGING_OR_REDIRECT_HOSTS = new Set([
   'wa.me', 'whatsapp.com', 'api.whatsapp.com', 'chat.whatsapp.com',
   't.me', 'telegram.me', 'linktr.ee', 'bit.ly', 'tinyurl.com',

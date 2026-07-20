@@ -105,6 +105,27 @@ const EnvSchema = z.object({
   EMAIL_SMTP_MAIL_FROM: z.string().default('verify@verifier.local'),
   EMAIL_INFERENCE_MAX_PROBES_PER_DOMAIN: z.coerce.number().int().positive().default(3),
 
+  // Free-gold DEEPENED extraction (FREE — direct_fetch only, no paid API). When
+  // ON, after the homepage/verified-body free-gold pass the pipeline ALSO mines
+  // every lead's official_website multipage (homepage + /contatti + /chi-siamo) —
+  // recovering email/social/PEC/VAT that a single-page match, or a semantic-only
+  // (body-less) match, otherwise loses. €0 in the free profile; composes with the
+  // paid render fallback (Firecrawl/BrightData) when the paid gate is on.
+  DEEP_PAGES_ENABLED: envBool(false),
+
+  // Input-website NAME-MATCH recovery (FREE — no fetch). The content verify only
+  // accepts a site when the PAGE carries the lead's P.IVA/phone or a semantic
+  // body match; it IGNORES the domain. So a real agency site whose body is
+  // JS-rendered, drops the connection, or lacks a P.IVA (the lead has none to
+  // match) is thrown away even when the domain literally spells the company —
+  // `immobiliareziero.it` for "Immobiliare Ziero" (measured: ~12% of leads,
+  // ~76% domain↔name). When ON, after content-verify fails the input website is
+  // accepted iff a DISTINCTIVE name token (len≥4, non-generic) is embedded in the
+  // registrable domain, at a modest confidence + INPUT_DOMAIN_NAME_MATCH method.
+  // Default OFF: it asserts a website without a live-body confirmation, so it is
+  // the operator's explicit choice; precision rests on the distinctive-token gate.
+  INPUT_WEBSITE_NAME_MATCH_ENABLED: envBool(false),
+
   // Enrichment extras — email find/verify + B2B contact
   HUNTER_ENABLED: envBool(false),
   HUNTER_API_KEY: z.string().optional(),

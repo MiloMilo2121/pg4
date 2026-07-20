@@ -24,6 +24,13 @@ export interface StepResult {
   costEur: number;
   /** Set when a step could not run (disabled / gated / no input). */
   skippedReason?: 'disabled' | 'paid_gated' | 'budget' | 'no_input' | 'no_value' | 'vat_unverified';
+  /**
+   * Companion fields resolved by the SAME fetch as `value` (the cascade is
+   * single-target; without this channel a step like revenue drops the year it
+   * already parsed). Applied by the runner fill-only-empty, same discipline as
+   * the target. Typed whitelist — widen deliberately, not ad hoc.
+   */
+  extras?: Partial<Record<'revenue_year', string>>;
 }
 
 /** Inputs every step receives. The body extraction is computed ONCE (free-gold). */

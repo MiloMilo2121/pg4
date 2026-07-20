@@ -1,0 +1,15 @@
+<!doctype html><html lang="it"><body>
+  <!-- SYNTHETIC: manual bracketed obfuscation + fabrication TRAPS. The traps
+       come FIRST so a regression would win the first-candidate slot:
+       - "(AT)" is the Asti PROVINCE sigla in a typical footer address; a
+         case-insensitive (at)→@ would fabricate canelli@www.studiorossi.it
+         (own-domain → accepted). Bracket tokens must stay lowercase-only.
+       - bare " at " / " dot " prose on the OWN domain; rewriting bare tokens
+         would fabricate trovi@studiorossi.it (own-domain → accepted). -->
+  <main>
+    <p>Siamo a 14053 Canelli (AT) www.studiorossi.it</p>
+    <p>Ci trovi at studiorossi dot it, nel dot più centrale della citta.</p>
+    <p>Contatto diretto: info [at] studiorossi [dot] it</p>
+    <p>PEC: studiorossi (at) pec (punto) it</p>
+  </main>
+</body></html>

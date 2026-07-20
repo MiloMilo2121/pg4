@@ -59,7 +59,12 @@ export const ROLE_REGISTRY: RoleEntry[] = [
     steps: [
       free('bing_html', 1, 'always (free, no-key)'),
       free('ddg_lite', 1, 'free EXCEPT italian_real_estate (R14) unless SERP_EXPANDED_FREE_ENABLED', { categoryExclude: ['italian_real_estate'] }),
-      paid('serper', 2, 0.001, 'paid SERP; excluded for italian_real_estate (R14 low-yield)', { categoryExclude: ['italian_real_estate'] }),
+      // R14 excluded serper for real-estate as "low-yield", but a 2026-07-20 live
+      // re-test found serper returns the agency's OWN site ~50% of the time on
+      // no-site immobiliari leads (bing_html returns 0 — directories only); the
+      // existing directory/preverify guard cleans the rest. Re-enabled: paid SERP
+      // is the highest-ROI lever on the 48% no-website gap.
+      paid('serper', 2, 0.001, 'paid SERP; re-enabled for real-estate (2026-07-20 re-test: ~50% own-site hit)'),
       paid('tavily', 2, 0.0074, 'richer snippets / raw content for judgment discovery'),
       paid('exa', 2, 0.0064, 'semantic/editorial precision for third-party A-signals'),
       paid('brightdata_serp', 2, 0.00138, 'last-resort SERP when free blocked'),

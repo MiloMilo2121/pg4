@@ -101,7 +101,12 @@ export function findContactLinks(homepageHtml: string | undefined, site: string 
  */
 export function mergeExtractions(base: BodyExtraction, extra: BodyExtraction): string[] {
   const added: string[] = [];
-  for (const k of ['email', 'pec', 'instagram', 'facebook', 'linkedin'] as const) {
+  // EVERY scalar applyBodyExtraction consumes — a founder/JSON-LD rating or a
+  // TikTok link found only on /chi-siamo must not be dropped by the merge.
+  for (const k of [
+    'email', 'pec', 'instagram', 'facebook', 'linkedin', 'tiktok', 'youtube',
+    'site_name', 'founder', 'founding_year', 'rating', 'reviews_count',
+  ] as const) {
     if (!base[k] && extra[k]) {
       base[k] = extra[k];
       added.push(k);
@@ -122,10 +127,13 @@ export function mergeExtractions(base: BodyExtraction, extra: BodyExtraction): s
 export async function deepExtractFromSite(
   site: string | undefined,
   fetcher: PageFetcher,
-  opts: { maxContactPages?: number } = {},
+  opts: { maxContactPages?: number; homepageHtml?: string } = {},
 ): Promise<DeepExtractResult> {
   const lead = { official_website: site };
-  const homepage = site ? await spacedFetch(site, fetcher) : undefined;
+  // Reuse an already-fetched homepage (the verify-seam verifiedBody) to save one
+  // fetch on strong matches; otherwise fetch it now — the semantic-only case where
+  // no body was captured upstream, which is the main recall win.
+  const homepage = opts.homepageHtml ?? (site ? await spacedFetch(site, fetcher) : undefined);
   const extraction = extractFromBody(homepage, lead);
   const pagesFetched: string[] = [];
   const liftedFields: string[] = [];

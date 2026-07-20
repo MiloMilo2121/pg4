@@ -5,11 +5,12 @@
  * (see docs/r13_financial_enrichment_audit.md §9). This module only
  * understands the *shape* of a company page.
  *
- * Ported from pg3's `foundation/FatturatoItaliaProvider.ts` — specifically
- * the two extraction paths, kept as standalone functions:
+ * Extraction paths, tried in order — first hit wins:
  *   1. The embedded JS chart vars (`datiChartFatturato`, `datiChartUtile`,
- *      `labelChart`) — the cleanest, machine-readable 5-year history.
- *   2. The `.col-xs-5 / .col-xs-7` label/value grid — DOM fallback.
+ *      `labelChart`) — a machine-readable multi-year history (LEGACY: the site
+ *      dropped these in 2026-07; kept for older cached pages).
+ *   2. The label/value DOM — the CURRENT `<th scope="row">…</th><td>…</td>`
+ *      summary table, merged with the LEGACY `.col-xs-5 / .col-xs-7` grid.
  *
  * Chart data wins when present (pg3 "Law 401: Source of Truth").
  */
@@ -112,9 +113,30 @@ function extractChartData(html: string): FIFinancialYear[] {
 }
 
 /**
- * Parse the label/value grid:
- *   <div class="col-xs-5">Fatturato 2023</div>
- *   <div class="col-xs-7">€ 40.503.424.402</div>
+ * Collect a label→value dictionary from a company page, merging two DOM shapes
+ * (current format wins on key collision):
+ *   - CURRENT (2026-07): a `<th scope="row">Fatturato 2024</th><td>&euro; …</td>`
+ *     summary table.
+ *   - LEGACY: the `.col-xs-5 / .col-xs-7` label/value grid.
+ */
+function collectLabeled($: cheerio.CheerioAPI): Record<string, string> {
+  const data: Record<string, string> = {};
+  $('.col-xs-5, .col-sm-5').each((_, labelEl) => {
+    const label = $(labelEl).text().trim().toLowerCase();
+    const value = $(labelEl).next('.col-xs-7, .col-sm-7').text().trim();
+    if (label && value) data[label] = value;
+  });
+  $('th[scope="row"]').each((_, th) => {
+    const label = $(th).text().trim().toLowerCase();
+    const value = $(th).next('td').text().trim();
+    if (label && value) data[label] = value;
+  });
+  return data;
+}
+
+/**
+ * Reduce the label/value dictionary to financial fields, taking the MOST RECENT
+ * labeled "Fatturato <year>" as the headline revenue.
  */
 function parseGrid($: cheerio.CheerioAPI): {
   fatturato_current?: number;
@@ -124,16 +146,12 @@ function parseGrid($: cheerio.CheerioAPI): {
   ragione_sociale?: string;
   vat_code?: string;
 } {
-  const data: Record<string, string> = {};
-  $('.col-xs-5, .col-sm-5').each((_, labelEl) => {
-    const label = $(labelEl).text().trim().toLowerCase();
-    const value = $(labelEl).next('.col-xs-7, .col-sm-7').text().trim();
-    if (label && value) data[label] = value;
-  });
+  const data = collectLabeled($);
 
   let fatturato_current: number | undefined;
   let utile_current: number | undefined;
   let bilancio_year: number | undefined;
+  let utile_year: number | undefined;
 
   for (const [label, value] of Object.entries(data)) {
     const yearMatch = label.match(/\b(20\d{2})\b/);
@@ -148,7 +166,12 @@ function parseGrid($: cheerio.CheerioAPI): {
     }
     if (label.includes('utile')) {
       const amt = parseAmount(value);
-      if (amt !== undefined) utile_current = amt;
+      // Same MOST-RECENT-YEAR anchor as fatturato: with multiple "Utile YYYY"
+      // rows, DOM order must never decide (the documented wrong-year class).
+      if (amt !== undefined && (utile_year === undefined || (year !== undefined && year > utile_year))) {
+        utile_current = amt;
+        if (year !== undefined) utile_year = year;
+      }
     }
   }
 

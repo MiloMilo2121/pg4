@@ -95,6 +95,15 @@ async function runOne(lead: Lead, descriptor: EnrichmentFieldDescriptor, extract
       if (cur === undefined || cur === null || cur === '') {
         (lead as Record<string, unknown>)[descriptor.target as string] = res.value;
       }
+      // Companion fields from the same fetch (e.g. revenue → revenue_year),
+      // same fill-only-empty discipline as the target.
+      if (res.extras) {
+        for (const [k, v] of Object.entries(res.extras)) {
+          if (!v) continue;
+          const curX = (lead as Record<string, unknown>)[k];
+          if (curX === undefined || curX === null || curX === '') (lead as Record<string, unknown>)[k] = v;
+        }
+      }
       return {
         field: descriptor.field,
         resolved: true,
