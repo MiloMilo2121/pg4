@@ -29,14 +29,21 @@ while IFS= read -r __s; do [ -n "$__s" ] && SLUGS+=("$__s"); done < <(node -e '
     if(f.length && !f.includes(s.slug)) continue; console.log(s.slug);
   }')
 
+# Recovery state is scoped to the campaign this watchdog owns. An old blocked
+# incident from another province/sector must not freeze unrelated healthy work.
+RECOVERY_CELLS=()
+for __prov in "${PROVINCES[@]}"; do
+  for __slug in "${SLUGS[@]}"; do
+    RECOVERY_CELLS+=("${__slug}_${__prov}")
+  done
+done
+RECOVERY_CELLS_CSV="$(IFS=,; printf '%s' "${RECOVERY_CELLS[*]}")"
+
 all_cells_done() {
   local prov slug
   for prov in "${PROVINCES[@]}"; do
     for slug in "${SLUGS[@]}"; do
-      node - "$OUT/${slug}_${prov}_raw.csv" <<'NODE' >/dev/null 2>&1 || return 1
-const fs = require('fs'); const marker = process.argv[2].replace(/\.csv$/i, '.complete.json');
-const m = JSON.parse(fs.readFileSync(marker, 'utf8')); process.exit(m.status === 'complete' && m.failed_query_count === 0 ? 0 : 1);
-NODE
+      pnpm exec tsx src/scripts/verify_completion.ts "$OUT/${slug}_${prov}_raw.csv" >/dev/null 2>&1 || return 1
     done
   done
   return 0
@@ -52,17 +59,17 @@ while true; do
     echo "[watchdog $(date +%H:%M:%S)] tutte le celle presenti — fine"
     break
   fi
-  if bash scripts/recovery_coordinator.sh blocked --out "$OUT"; then
+  if bash scripts/recovery_coordinator.sh blocked --out "$OUT" --cells "$RECOVERY_CELLS_CSV"; then
     echo "[watchdog $(date +%H:%M:%S)] recovery bloccata — intervento manuale richiesto"
     sleep "$CHECK_EVERY"
     continue
   fi
-  if bash scripts/recovery_coordinator.sh pending --out "$OUT"; then
+  if bash scripts/recovery_coordinator.sh pending --out "$OUT" --cells "$RECOVERY_CELLS_CSV"; then
     echo "[watchdog $(date +%H:%M:%S)] recovery pending — waiting for GitHub Actions"
     # Cells are resumed by the coordinator after a successful auto-merge.
-    for state in "$OUT"/.recovery/*.json; do
+    for cell in "${RECOVERY_CELLS[@]}"; do
+      state="$OUT/.recovery/$cell.json"
       [ -f "$state" ] || continue
-      cell="$(basename "$state" .json)"
       bash scripts/recovery_coordinator.sh wait-and-resume --out "$OUT" --cell "$cell" || true
     done
     sleep "$CHECK_EVERY"

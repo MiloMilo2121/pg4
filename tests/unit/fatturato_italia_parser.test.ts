@@ -50,6 +50,32 @@ describe('parseFatturatoItaliaPage — grid fallback page', () => {
   });
 });
 
+describe('parseFatturatoItaliaPage — <th scope="row"> summary table (current 2026-07 format)', () => {
+  // O6 regression: the site dropped the chart JS vars + col-xs grid for a
+  // `<th scope="row">Fatturato 2024</th><td>…</td>` table. Without this path the
+  // fetcher parsed a 404 shell → revenue/employees 0% nationwide.
+  const r = parseFatturatoItaliaPage(read('fatturato_company_table.html'));
+
+  it('picks the most recent fatturato year from the table', () => {
+    expect(r.revenue_amount).toBe(6_284_626_802);
+    expect(r.revenue_year).toBe('2024'); // not 2023
+    expect(r.revenue).toBe('€ 6.284.626.802');
+  });
+  it('reads utile, employee band, name and VAT from the table', () => {
+    // "Utile 2023" sits AFTER "Utile 2024" in the fixture: the most recent YEAR
+    // must win, never DOM order (the documented wrong-year bug class).
+    expect(r.utile).toBe(1_556_213_265);
+    expect(r.utile).not.toBe(1_200_000_000);
+    expect(r.employees).toBe('1000+'); // "oltre 1000" band, not "1000"
+    expect(r.company_name).toBe('TABELLA SPA');
+    expect(r.vat_code).toBe('00159560366');
+  });
+  it('assigns medium confidence (table revenue, no chart history)', () => {
+    expect(r.confidence).toBe(0.75);
+    expect(r.history).toHaveLength(0);
+  });
+});
+
 describe('parseFatturatoItaliaPage — company without bilancio', () => {
   const r = parseFatturatoItaliaPage(read('fatturato_no_data.html'));
 

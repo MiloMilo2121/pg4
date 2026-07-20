@@ -44,4 +44,19 @@ describe('fatturato entity-verification guard (franchise-collision bug, audit 20
     expect(out.resolved).toBe(true);
     expect(out.value).toBe('€ 51.619');
   });
+
+  it('ships revenue_year with the revenue via the extras channel (fill-only-empty)', async () => {
+    const lead = { company_name: 'Agenzia Immobiliare Esempio Case' } as Lead;
+    await runFieldCascade(lead, 'revenue', { extraction: { vat_candidates: ['09999990287'], phones: [] } });
+    // Same fetch parsed the bilancio year — the list must be able to say
+    // "fatturato 2024", not just "fatturato" (the year was silently dropped).
+    expect(lead.revenue).toBe('€ 51.619');
+    expect(lead.revenue_year).toBe('2024');
+  });
+
+  it('extras never overwrite an existing revenue_year (input wins)', async () => {
+    const lead = { company_name: 'Agenzia Immobiliare Esempio Case', revenue_year: '2019' } as Lead;
+    await runFieldCascade(lead, 'revenue', { extraction: { vat_candidates: ['09999990287'], phones: [] } });
+    expect(lead.revenue_year).toBe('2019');
+  });
 });

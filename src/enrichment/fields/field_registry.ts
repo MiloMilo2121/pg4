@@ -314,7 +314,15 @@ const fatturatoItaliaStep = (field: 'revenue' | 'employees', confFloor: number):
 
     const value = fi[field];
     if (!value) return { confidence: 0, source: `fatturatoitalia(${tag})`, costEur: 0, skippedReason: 'no_value' };
-    return { value: String(value), confidence: Math.min(confCap, Math.max(confFloor, fi.confidence)), source: `fatturatoitalia(${tag})`, costEur: 0 };
+    return {
+      value: String(value),
+      confidence: Math.min(confCap, Math.max(confFloor, fi.confidence)),
+      source: `fatturatoitalia(${tag})`,
+      costEur: 0,
+      // The same fetch parsed the bilancio year — ship it with the revenue so
+      // the list can say "fatturato 2024", not just "fatturato".
+      extras: field === 'revenue' && fi.revenue_year ? { revenue_year: fi.revenue_year } : undefined,
+    };
   },
 });
 
@@ -362,6 +370,13 @@ export const FIELD_REGISTRY: EnrichmentFieldDescriptor[] = [
     // step MUST call isWrongEntity(fetchedRegisteredName, lead.company_name) and refuse on
     // mismatch — the same field-level guard fatturato uses — or it re-opens the wrong-entity
     // class (a franchisor's PEC attached to a local agency). pecFromBody is safe (same-domain).
+    //
+    // PROBED 2026-07-18 (V6): no free automatable source for PEC-by-VAT exists.
+    // INI-PEC (the official index) gates search behind a native image+audio
+    // captcha (a government service — not to be circumvented); ufficiocamerale.it
+    // and registroaziende.it answer 403 (WAF); reportaziende.it requires login.
+    // So this stays disabled: free PEC coverage is pecFromBody over deep pages,
+    // and VAT-keyed PEC belongs to the PAID registro step (V8 Apify, pec incl.).
     cascade: [pecFromBody, disabled('pec.inipec_by_vat', 1, 0, 'inipec')],
     ceilingEur: 0,
     stopConfidence: 0.8,

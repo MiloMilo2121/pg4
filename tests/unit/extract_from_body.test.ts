@@ -36,6 +36,56 @@ describe('extractFromBody — email', () => {
   });
 });
 
+describe('extractFromBody — V2 de-obfuscation', () => {
+  it('decodes a Cloudflare data-cfemail address the text scan cannot see', () => {
+    const ex = extractFromBody(load('it_site_cfemail.html'), { official_website: 'https://studiorossi.it' });
+    expect(ex.email).toBe('info@studiorossi.it');
+    // the only visible text is the "[email protected]" placeholder — proves decode
+    expect(load('it_site_cfemail.html')).not.toContain('info@studiorossi.it');
+  });
+
+  it('reveals bracketed [at]/[dot]/(punto) emails, keeps PEC split', () => {
+    const ex = extractFromBody(load('it_site_obfuscated_email.html'), { official_website: 'https://studiorossi.it' });
+    expect(ex.email).toBe('info@studiorossi.it');
+    expect(ex.pec).toBe('studiorossi@pec.it');
+  });
+
+  it('does NOT fabricate an email from bare " at "/" dot " in OWN-DOMAIN prose (precision)', () => {
+    const ex = extractFromBody(load('it_site_obfuscated_email.html'), { official_website: 'https://studiorossi.it' });
+    // "Ci trovi at studiorossi dot it" would fabricate trovi@studiorossi.it —
+    // an OWN-DOMAIN address the domain filter cannot save us from.
+    expect(ex.email).toBe('info@studiorossi.it');
+    expect(ex.email).not.toContain('trovi@');
+  });
+
+  it('does NOT fabricate an email from an uppercase "(AT)" province sigla (Asti footer)', () => {
+    const ex = extractFromBody(load('it_site_obfuscated_email.html'), { official_website: 'https://studiorossi.it' });
+    // "14053 Canelli (AT) www.studiorossi.it" → canelli@www.studiorossi.it would
+    // be own-domain and accepted; bracket tokens are lowercase-only by contract.
+    expect(ex.email).toBe('info@studiorossi.it');
+    expect(ex.email).not.toContain('canelli');
+  });
+
+  it('decodes the href-only Cloudflare variant (no data-cfemail attribute)', () => {
+    // Cloudflare rewrites plain mailto: links to /cdn-cgi/l/email-protection#HEX
+    // with NO data-cfemail attr — the href path must decode on its own.
+    const hex = '422b2c242d02313637262b2d302d31312b6c2b36'; // info@studiorossi.it, key 0x42
+    const html = `<html><body><a href="/cdn-cgi/l/email-protection#${hex}">[email protected]</a></body></html>`;
+    const ex = extractFromBody(html, { official_website: 'https://studiorossi.it' });
+    expect(ex.email).toBe('info@studiorossi.it');
+  });
+
+  it('ignores malformed data-cfemail payloads (odd length, non-hex, too short)', () => {
+    const html = `<html><body>
+      <span data-cfemail="zz9988">x</span>
+      <span data-cfemail="422b2c2">x</span>
+      <span data-cfemail="42">x</span>
+    </body></html>`;
+    const ex = extractFromBody(html, { official_website: 'https://studiorossi.it' });
+    expect(ex.email).toBeUndefined();
+  });
+});
+
 describe('extractFromBody — PEC + phone', () => {
   it('splits the PEC from the business email and captures the landline', () => {
     const ex = extractFromBody(load('it_site_pec_and_phone.html'), { official_website: 'https://neriservizi.it' });

@@ -109,7 +109,7 @@ async function main(): Promise<number> {
       province: optString(args, 'province'),
       region: optString(args, 'region'),
       comuniCsv: optString(args, 'comuni'),
-      maxPages: parseIntOrUndefined(optString(args, 'max-pages')),
+      maxPages: parsePositiveInt(optString(args, 'max-pages'), '--max-pages'),
       interDelayMs: parseIntOrUndefined(optString(args, 'inter-delay-ms')),
       runMaps: !!args.flags['maps'],
       mapsCoverage,
@@ -246,6 +246,16 @@ function parseIntOrUndefined(v: string | undefined): number | undefined {
   if (v === undefined) return undefined;
   const n = parseInt(v, 10);
   return Number.isFinite(n) ? n : undefined;
+}
+
+function parsePositiveInt(v: string | undefined, flag: string): number | undefined {
+  if (v === undefined) return undefined;
+  if (!/^[1-9]\d*$/.test(v)) {
+    throw new Error(`${flag} must be a positive integer.`);
+  }
+  const n = Number(v);
+  if (!Number.isSafeInteger(n)) throw new Error(`${flag} must be a positive integer.`);
+  return n;
 }
 
 main()

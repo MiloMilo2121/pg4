@@ -2,7 +2,7 @@ import { setTimeout as wait } from 'timers/promises';
 import type { Lead } from '../../types/lead';
 import { BrowserFactory } from '../../browser/factory';
 import { acceptConsent } from '../../browser/consent_handler';
-import { Checkpoint } from '../../runtime/checkpoint';
+import { Checkpoint, isVerifiedTerminalQuery } from '../../runtime/checkpoint';
 import { logger } from '../../runtime/logger';
 import { DEFAULTS } from '../../config/defaults';
 import { buildPgSearchUrl } from './pg_url';
@@ -64,6 +64,8 @@ export interface PgLiveResult {
    * should split this query into smaller comuni and re-run.
    */
   overflow: boolean;
+  /** The process was asked to stop; the current pending query is resumable. */
+  interrupted: boolean;
 }
 
 export const PG_RESULTS_SELECTOR = '.search-itm';
@@ -75,6 +77,13 @@ const PG_EMPTY_RESULT_MARKER = /nessun[oa]?\s+(?:risultat[oi]|attivit[àa])|non\
 
 export function hasVerifiedPgEmptyResults(html: string): boolean {
   return PG_EMPTY_RESULT_MARKER.test(html.replace(/<[^>]*>/g, ' '));
+}
+
+function unresolvedPgPageReason(html: string): string {
+  const text = html.replace(/<[^>]*>/g, ' ').toLowerCase();
+  if (/consent|cookie/.test(text)) return 'consent_wall';
+  if (/captcha|unusual traffic|access denied|forbidden|blocked|cloudflare/.test(text)) return 'blocked_or_captcha';
+  return 'selector_missing_or_unverified_empty_results';
 }
 
 export async function scrapePgLocation(
@@ -90,20 +99,28 @@ export async function scrapePgLocation(
   let dropped = 0;
   let pagesVisited = 0;
   let overflow = false;
-  let consecutiveEmpty = 0;
   let consecutiveZeroNew = 0;
+  let interrupted = false;
 
   for (let page = 1; page <= maxPages; page++) {
     if (opts.abortSignal?.aborted) {
       logger.info({ location: opts.location, page }, '[pg_live] abort signal — stopping before next page');
+      interrupted = true;
       break;
     }
     const cpKey = Checkpoint.buildKey({ provider: 'pg', category: opts.category, location: opts.location, page });
-    if (cp?.isDone(cpKey)) {
+    // A legacy `done, parsed: 0` entry has no proof of a real empty state.
+    // Revisit it rather than allowing an old false checkpoint to survive a
+    // resume forever.
+    if (isVerifiedTerminalQuery(cp?.get(cpKey))) {
       pagesVisited += 1;
       continue;
     }
+    // Persist intent before navigating. If the process is killed while a page
+    // is in flight, coverage turns this non-terminal checkpoint into a partial
+    // run instead of claiming completion from only the pages seen so far.
     const url = buildPgSearchUrl(opts.category, opts.location, page);
+    cp?.set(cpKey, { status: 'pending', kind: 'query', page, attempts: 0, reason: 'navigation_in_progress', url });
     let html: string | undefined;
     let pageForEvidence: import('playwright').Page | undefined;
     let lastAttempt = 0;
@@ -140,14 +157,25 @@ export async function scrapePgLocation(
         },
       );
     } catch (err) {
+      if (opts.abortSignal?.aborted) {
+        interrupted = true;
+        break;
+      }
       const evidence = await capturePageEvidence(pageForEvidence, opts.diagnosticsDir, cpKey);
       logger.warn({ url, err: (err as Error).message }, '[pg_live] navigation error — page skipped after retries');
-      cp?.set(cpKey, { status: 'failed', page, reason: (err as Error).message, attempts: lastAttempt + 1, evidence_fingerprint: evidence.fingerprint });
+      cp?.set(cpKey, {
+        status: 'failed', kind: 'query', page, url, reason: (err as Error).message, attempts: lastAttempt + 1,
+        evidence_fingerprint: evidence.fingerprint, page_title: evidence.title, screenshot_path: evidence.screenshot_path,
+      });
       // exhausted retries on this page: try the next page rather than aborting
       await wait(interDelay);
       continue;
     }
     pagesVisited += 1;
+    if (opts.abortSignal?.aborted) {
+      interrupted = true;
+      break;
+    }
 
     let parsed: ReturnType<typeof parsePagineGialleResults>;
     try {
@@ -156,30 +184,59 @@ export async function scrapePgLocation(
         queryLocation: opts.location,
       });
     } catch (err) {
+      if (opts.abortSignal?.aborted) {
+        interrupted = true;
+        break;
+      }
       const evidence = await capturePageEvidence(pageForEvidence, opts.diagnosticsDir, cpKey);
       cp?.set(cpKey, {
-        status: 'failed',
+        status: 'failed', kind: 'query',
         page,
+        url,
         reason: `parser_error: ${(err as Error).message}`,
         attempts: lastAttempt + 1,
         evidence_fingerprint: evidence.fingerprint,
+        page_title: evidence.title,
+        screenshot_path: evidence.screenshot_path,
       });
       logger.warn({ url, page, err: (err as Error).message }, '[pg_live] parser error — page marked failed');
       break;
     }
-    if (parsed.total_cards === 0 && !hasVerifiedPgEmptyResults(html)) {
+    if (parsed.total_cards === 0) {
+      if (!hasVerifiedPgEmptyResults(html)) {
+        const evidence = await capturePageEvidence(pageForEvidence, opts.diagnosticsDir, cpKey);
+        cp?.set(cpKey, {
+          status: 'failed', kind: 'query', page, url,
+          reason: unresolvedPgPageReason(html), attempts: lastAttempt + 1,
+          evidence_fingerprint: evidence.fingerprint, page_title: evidence.title, screenshot_path: evidence.screenshot_path,
+        });
+        logger.warn({ url, page }, '[pg_live] no cards and no verified empty-result marker — page marked failed');
+        // A selector drift/block page will recur on subsequent pages; preserve
+        // partial output and defer to recovery instead of generating a noisy
+        // run of identical failed page requests.
+        break;
+      }
+      cp?.set(cpKey, {
+        status: 'done', kind: 'query', page, url, total_cards: 0, parsed: 0, dropped: 0,
+        overflow: false, attempts: lastAttempt + 1, empty_verified: true,
+      });
+      logger.info({ url, page }, '[pg_live] explicit empty-result state verified');
+      // An explicit empty page terminates PG pagination. Do not create a
+      // speculative page N+1 query that the source has already ruled out.
+      break;
+    }
+    if (parsed.results.length === 0) {
       const evidence = await capturePageEvidence(pageForEvidence, opts.diagnosticsDir, cpKey);
       cp?.set(cpKey, {
-        status: 'failed',
-        page,
-        reason: 'selector_missing_or_unverified_empty_results',
-        attempts: lastAttempt + 1,
-        evidence_fingerprint: evidence.fingerprint,
+        status: 'failed', kind: 'query', page, url,
+        reason: 'parser_dropped_all_cards', attempts: lastAttempt + 1,
+        evidence_fingerprint: evidence.fingerprint, page_title: evidence.title, screenshot_path: evidence.screenshot_path,
       });
-      logger.warn({ url, page }, '[pg_live] no cards and no verified empty-result marker — page marked failed');
-      // A selector drift/block page will recur on subsequent pages; preserve
-      // partial output and defer to recovery instead of generating a noisy
-      // run of identical failed page requests.
+      logger.warn({ url, page, cards: parsed.total_cards }, '[pg_live] cards were present but parser dropped all of them');
+      break;
+    }
+    if (opts.abortSignal?.aborted) {
+      interrupted = true;
       break;
     }
     totalCards += parsed.total_cards;
@@ -188,8 +245,9 @@ export async function scrapePgLocation(
     if (page === 1 && parsed.overflow) overflow = true;
 
     cp?.set(cpKey, {
-      status: 'done',
+      status: 'done', kind: 'query',
       page,
+      url,
       total_cards: parsed.total_cards,
       parsed: parsed.results.length,
       dropped: parsed.dropped,
@@ -207,32 +265,23 @@ export async function scrapePgLocation(
       '[pg_live] page parsed'
     );
 
-    if (parsed.results.length === 0) {
-      consecutiveEmpty += 1;
-      if (consecutiveEmpty >= 2) {
-        logger.info({ page }, '[pg_live] two empty pages in a row — stopping');
+    // Early-stop on duplicate exhaustion: PG serves province-wide results, so
+    // a comune whose pages add nothing new is re-scraping firms we already
+    // have. Two consecutive 0-new pages → stop (saves the 25-page cap waste).
+    const newCount = opts.isNew ? parsed.results.filter(opts.isNew).length : parsed.results.length;
+    if (newCount === 0) {
+      consecutiveZeroNew += 1;
+      if (consecutiveZeroNew >= 2) {
+        logger.info({ page }, '[pg_live] two pages with 0 new unique leads — province results exhausted, stopping');
         break;
       }
     } else {
-      consecutiveEmpty = 0;
-      // Early-stop on duplicate exhaustion: PG serves province-wide results, so
-      // a comune whose pages add nothing new is re-scraping firms we already
-      // have. Two consecutive 0-new pages → stop (saves the 25-page cap waste).
-      const newCount = opts.isNew ? parsed.results.filter(opts.isNew).length : parsed.results.length;
-      if (newCount === 0) {
-        consecutiveZeroNew += 1;
-        if (consecutiveZeroNew >= 2) {
-          logger.info({ page }, '[pg_live] two pages with 0 new unique leads — province results exhausted, stopping');
-          break;
-        }
-      } else {
-        consecutiveZeroNew = 0;
-      }
+      consecutiveZeroNew = 0;
     }
     if (page < maxPages) await wait(interDelay);
   }
 
-  return { results: out, total_cards: totalCards, parsed: out.length, dropped, pages_visited: pagesVisited, overflow };
+  return { results: out, total_cards: totalCards, parsed: out.length, dropped, pages_visited: pagesVisited, overflow, interrupted };
 }
 
 // ---- helpers ----

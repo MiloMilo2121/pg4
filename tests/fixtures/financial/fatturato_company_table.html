@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="it">
+  <body>
+    <h1>TABELLA SPA</h1>
+    <!-- SYNTHETIC fixture mirroring the CURRENT (2026-07) fatturatoitalia.it
+         company page: a `<th scope="row">…</th><td>…</td>` summary table.
+         No real scraped data; VAT is checksum-valid, figures are invented. -->
+    <table class="fi-summary">
+      <tbody>
+        <tr><th scope="row">Ragione sociale</th><td>TABELLA SPA</td></tr>
+        <tr><th scope="row">Partita IVA</th><td>00159560366</td></tr>
+        <tr><th scope="row">Codice fiscale</th><td>00159560366</td></tr>
+        <tr><th scope="row">Codice ATECO</th><td>29.1</td></tr>
+        <tr><th scope="row">Attività prevalente</th><td>Fabbricazione di autoveicoli</td></tr>
+        <tr><th scope="row">Fatturato 2023</th><td>&euro; 5.900.000.000</td></tr>
+        <tr><th scope="row">Fatturato 2024</th><td>&euro; 6.284.626.802</td></tr>
+        <tr><th scope="row">Utile 2024</th><td>&euro; 1.556.213.265</td></tr>
+        <!-- Older year listed AFTER the newer one: DOM order must never pick it. -->
+        <tr><th scope="row">Utile 2023</th><td>&euro; 1.200.000.000</td></tr>
+        <tr><th scope="row">N. dipendenti</th><td>oltre 1000</td></tr>
+        <tr><th scope="row">Provincia</th><td>Modena</td></tr>
+      </tbody>
+    </table>
+  </body>
+</html>

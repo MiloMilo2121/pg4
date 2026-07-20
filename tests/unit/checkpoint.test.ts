@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { Checkpoint } from '../../src/runtime/checkpoint';
+import { Checkpoint, CheckpointIntegrityError } from '../../src/runtime/checkpoint';
 
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'pg4-cp-'));
 
@@ -42,14 +42,18 @@ describe('Checkpoint', () => {
     expect(JSON.parse(fs.readFileSync(file, 'utf8'))).toEqual({});
   });
 
-  it('survives a corrupt file by starting fresh', () => {
+  it('fails closed on a corrupt file instead of silently overwriting prior output', () => {
     const dir = tmp();
     const file = path.join(dir, 'corrupt.json');
     fs.writeFileSync(file, 'this is not json {{{');
-    const cp = new Checkpoint(file);
-    expect(cp.has('anything')).toBe(false);
-    cp.set('foo', { status: 'done' });
-    expect(cp.isDone('foo')).toBe(true);
+    expect(() => new Checkpoint(file)).toThrow(CheckpointIntegrityError);
+  });
+
+  it('fails closed on syntactically valid but incoherent checkpoint data', () => {
+    const file = path.join(tmp(), 'invalid-shape.json');
+    fs.writeFileSync(file, JSON.stringify({ 'pg:cat:loc:p1': { status: 'done' } }));
+
+    expect(() => new Checkpoint(file)).toThrow('invalid checkpoint shape');
   });
 
   it('buildKey produces stable string', () => {

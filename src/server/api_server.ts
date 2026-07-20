@@ -24,6 +24,7 @@ import { buildPageFetcher } from '../judgment/harvest/page_fetcher';
 import { InMemoryEnrichmentCache } from '../persistence/enrichment_cache';
 import { buildCoverageReport } from '../coverage/coverage_engine';
 import { buildBacklog } from '../coverage/backlog';
+import { isAllowedDashboardOrigin, resolveApiHost } from './local_api_access';
 
 /**
  * pg4 dev API server — single-tenant, local, zero-cloud. Wraps the REAL engine
@@ -35,6 +36,7 @@ import { buildBacklog } from '../coverage/backlog';
  */
 
 const PORT = Number(process.env.PG4_API_PORT ?? 8787);
+const API_HOST = resolveApiHost();
 const REPO_ROOT = path.resolve(__dirname, '..', '..');
 const FETCH = new DirectFetchProvider();
 // Free SERP (Bing HTML, €0) wired into the judgment A-collector so Axis A is
@@ -210,13 +212,21 @@ async function pool<T>(items: T[], limit: number, worker: (item: T) => Promise<v
 let seed: SeedResult;
 
 // ---------------------------------------------------------------------------
+function applyCors(req: http.IncomingMessage, res: http.ServerResponse): boolean {
+  const origin = typeof req.headers.origin === 'string' ? req.headers.origin : undefined;
+  if (!origin) return true; // CLI/curl clients are local too; CORS is browser-only.
+  if (!isAllowedDashboardOrigin(origin)) return false;
+  res.setHeader('access-control-allow-origin', origin);
+  res.setHeader('access-control-allow-methods', 'GET,POST,OPTIONS');
+  res.setHeader('access-control-allow-headers', 'content-type');
+  res.setHeader('vary', 'Origin');
+  return true;
+}
+
 function json(res: http.ServerResponse, status: number, body: unknown): void {
   const payload = JSON.stringify(body);
   res.writeHead(status, {
     'content-type': 'application/json; charset=utf-8',
-    'access-control-allow-origin': '*',
-    'access-control-allow-methods': 'GET,POST,OPTIONS',
-    'access-control-allow-headers': 'content-type',
   });
   res.end(payload);
 }
@@ -551,7 +561,12 @@ function jJobView(job: JudgmentJob) {
 async function handle(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
   const url = new URL(req.url ?? '/', `http://localhost:${PORT}`);
   const p = url.pathname;
-  if (req.method === 'OPTIONS') return json(res, 204, {});
+  if (!applyCors(req, res)) return json(res, 403, { error: 'origin not allowed' });
+  if (req.method === 'OPTIONS') {
+    res.writeHead(204);
+    res.end();
+    return;
+  }
 
   if (p === '/api/health') {
     return json(res, 200, { ok: true, tenant: DEV_TENANT_ID, companies: companies().length, seed: seed.sourceFile });
@@ -597,7 +612,6 @@ async function handle(req: http.IncomingMessage, res: http.ServerResponse): Prom
     res.writeHead(200, {
       'content-type': 'text/csv; charset=utf-8',
       'content-disposition': 'attachment; filename="companies.csv"',
-      'access-control-allow-origin': '*',
     });
     res.end(companiesCsv());
     return;
@@ -757,8 +771,8 @@ async function main(): Promise<void> {
   const server = http.createServer((req, res) => {
     handle(req, res).catch((err) => json(res, 500, { error: (err as Error).message }));
   });
-  server.listen(PORT, () => {
-    process.stderr.write(`[api] pg4 dev API on http://localhost:${PORT} (tenant ${DEV_TENANT_ID})\n`);
+  server.listen(PORT, API_HOST, () => {
+    process.stderr.write(`[api] pg4 dev API on http://${API_HOST}:${PORT} (tenant ${DEV_TENANT_ID})\n`);
   });
 }
 

@@ -22,9 +22,16 @@ function arg(name: string, def: number): number {
   return i >= 0 && process.argv[i + 1] ? Number(process.argv[i + 1]) : def;
 }
 
+function argStr(name: string, def: string): string {
+  const i = process.argv.indexOf(name);
+  return i >= 0 && process.argv[i + 1] ? String(process.argv[i + 1]) : def;
+}
+
 async function main(): Promise<void> {
   const n = arg('--n', 30);
   const step = arg('--step', 7);
+  const seed = argStr('--input', SEED);
+  const outPath = argStr('--out', 'docs/precision_evidence/probe_deep_pages_output.json');
   const fetcher = new DirectFetchProvider();
   const fetch = async (url: string): Promise<string | undefined> => {
     try {
@@ -35,7 +42,7 @@ async function main(): Promise<void> {
   };
 
   const rows = fs
-    .readFileSync(SEED, 'utf8')
+    .readFileSync(seed, 'utf8')
     .split('\n')
     .filter(Boolean)
     .map((s) => JSON.parse(s))
@@ -81,7 +88,7 @@ async function main(): Promise<void> {
     cost: { extra_contact_page_fetches_total: extraPages, avg_per_site: sites ? (extraPages / sites).toFixed(2) : '0', eur: 0 },
     lift_samples: liftSamples,
   };
-  const dest = path.resolve('docs/precision_evidence/probe_deep_pages_output.json');
+  const dest = path.resolve(outPath);
   fs.writeFileSync(dest, JSON.stringify(out, null, 2));
   console.log(JSON.stringify(out, null, 2));
   console.error(`\nwrote ${dest}`);

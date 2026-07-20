@@ -49,10 +49,10 @@ describe('resolveRole — the cost-safe compiler', () => {
     expect(r.routeOptions.paidEnabled).toBe(true);
   });
 
-  it('AC5: italian_real_estate excludes ddg_lite + serper from SEARCH_WEB', () => {
+  it('AC5: italian_real_estate excludes ddg_lite but INCLUDES serper (R14 serper-exclusion lifted 2026-07-20 after live re-test: ~50% own-site hit vs bing_html 0)', () => {
     const r = resolveRole('SEARCH_WEB', { paidEnabled: true, categoryProfile: 'italian_real_estate' });
     expect(r.providerIds).not.toContain('ddg_lite');
-    expect(r.providerIds).not.toContain('serper');
+    expect(r.providerIds).toContain('serper');
     expect(r.providerIds).toContain('bing_html');
   });
 

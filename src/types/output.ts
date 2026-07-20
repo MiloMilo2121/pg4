@@ -88,6 +88,9 @@ export const DiscoveryMethod = {
   INPUT_VERIFIED: 'INPUT_VERIFIED',
   INPUT_PIVA_MATCH: 'INPUT_PIVA_MATCH',
   INPUT_SEMANTIC: 'INPUT_SEMANTIC',
+  /** Input website accepted because a distinctive company-name token is embedded
+   *  in its registrable domain (content-verify failed). Free, flag-gated. */
+  INPUT_DOMAIN_NAME_MATCH: 'INPUT_DOMAIN_NAME_MATCH',
   PG_PHONE_SOURCE_TRUST: 'PG_PHONE_SOURCE_TRUST',
   EMAIL_DOMAIN: 'EMAIL_DOMAIN',
   HYPER_GUESSER: 'HYPER_GUESSER',

@@ -5,6 +5,12 @@ export default defineConfig({
     // Hermetic boundary: strip live API keys/flags from the operator's .env so
     // unit tests never hit external services (Apify/Perplexity/Serper/…).
     setupFiles: ['./tests/setup/neutralize_external_env.ts'],
+    // The campaign/recovery orchestration tests run REAL waits (watchdog loops,
+    // lock heartbeats: ~2-2.6s each in isolation). Under 122-file parallel CPU
+    // contention they overshoot vitest's 5s default and flake (measured
+    // 2026-07-18: timeouts only, never assertion failures; serialized run is
+    // 100% green). 30s keeps a hang guard without punishing honest slowness.
+    testTimeout: 30_000,
     coverage: {
       provider: 'v8',
       include: ['src/**/*.ts'],

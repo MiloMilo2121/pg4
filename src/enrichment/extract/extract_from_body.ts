@@ -120,15 +120,32 @@ export function extractFromBody(html: string | undefined | null, lead: { officia
     return out; // unparseable — caller keeps whatever it had
   }
 
-  // ---- Emails: mailto: hrefs first (highest-confidence), then body text ----
+  // ---- Emails: mailto: hrefs first (highest-confidence), then Cloudflare
+  // email-protection, then the (de-obfuscated) body text ----
   const emailCandidates = new Set<string>();
   $('a[href^="mailto:" i]').each((_i, el) => {
     const href = $(el).attr('href') ?? '';
     const addr = href.replace(/^mailto:/i, '').split('?')[0].trim().toLowerCase();
     if (addr.includes('@')) emailCandidates.add(addr);
   });
+  // Cloudflare email obfuscation: a real address the plain-text scan can NEVER
+  // see because Cloudflare replaced it in the DOM with `data-cfemail="HEX"`
+  // (and/or an `/cdn-cgi/l/email-protection#HEX` href). Deterministic XOR decode.
+  $('[data-cfemail]').each((_i, el) => {
+    const dec = decodeCfEmail($(el).attr('data-cfemail'));
+    if (dec) emailCandidates.add(dec);
+  });
+  $('a[href*="/cdn-cgi/l/email-protection#" i]').each((_i, el) => {
+    const dec = decodeCfEmail(($(el).attr('href') ?? '').split('#')[1]);
+    if (dec) emailCandidates.add(dec);
+  });
   const bodyText = $('body').length ? $('body').text() : $.root().text();
   for (const m of bodyText.matchAll(EMAIL_RE)) emailCandidates.add(m[0].toLowerCase());
+  // Manual anti-scraper obfuscation: "info [at] studio [dot] it". Only BRACKETED
+  // tokens are rewritten (bare " at "/" dot " would corrupt prose into fakes);
+  // own-domain filtering below is the precision backstop for anything revealed.
+  const deob = deobfuscateBrackets(bodyText);
+  if (deob !== bodyText) for (const m of deob.matchAll(EMAIL_RE)) emailCandidates.add(m[0].toLowerCase());
 
   for (const addr of emailCandidates) {
     if (PEC_DOMAIN_RE.test(addr)) {
@@ -239,6 +256,41 @@ function normalisePhone(raw: string): string | undefined {
   if (digits.startsWith('0039')) digits = digits.slice(4);
   else if (digits.length >= 11 && digits.startsWith('39')) digits = digits.slice(2);
   return digits.length >= 8 && digits.length <= 11 ? digits : undefined;
+}
+
+/**
+ * Decode a Cloudflare-obfuscated email (`data-cfemail` / email-protection hex):
+ * the first byte is the XOR key, each subsequent byte is a char XOR that key.
+ * Returns a lowercased address, or undefined for malformed/non-email output.
+ */
+function decodeCfEmail(hex: string | undefined | null): string | undefined {
+  if (!hex || !/^[0-9a-f]+$/i.test(hex) || hex.length < 6 || hex.length % 2 !== 0) return undefined;
+  const key = Number.parseInt(hex.slice(0, 2), 16);
+  let out = '';
+  for (let i = 2; i < hex.length; i += 2) {
+    out += String.fromCharCode(Number.parseInt(hex.slice(i, i + 2), 16) ^ key);
+  }
+  out = out.toLowerCase().trim();
+  // Validate with a NON-global regex (never .test() the shared global EMAIL_RE:
+  // its lastIndex is stateful and would desync the matchAll scans above).
+  return /^[a-z0-9._%+\-]+@[a-z0-9.\-]+\.[a-z]{2,}$/.test(out) ? out : undefined;
+}
+
+/**
+ * Reveal emails hidden behind BRACKETED anti-scraper tokens:
+ *   "info [at] studio [dot] it" · "info (at) studio (punto) it" → info@studio.it
+ * Only bracketed/parenthesised/braced forms are rewritten; a bare " at " / " dot "
+ * is deliberately left alone (it would turn ordinary prose into fake addresses).
+ * CASE-SENSITIVE lowercase on purpose: Italian footers write the PROVINCE
+ * SIGLA uppercase — "14053 Canelli (AT) www.rossivini.it" — and a
+ * case-insensitive "(AT)"→@ fabricates canelli@www.rossivini.it, an
+ * own-domain (accepted!) fake. Obfuscated emails use lowercase tokens;
+ * an uppercase "(AT)" is an address, not an email.
+ */
+function deobfuscateBrackets(text: string): string {
+  return text
+    .replace(/\s*[[({]\s*(?:at|chiocciola)\s*[\])}]\s*/g, '@')
+    .replace(/\s*[[({]\s*(?:dot|punto)\s*[\])}]\s*/g, '.');
 }
 
 // ---- JSON-LD helpers (schema.org structured data) ----

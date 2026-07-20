@@ -1,5 +1,5 @@
 name: Recovery agent
-run-name: Recovery ${{ github.event.client_payload.incident_id || inputs.incident_id }}
+run-name: Recovery ${{ github.event.client_payload.incident_id || inputs.incident_id || 'manual' }} attempt ${{ github.event.client_payload.recovery_attempt || 'manual' }}
 
 on:
   repository_dispatch:
@@ -7,27 +7,32 @@ on:
   workflow_dispatch:
     inputs:
       incident_id:
-        description: Incident id for a manually prepared .recovery/incident.json
+        description: 24-character incident id matching the envelope
+        required: true
+        type: string
+      incident_envelope:
+        description: Compact recovery envelope JSON (no logs, outputs, or secrets)
         required: true
         type: string
 
+# Duplicate GitHub deliveries are possible after a VPS crash between durable
+# dispatch intent and the API response. Serialize by validated incident id;
+# do not cancel a running diagnosis/review cycle.
+concurrency:
+  group: recovery-${{ github.event.client_payload.incident_id || inputs.incident_id || github.run_id }}
+  cancel-in-progress: false
+
 permissions:
-  contents: write
-  pull-requests: write
-  actions: read
+  contents: read
 
 jobs:
   diagnose-fix-review-merge:
     runs-on: ubuntu-latest
-    env:
-      OPENROUTER_ENABLED: 'true'
-      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-      OPENROUTER_MODEL: anthropic/claude-opus-4-8
-      INCIDENT_PAYLOAD: ${{ toJson(github.event.client_payload) }}
     steps:
       - uses: actions/checkout@v4
         with:
           ref: main
+          persist-credentials: false
       - uses: pnpm/action-setup@v4
         with:
           version: 10.33.2
@@ -37,16 +42,63 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - name: Materialize sanitized incident envelope
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INCIDENT_PAYLOAD: ${{ toJson(github.event.client_payload) }}
+          MANUAL_ENVELOPE: ${{ inputs.incident_envelope }}
+          REQUESTED_INCIDENT_ID: ${{ github.event.client_payload.incident_id || inputs.incident_id }}
         run: |
-          mkdir -p .recovery
-          if [ "${{ github.event_name }}" = repository_dispatch ]; then
-            printf '%s' "$INCIDENT_PAYLOAD" | node -e 'let x="";process.stdin.on("data",d=>x+=d).on("end",()=>{const p=JSON.parse(x);process.stdout.write(JSON.stringify(p.envelope));})' > .recovery/incident.json
-          else
-            test -f .recovery/incident.json
-          fi
+          node <<'NODE'
+          const fs = require('fs');
+
+          const incidentId = process.env.REQUESTED_INCIDENT_ID || '';
+          if (!/^[a-f0-9]{24}$/.test(incidentId)) throw new Error('invalid incident id');
+          const payload = process.env.EVENT_NAME === 'repository_dispatch'
+            ? JSON.parse(process.env.INCIDENT_PAYLOAD || '{}')
+            : { envelope: JSON.parse(process.env.MANUAL_ENVELOPE || '{}') };
+          const envelope = payload.envelope;
+          if (!envelope || envelope.version !== 1 || envelope.incident_id !== incidentId ||
+            typeof envelope.run_id !== 'string' || envelope.run_id.length === 0 || envelope.run_id.length > 256 ||
+            typeof envelope.generated_at !== 'string' || !Number.isFinite(Date.parse(envelope.generated_at)) ||
+            typeof envelope.output_csv !== 'string' || envelope.output_csv.length === 0 || envelope.output_csv.length > 2048 ||
+            !Array.isArray(envelope.failures) || envelope.failures.length < 1 || envelope.failures.length > 20) {
+            throw new Error('invalid compact recovery envelope');
+          }
+          const recoveryErrorClasses = new Set([
+            'network_exhausted', 'maps_no_feed', 'selector_drift', 'consent_wall',
+            'blocked_or_captcha', 'checkpoint_integrity', 'unknown',
+          ]);
+          for (const failure of envelope.failures) {
+            if (!failure || typeof failure.key !== 'string' || failure.key.length > 512 || !['pg', 'maps'].includes(failure.provider) ||
+              typeof failure.category !== 'string' || failure.category.length > 256 ||
+              typeof failure.location !== 'string' || failure.location.length > 256 ||
+              !recoveryErrorClasses.has(failure.error_class) ||
+              (failure.page !== undefined && (!Number.isInteger(failure.page) || failure.page < 1)) ||
+              (failure.reason !== undefined && (typeof failure.reason !== 'string' || failure.reason.length > 800)) ||
+              (failure.url !== undefined && (typeof failure.url !== 'string' || failure.url.length > 2_048)) ||
+              (failure.page_title !== undefined && (typeof failure.page_title !== 'string' || failure.page_title.length > 500)) ||
+              (failure.screenshot_path !== undefined && (typeof failure.screenshot_path !== 'string' || failure.screenshot_path.length > 512 ||
+                failure.screenshot_path.startsWith('/') || failure.screenshot_path.split(/[\\/]/).includes('..'))) ||
+              (failure.evidence_fingerprint !== undefined && !/^[a-f0-9]{8,64}$/i.test(failure.evidence_fingerprint))) {
+              throw new Error('invalid recovery failure record');
+            }
+          }
+          fs.mkdirSync('.recovery', { recursive: true });
+          fs.writeFileSync('.recovery/incident.json', `${JSON.stringify(envelope)}\n`, { mode: 0o600 });
+          fs.appendFileSync(process.env.GITHUB_ENV, `RECOVERY_INCIDENT_ID=${incidentId}\n`);
+          NODE
+      - name: Verify PR credential
+        env:
+          GH_TOKEN: ${{ secrets.RECOVERY_GH_TOKEN }}
+        run: |
+          test -n "$GH_TOKEN" || { echo 'RECOVERY_GH_TOKEN is required for autonomous PR and merge'; exit 1; }
       - name: Create recovery branch
-        run: git checkout -b "recovery/${{ github.event.client_payload.incident_id || inputs.incident_id }}"
+        run: git checkout -b "recovery/$RECOVERY_INCIDENT_ID"
       - name: Generate constrained patch
+        env:
+          OPENROUTER_ENABLED: 'true'
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          OPENROUTER_MODEL: anthropic/claude-opus-4-8
         run: pnpm exec tsx src/scripts/recovery_agent.ts patch .recovery/incident.json
       - name: Mechanical pre-review
         run: |
@@ -55,16 +107,24 @@ jobs:
           pnpm test
           pnpm run lint
       - name: Independent AI pre-review
+        env:
+          OPENROUTER_ENABLED: 'true'
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          OPENROUTER_MODEL: anthropic/claude-opus-4-8
         run: pnpm exec tsx src/scripts/recovery_agent.ts review .recovery/incident.json
       - name: Commit, create PR, auto-merge
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.RECOVERY_GH_TOKEN }}
         run: |
+          test -n "$GH_TOKEN"
+          test -n "$RECOVERY_INCIDENT_ID"
           test -n "$(git status --short)"
           git config user.name "pg4-recovery-agent[bot]"
           git config user.email "pg4-recovery-agent[bot]@users.noreply.github.com"
+          gh auth setup-git
           git add src tests
-          git commit -m "fix(recovery): remediate ${{ github.event.client_payload.incident_id || inputs.incident_id }}"
+          git commit -m "fix(recovery): remediate $RECOVERY_INCIDENT_ID"
           git push --set-upstream origin HEAD
-          gh pr create --base main --head "$(git branch --show-current)" --title "fix(recovery): ${{ github.event.client_payload.incident_id || inputs.incident_id }}" --body "Automated recovery patch. CI, regression tests and independent pre-review passed."
-          gh pr merge --merge --delete-branch --admin
+          PR_URL="$(gh pr create --base main --head "$(git branch --show-current)" --title "fix(recovery): $RECOVERY_INCIDENT_ID" --body "Automated recovery patch. CI, regression tests and independent pre-review passed.")"
+          gh pr checks "$PR_URL" --watch --fail-fast
+          gh pr merge "$PR_URL" --merge --delete-branch --match-head-commit "$(git rev-parse HEAD)"
