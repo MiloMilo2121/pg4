@@ -1,6 +1,7 @@
 import type { Lead } from '../../types/lead';
 import type { NormalizedLead } from '../../types/discovery';
-import type { ProviderRouter } from '../../providers/provider_router';
+import type { ProviderRouter, RouteOptions } from '../../providers/provider_router';
+import type { PerLeadContext } from '../../types/enrichment';
 import { PreVerifyGate } from '../../discovery/website/preverify_gate';
 import { isParked, isUnderConstruction, isDirectoryOrSocial } from '../../discovery/website/content_filter';
 import { RdapValidator } from '../../discovery/website/rdap_validator';
@@ -72,6 +73,26 @@ export interface VerifyCandidatesOpts {
    * Map; callers pass `ctx.httpFetchCache`.
    */
   fetchCache?: Map<string, HttpFetchResult>;
+  /**
+   * ENRICH-3 — paid-route passthrough for the fetch path. Without this,
+   * `router.fetch` runs free-only regardless of `--enable-paid` (the
+   * paid WEB_FETCH/WEB_UNBLOCK fallbacks — firecrawl/brightdata — are
+   * unreachable by construction). Callers thread the per-lead gate +
+   * budgets via `routeFromLeadContext(ctx)`; the router's default-deny
+   * is preserved when absent.
+   */
+  route?: Pick<RouteOptions, 'paidEnabled' | 'remainingLeadBudgetEur' | 'runCostCeilingEur'>;
+}
+
+/** Single source for the paid-route passthrough derived from a per-lead context. */
+export function routeFromLeadContext(
+  ctx: Pick<PerLeadContext, 'paidEnabled' | 'costCeilingEur' | 'costEur' | 'runCostCeilingEur'>
+): VerifyCandidatesOpts['route'] {
+  return {
+    paidEnabled: ctx.paidEnabled === true,
+    remainingLeadBudgetEur: Math.max(0, (ctx.costCeilingEur ?? 0) - ctx.costEur),
+    runCostCeilingEur: ctx.runCostCeilingEur,
+  };
 }
 
 export interface VerifyVerdict {
@@ -181,7 +202,7 @@ export async function verifyPlannedCandidates(
     if (cached) {
       res = cached;
     } else {
-      res = await router.fetch(candidate, { timeoutMs: opts.timeoutMs, meta: opts.meta });
+      res = await router.fetch(candidate, { timeoutMs: opts.timeoutMs, meta: opts.meta, ...opts.route });
       opts.fetchCache?.set(cacheKey, res);
     }
     // Phase D.2/D.3: scheduled retry on transport-class failures only.
@@ -227,6 +248,7 @@ export async function verifyPlannedCandidates(
         timeoutMs: opts.timeoutMs,
         meta: opts.meta,
         bypassBreakerRecord: true,
+        ...opts.route,
       });
       // R6.1 — overwrite the cache with the latest retry result so
       // subsequent stages see the most recent state of the host.

@@ -178,6 +178,20 @@ const EnvSchema = z.object({
   APIFY_FACEBOOK_ENABLED: envBool(false),
   APIFY_TIKTOK_ENABLED: envBool(false),
   APIFY_REGISTRO_ENABLED: envBool(false),
+  // ENRICH-3 actors — marketplace actors never used before this phase, so each
+  // gets an id override (APIFY_*_ACTOR_ID) to survive marketplace drift without
+  // a code change. email_verify has NO default id: the operator picks the
+  // verifier actor at probe time, so its ACTOR_ID is required to enable it.
+  APIFY_PORTAL_IMMOBILIARE_ENABLED: envBool(false),
+  APIFY_PORTAL_IMMOBILIARE_ACTOR_ID: z.string().optional(),
+  APIFY_PORTAL_IMMOBILIARE_ADS_ENABLED: envBool(false),
+  APIFY_PORTAL_IMMOBILIARE_ADS_ACTOR_ID: z.string().optional(),
+  APIFY_PORTAL_WIKICASA_ENABLED: envBool(false),
+  APIFY_PORTAL_WIKICASA_ACTOR_ID: z.string().optional(),
+  APIFY_BILANCI_ENABLED: envBool(false),
+  APIFY_BILANCI_ACTOR_ID: z.string().optional(),
+  APIFY_EMAIL_VERIFY_ENABLED: envBool(false),
+  APIFY_EMAIL_VERIFY_ACTOR_ID: z.string().optional(),
 
   // Perplexity entity-resolution (last-resort discovery) — reuses the wired
   // Perplexity LLM. OFF by default; gated by the paid budget like every paid call.

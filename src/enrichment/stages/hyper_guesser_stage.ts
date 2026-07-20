@@ -8,7 +8,7 @@ import { rankCandidates } from '../../discovery/website/hyper_guesser/candidate_
 import type { CandidateScore } from '../../discovery/website/hyper_guesser/candidate_ranker';
 import { DEFAULTS } from '../../config/defaults';
 import type { ProviderRouter } from '../../providers/provider_router';
-import { verifyPlannedCandidates } from './verify_candidates';
+import { verifyPlannedCandidates, routeFromLeadContext } from './verify_candidates';
 import type { CandidateVerificationPlan } from './verify_candidates';
 
 /**
@@ -60,6 +60,7 @@ export class HyperGuesserStage implements Stage {
       timeoutMs: DEFAULTS.pipeline.guessTimeoutMs,
       meta: { lead_id: ctx.leadId, run_id: ctx.runId, stage: this.name },
       fetchCache: ctx.httpFetchCache,
+      route: routeFromLeadContext(ctx),
     });
     if (verdict.matched) {
       lead.website_discovery_method = DiscoveryMethod.HYPER_GUESSER;
