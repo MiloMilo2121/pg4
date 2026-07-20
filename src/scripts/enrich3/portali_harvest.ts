@@ -34,9 +34,17 @@ interface HarvestUnit {
 }
 
 /**
- * Single place encoding each actor's input shape (probe-validated guesses —
- * none of these actors ever ran in this repo). If a probe shows a different
- * schema, fix it HERE only.
+ * Single place encoding each actor's input shape — validated against the
+ * REAL input schemas fetched from the actors' default builds (probe R1):
+ *   - azzouzana~immobiliare-agencies-scraper: { startUrl: string, maxItems,
+ *     extractSocials } — `startUrl` is SINGULAR; an array is silently ignored
+ *     and the actor runs its Milano default (measured in the first probe).
+ *   - stealth_mode~wikicasa-agency-search-scraper: { urls: string[],
+ *     max_items_per_url, ignore_url_failures }.
+ *   - saregaa~immobiliareit-scraper was DROPPED: its schema is a listings
+ *     scraper (startUrls + required proxyConfiguration; scrapeAllAgencies is
+ *     all-Italy only), and azzouzana already returns isPaid + realEstateAds —
+ *     the only unique loss is `fiaip`.
  */
 function buildUnits(probe: boolean): HarvestUnit[] {
   const cap = (n: number): number => (probe ? 15 : n);
@@ -47,23 +55,21 @@ function buildUnits(probe: boolean): HarvestUnit[] {
       slug,
       maxItems: cap(3000),
       input: {
-        startUrls: [{ url: `https://www.immobiliare.it/agenzie-immobiliari/${slug}-provincia/` }],
+        startUrl: `https://www.immobiliare.it/agenzie-immobiliari/${slug}-provincia/`,
         extractSocials: true,
         maxItems: cap(3000),
       },
     });
   }
   units.push({
-    actor: 'portal_immobiliare_ads',
-    slug: 'veneto',
-    maxItems: cap(6000),
-    input: { scrapeAllAgencies: true, region: 'veneto', maxItems: cap(6000) },
-  });
-  units.push({
     actor: 'portal_wikicasa',
     slug: 'veneto',
     maxItems: cap(6000),
-    input: { startUrls: [{ url: 'https://www.wikicasa.it/agenzie-immobiliari/regione-veneto/' }], maxItems: cap(6000) },
+    input: {
+      urls: ['https://www.wikicasa.it/agenzie-immobiliari/regione-veneto/'],
+      max_items_per_url: cap(6000),
+      ignore_url_failures: true,
+    },
   });
   return units;
 }

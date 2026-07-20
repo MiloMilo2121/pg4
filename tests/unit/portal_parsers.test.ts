@@ -52,6 +52,56 @@ describe('portal parsers', () => {
     expect(rec!.email).toBeUndefined();
   });
 
+  it('parses the REAL immobiliare.it shape: phones objects (virtual excluded), location, realEstateAds, isPaid', () => {
+    const rec = parseImmobiliareAgencyItem({
+      name: 'Esempio Group Real Estate',
+      phones: [
+        { type: 'vtel', value: '02 0000 2188', formattedValues: '+390200002188', isVirtual: true },
+        { type: 'tel1', value: '02 0000 8590', formattedValues: '+390200008590', isVirtual: false },
+      ],
+      location: { city: { name: 'Milano' }, province: { id: 'MI' } },
+      realEstateAds: 409,
+      isPaid: true,
+      emails: ['acme.srl@lamiapec.it'],
+      url: 'https://www.immobiliare.it/agenzie-immobiliari/000001/esempio/',
+    });
+    expect(rec!.phone).toBe('+390200008590'); // the REAL line — never the virtual tracking number
+    expect(rec!.city).toBe('Milano');
+    expect(rec!.province).toBe('MI');
+    expect(rec!.listingsCount).toBe(409);
+    expect(rec!.isPaid).toBe(true);
+    expect(rec!.email).toBe('acme.srl@lamiapec.it');
+  });
+
+  it('parses the REAL wikicasa shape: company_name, city_name, premium/#ads — and NO truncated phone', () => {
+    const rec = parseWikicasaItem({
+      name: 'Gambaro',
+      company_name: 'GAMBARO INTERMEDIAZIONI COMMERCIALI SNC DI GAMBARO EDOARDO & C',
+      city_name: 'Venezia',
+      zip: '30173',
+      hidden_display_phone: '041531',
+      io_vox_phone: null,
+      website: 'www.intermediazionicommerciali.it',
+      active_real_estates: 92,
+      premium: true,
+      from_url: 'https://www.wikicasa.it/agenzie-immobiliari/regione-veneto/',
+    });
+    expect(rec!.name).toContain('GAMBARO');
+    expect(rec!.city).toBe('Venezia');
+    expect(rec!.phone).toBeUndefined(); // truncated hidden_display_phone must never become a phone key
+    expect(rec!.website).toBe('https://www.intermediazionicommerciali.it');
+    expect(rec!.listingsCount).toBe(92);
+    expect(rec!.isPaid).toBe(true);
+  });
+
+  it('an all-virtual phone list yields no phone at all', () => {
+    const rec = parseImmobiliareAgencyItem({
+      name: 'Acme',
+      phones: [{ type: 'vtel', formattedValues: '+39028295', isVirtual: true }],
+    });
+    expect(rec!.phone).toBeUndefined();
+  });
+
   it('degrades to undefined on empty/garbage items — never throws', () => {
     expect(parseImmobiliareAgencyItem({})).toBeUndefined();
     expect(parseImmobiliareAdsItem(null)).toBeUndefined();

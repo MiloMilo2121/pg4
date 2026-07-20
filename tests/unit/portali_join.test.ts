@@ -113,4 +113,15 @@ describe('portali_join attach', () => {
     attach(rec({ name: 'Acme', email: 'acme.padova@gmail.com' }), lead, emptyJoinStats());
     expect(lead.email_type).toBe('public');
   });
+
+  it('a PEC-looking portal email is routed to `pec`, never to email_inferred', () => {
+    const lead = { company_name: 'Acme' } as Lead;
+    attach(rec({ name: 'Acme', email: 'acme.srl@lamiapec.it' }), lead, emptyJoinStats());
+    expect(lead.email_inferred).toBeUndefined();
+    expect(lead.pec).toBe('acme.srl@lamiapec.it');
+    const legal = { company_name: 'Acme' } as Lead;
+    attach(rec({ name: 'Acme', email: 'acme@legalmail.it' }), legal, emptyJoinStats());
+    expect(legal.email_inferred).toBeUndefined();
+    expect(legal.pec).toBe('acme@legalmail.it');
+  });
 });

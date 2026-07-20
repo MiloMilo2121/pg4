@@ -81,6 +81,32 @@ const socialUrl = (host: RegExp, ...vs: unknown[]): string | undefined => {
   return undefined;
 };
 
+/**
+ * immobiliare.it phones come as objects `{type, value, formattedValues,
+ * isVirtual}` where `isVirtual: true` (type `vtel`) is the PORTAL'S tracking
+ * number — attaching it would poison the phone-key join, so virtual numbers
+ * are excluded outright. Prefers the E.164 formattedValues.
+ */
+const phoneFromObjects = (v: unknown): string | undefined => {
+  if (!Array.isArray(v)) return undefined;
+  for (const o of v) {
+    if (!o || typeof o !== 'object') continue;
+    const rec = o as Record<string, unknown>;
+    if (rec.isVirtual === true) continue;
+    const p = str(rec.formattedValues) ?? str(rec.value);
+    if (p) return p;
+  }
+  return undefined;
+};
+
+/** immobiliare.it `location` object → { city, province } (province is the 2-letter id). */
+const fromLocation = (v: unknown): { city?: string; province?: string } => {
+  const loc = (v ?? {}) as Record<string, unknown>;
+  const city = ((loc.city ?? {}) as Record<string, unknown>).name;
+  const province = ((loc.province ?? {}) as Record<string, unknown>).id;
+  return { city: str(city), province: str(province) };
+};
+
 /** A real external site — never a portal/listing URL echoed back. */
 const ownWebsite = (...vs: unknown[]): string | undefined => {
   const s = firstStr(...vs);
@@ -89,22 +115,24 @@ const ownWebsite = (...vs: unknown[]): string | undefined => {
   return /^https?:\/\//i.test(s) ? s : `https://${s}`;
 };
 
-/** azzouzana~immobiliare-agencies-scraper — email + socials per agency. */
+/** azzouzana~immobiliare-agencies-scraper — email + socials + isPaid/#ads per agency. */
 export function parseImmobiliareAgencyItem(raw: unknown): PortalAgencyRecord | undefined {
   const it = (raw ?? {}) as Record<string, unknown>;
+  const loc = fromLocation(it.location);
   const rec: PortalAgencyRecord = {
     portal: 'immobiliare',
     name: firstStr(it.name, it.agencyName, it.agency_name, it.title, it.ragioneSociale),
-    phone: firstStr(it.phone, it.phoneNumber, it.telefono, it.phones, it.phoneNumbers),
+    phone: firstStr(it.phone, it.phoneNumber, it.telefono) ?? phoneFromObjects(it.phones) ?? firstStr(it.phoneNumbers),
     email: email(it.email, it.emails, it.mail),
     website: ownWebsite(it.website, it.site, it.url_sito, it.websiteUrl),
-    city: firstStr(it.city, it.citta, it.comune, it.location),
-    province: firstStr(it.province, it.provincia),
+    city: firstStr(it.city, it.citta, it.comune) ?? loc.city,
+    province: firstStr(it.province, it.provincia) ?? loc.province,
     address: firstStr(it.address, it.indirizzo, it.fullAddress),
     instagram: socialUrl(/instagram\.com/i, it.instagram, it.socials, it.socialLinks),
     facebook: socialUrl(/facebook\.com/i, it.facebook, it.socials, it.socialLinks),
     linkedin: socialUrl(/linkedin\.com/i, it.linkedin, it.socials, it.socialLinks),
-    listingsCount: num(it.listingsCount, it.totalAds, it.numAnnunci, it.adsCount, it.properties),
+    listingsCount: num(it.realEstateAds, it.listingsCount, it.totalAds, it.numAnnunci, it.adsCount, it.properties),
+    isPaid: boolish(it.isPaid, it.is_paid, it.premium, it.isPremium),
     portalUrl: firstStr(it.agencyUrl, it.portalUrl, it.url, it.link),
   };
   return rec.name || rec.phone || rec.email ? rec : undefined;
@@ -128,21 +156,29 @@ export function parseImmobiliareAdsItem(raw: unknown): PortalAgencyRecord | unde
   return rec.name || rec.phone ? rec : undefined;
 }
 
-/** stealth_mode~wikicasa-agency-search-scraper — website + phones. */
+/**
+ * stealth_mode~wikicasa-agency-search-scraper — website + premium/#ads.
+ * Real shape (probe R1): `company_name` (legal name), `name`, `city_name`,
+ * `website`, `active_real_estates`, `premium`, and NO usable phone —
+ * `hidden_display_phone` is TRUNCATED (e.g. "041531") and `io_vox_phone` is
+ * the portal's tracking line, so wikicasa records join by name+city only
+ * (a truncated phone would forge wrong phone keys).
+ */
 export function parseWikicasaItem(raw: unknown): PortalAgencyRecord | undefined {
   const it = (raw ?? {}) as Record<string, unknown>;
   const rec: PortalAgencyRecord = {
     portal: 'wikicasa',
-    name: firstStr(it.name, it.agencyName, it.agency_name, it.title),
-    phone: firstStr(it.phone, it.phoneNumber, it.telefono, it.phones),
+    name: firstStr(it.company_name, it.name, it.agencyName, it.agency_name, it.title),
     email: email(it.email, it.emails),
     website: ownWebsite(it.website, it.site, it.websiteUrl, it.web),
-    city: firstStr(it.city, it.citta, it.comune, it.location),
+    city: firstStr(it.city_name, it.city, it.citta, it.comune),
     province: firstStr(it.province, it.provincia),
     address: firstStr(it.address, it.indirizzo),
-    portalUrl: firstStr(it.agencyUrl, it.portalUrl, it.url, it.link),
+    listingsCount: num(it.active_real_estates, it.visible_real_estates, it.listingsCount),
+    isPaid: boolish(it.premium, it.isPaid),
+    portalUrl: firstStr(it.agencyUrl, it.portalUrl, it.url, it.link, it.from_url),
   };
-  return rec.name || rec.phone || rec.website ? rec : undefined;
+  return rec.name || rec.website ? rec : undefined;
 }
 
 export function parsePortalItem(portal: PortalAgencyRecord['portal'], raw: unknown): PortalAgencyRecord | undefined {
