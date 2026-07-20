@@ -61,30 +61,41 @@ async function main(): Promise<void> {
       }
     };
     let homepage: string | undefined;
+    let tlsBlocked = false;
     try {
       const res = await router.fetch(site, { timeoutMs: DEFAULTS.pipeline.requestTimeoutMs, meta });
       homepage = res.status >= 200 && res.status < 400 ? res.html : undefined;
-    } catch {
+      // Legacy-TLS sites (weak DH keys etc.) fail OUR client's handshake but
+      // are perfectly alive — firecrawl's cloud fetch reads them fine, so
+      // they go to the render step instead of the "dead" bucket.
+      if (!homepage && /ssl|tls|handshake|dh key|certificate/i.test(res.error ?? '')) tlsBlocked = true;
+      if (process.env.E3_DEBUG === '1') {
+        console.log(`[dbg] ${site} → provider=${res.provider} status=${res.status} html=${res.html ? res.html.length : 0} err=${res.error ?? ''}`);
+      }
+    } catch (err) {
+      if (process.env.E3_DEBUG === '1') console.log(`[dbg] ${site} THREW ${(err as Error).message}`);
       homepage = undefined;
     }
-    if (!homepage) {
+    if (!homepage && !tlsBlocked) {
       counts.dead += 1;
       return; // dead site — never render a corpse
     }
-    const lower = homepage.toLowerCase();
-    if (isParked(lower) || isUnderConstruction(lower)) {
-      counts.parked += 1;
-      return;
-    }
-    try {
-      const deep = await deepExtractFromSite(site, freeFetcher, { maxContactPages: 2, homepageHtml: homepage });
-      applyBodyExtraction(lead, deep.extraction);
-    } catch {
-      /* free extraction must never kill the row */
-    }
-    if (has(lead.email_inferred)) {
-      counts.free_email += 1;
-      return;
+    if (homepage) {
+      const lower = homepage.toLowerCase();
+      if (isParked(lower) || isUnderConstruction(lower)) {
+        counts.parked += 1;
+        return;
+      }
+      try {
+        const deep = await deepExtractFromSite(site, freeFetcher, { maxContactPages: 2, homepageHtml: homepage });
+        applyBodyExtraction(lead, deep.extraction);
+      } catch {
+        /* free extraction must never kill the row */
+      }
+      if (has(lead.email_inferred)) {
+        counts.free_email += 1;
+        return;
+      }
     }
 
     // ---- step 2: forced render, firecrawl only, budget-fenced ----

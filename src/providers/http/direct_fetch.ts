@@ -26,23 +26,45 @@ export class DirectFetchProvider implements HttpProvider {
       // hours on a national run. The wall-clock deadline (2× the idle timeout)
       // bounds the whole exchange.
       const deadline = AbortSignal.timeout(timeoutMs * 2);
+      // Redirects are followed MANUALLY (≤5 hops): undici's `maxRedirections`
+      // option throws "not supported, use the redirect interceptor" on the
+      // redirect path under current undici/Node — which silently killed every
+      // http→https 301 site (measured: an entire pass classified "dead").
       // Realistic per-host browser fingerprint (UA + coherent client hints):
       // the old declared-bot UA made some sites serve a stripped page. Seeded
-      // by hostname → deterministic (fixture-safe), one identity per host.
-      let host: string;
-      try {
-        host = new URL(url).hostname;
-      } catch {
-        host = url;
+      // by hostname → deterministic (fixture-safe), one identity per host —
+      // recomputed per hop because a redirect can change host.
+      let currentUrl = url;
+      let res: Awaited<ReturnType<typeof request>>;
+      let hops = 0;
+      for (;;) {
+        let host: string;
+        try {
+          host = new URL(currentUrl).hostname;
+        } catch {
+          host = currentUrl;
+        }
+        res = await request(currentUrl, {
+          method: 'GET',
+          bodyTimeout: timeoutMs,
+          headersTimeout: timeoutMs,
+          signal: opts.signal ? AbortSignal.any([opts.signal, deadline]) : deadline,
+          headers: fingerprintFor(host).headers,
+        });
+        const loc = res.headers.location;
+        const location = Array.isArray(loc) ? loc[0] : loc;
+        if (res.statusCode >= 300 && res.statusCode < 400 && location && hops < 5) {
+          await res.body.dump();
+          try {
+            currentUrl = new URL(location, currentUrl).toString();
+          } catch {
+            break; // unparseable Location — surface the 3xx as-is
+          }
+          hops += 1;
+          continue;
+        }
+        break;
       }
-      const res = await request(url, {
-        method: 'GET',
-        bodyTimeout: timeoutMs,
-        headersTimeout: timeoutMs,
-        maxRedirections: 5,
-        signal: opts.signal ? AbortSignal.any([opts.signal, deadline]) : deadline,
-        headers: fingerprintFor(host).headers,
-      });
 
       // A declared multi-hundred-MB "page" is never a page we want in memory.
       const contentLength = Number(res.headers['content-length'] ?? 0);
@@ -51,7 +73,7 @@ export class DirectFetchProvider implements HttpProvider {
         return {
           status: res.statusCode,
           html: undefined,
-          finalUrl: url,
+          finalUrl: currentUrl,
           duration_ms: Date.now() - start,
           cost_eur: 0,
           provider: this.id,
@@ -70,7 +92,7 @@ export class DirectFetchProvider implements HttpProvider {
       return {
         status: res.statusCode,
         html,
-        finalUrl: url,
+        finalUrl: currentUrl,
         duration_ms: Date.now() - start,
         cost_eur: 0,
         provider: this.id,
