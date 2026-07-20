@@ -36,18 +36,15 @@ interface HarvestUnit {
 /**
  * Single place encoding each actor's input shape — validated against the
  * REAL input schemas fetched from the actors' default builds (probe R1):
- *   - azzouzana~immobiliare-agencies-scraper: { startUrl: string, maxItems,
- *     extractSocials } — `startUrl` is SINGULAR; an array is silently ignored
- *     and the actor runs its Milano default (measured in the first probe).
+ *   - memo23~immobiliare-scraper: { startUrls: [{url}], maxItems,
+ *     includeAgencyDetails } — auto-paginates the directory. Chosen after
+ *     azzouzana measured ~5 items/run + a 1-min free-tier rate limit, and
+ *     saregaa turned out to be a listings scraper (proxy required).
  *   - stealth_mode~wikicasa-agency-search-scraper: { urls: string[],
  *     max_items_per_url, ignore_url_failures }.
- *   - saregaa~immobiliareit-scraper was DROPPED: its schema is a listings
- *     scraper (startUrls + required proxyConfiguration; scrapeAllAgencies is
- *     all-Italy only), and azzouzana already returns isPaid + realEstateAds —
- *     the only unique loss is `fiaip`.
  */
 function buildUnits(probe: boolean): HarvestUnit[] {
-  const cap = (n: number): number => (probe ? 15 : n);
+  const cap = (n: number): number => (probe ? 30 : n);
   const units: HarvestUnit[] = [];
   for (const slug of probe ? PROVINCES.slice(0, 1) : PROVINCES) {
     units.push({
@@ -55,8 +52,8 @@ function buildUnits(probe: boolean): HarvestUnit[] {
       slug,
       maxItems: cap(3000),
       input: {
-        startUrl: `https://www.immobiliare.it/agenzie-immobiliari/${slug}-provincia/`,
-        extractSocials: true,
+        startUrls: [{ url: `https://www.immobiliare.it/agenzie-immobiliari/${slug}-provincia/` }],
+        includeAgencyDetails: true,
         maxItems: cap(3000),
       },
     });

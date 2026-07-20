@@ -34,7 +34,7 @@ describe('ENRICH-3 Apify actors', () => {
     expect(p.actorAvailable('portal_wikicasa')).toBe(false);
     expect(p.actorAvailable('bilanci')).toBe(false);
     expect(p.actorAvailable('email_verify')).toBe(false);
-    expect(p.meta('portal_immobiliare').costPerCallEur).toBeCloseTo(0.002);
+    expect(p.meta('portal_immobiliare').costPerCallEur).toBeCloseTo(0.0007);
     expect(p.meta('portal_immobiliare_ads').costPerCallEur).toBeCloseTo(0.0007);
     expect(p.meta('portal_wikicasa').costPerCallEur).toBeCloseTo(0.002);
     expect(p.meta('bilanci').costPerCallEur).toBeCloseTo(0.008);

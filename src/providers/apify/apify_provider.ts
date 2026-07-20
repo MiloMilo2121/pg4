@@ -43,8 +43,10 @@ const DEFAULT_ACTOR_IDS: Record<ApifyActor, string> = {
   // Italian business register (ufficiocamerale.it): firmographics + financials
   // by P.IVA — forma giuridica, ATECO, capitale, utile, dipendenti, PEC.
   registro: 'regdata~italy-registro-imprese-scraper',
-  // immobiliare.it agency directory (emails + socials per agency).
-  portal_immobiliare: 'azzouzana~immobiliare-agencies-scraper',
+  // immobiliare.it agency directory. memo23 (22k+ runs) auto-paginates the
+  // whole directory with agency detail pages; azzouzana was DROPPED after the
+  // probe measured ~5 items/run + a 1-minute free-tier rate limit between runs.
+  portal_immobiliare: 'memo23~immobiliare-scraper',
   // immobiliare.it agencies with listing counts / isPaid / FIAIP (no emails).
   portal_immobiliare_ads: 'saregaa~immobiliareit-scraper',
   // wikicasa.it agency directory (website + phones).
@@ -64,7 +66,7 @@ const ACTOR_COST_EUR: Record<ApifyActor, number> = {
   facebook: 0.0055,
   tiktok: 0.0015,
   registro: 0.018, // $0.01 record + $0.01 actor-start per single-company run
-  portal_immobiliare: 0.002, // per agency item
+  portal_immobiliare: 0.0007, // per agency item ($0.70/1K, PAY_PER_EVENT)
   portal_immobiliare_ads: 0.0007, // per agency item
   portal_wikicasa: 0.002, // per agency item
   bilanci: 0.008, // per company record
