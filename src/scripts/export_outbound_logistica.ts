@@ -47,9 +47,25 @@ export const OUT_COLUMNS = [
   'scraped_at',
 ] as const;
 
-/** Fuori target evidente (brief): rilevato sui token della ragione sociale. */
-export const OFF_TARGET_RE =
-  /(?:^|[\s.,'-])(taxi|n\.?\s?c\.?\s?c\.?(?:[\s.,)]|$)|noleggio\s+con\s+conducente|trasporto\s+person[ei]|autoscuol\w*|traslochi)/i;
+/**
+ * Esclusioni fuori-target (brief: "poche e sicure"). Due livelli:
+ *   HARD — mai freight: taxi, NCC, noleggio con conducente, autoscuole.
+ *   SOFT — traslochi / trasporto persone: escluso SOLO se il nome non porta
+ *          anche un segnale freight/logistica esplicito. Così un'azienda che
+ *          fa traslochi MA anche trasporto merci / deposito / spedizioni resta
+ *          in lista (il filtro fine lo fa la pipeline a valle).
+ */
+export const HARD_OFF_TARGET_RE =
+  /(?:^|[\s.,'"()-])(taxi|n\.?\s?c\.?\s?c\.?(?:[\s.,)]|$)|noleggio\s+con\s+conducente|autoscuol\w*)/i;
+export const SOFT_OFF_TARGET_RE = /(traslochi|trasloco|trasporto\s+person[ei])/i;
+export const FREIGHT_SIGNAL_RE =
+  /(autotrasport|trasporto\s+merci|conto\s+terzi|trasporti\s+(?:nazional|internazional)|spedizion|logistic|corriere|magazzin|deposito|movimento\s+terra|groupage|intermodal)/i;
+
+export function isOffTarget(name: string): boolean {
+  if (HARD_OFF_TARGET_RE.test(name)) return true;
+  if (SOFT_OFF_TARGET_RE.test(name) && !FREIGHT_SIGNAL_RE.test(name)) return true;
+  return false;
+}
 
 export interface OutboundRow {
   ragione_sociale: string;
@@ -148,7 +164,7 @@ async function main(): Promise<void> {
         report.esclusi_no_telefono += 1;
         continue;
       }
-      if (OFF_TARGET_RE.test(row.ragione_sociale)) {
+      if (isOffTarget(row.ragione_sociale)) {
         report.esclusi_fuori_target += 1;
         continue;
       }
