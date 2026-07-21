@@ -45,6 +45,48 @@
       "keyword": "centro estetico",
       "atecoDivisions": ["96"],
       "queryVariants": ["centro estetico", "parrucchiere", "barbiere", "salone di bellezza"]
+    },
+    {
+      "slug": "autotrasporti",
+      "label": "Autotrasporti",
+      "keyword": "autotrasporti",
+      "atecoDivisions": ["49"],
+      "queryVariants": ["autotrasporti", "trasporto merci", "ditta di trasporti"]
+    },
+    {
+      "slug": "trasporti_intl",
+      "label": "Trasporti nazionali e internazionali",
+      "keyword": "trasporti nazionali e internazionali",
+      "atecoDivisions": ["49"],
+      "queryVariants": ["trasporti nazionali e internazionali", "trasporti internazionali"]
+    },
+    {
+      "slug": "spedizioni",
+      "label": "Spedizioni e spedizionieri",
+      "keyword": "spedizionieri",
+      "atecoDivisions": ["52"],
+      "queryVariants": ["spedizionieri", "spedizioni internazionali", "case di spedizione"]
+    },
+    {
+      "slug": "logistica",
+      "label": "Logistica integrata e servizi",
+      "keyword": "logistica",
+      "atecoDivisions": ["52"],
+      "queryVariants": ["logistica", "logistica integrata"]
+    },
+    {
+      "slug": "corrieri",
+      "label": "Corrieri",
+      "keyword": "corrieri",
+      "atecoDivisions": ["53"],
+      "queryVariants": ["corrieri", "corriere espresso"]
+    },
+    {
+      "slug": "magazzini",
+      "label": "Magazzini di custodia e deposito",
+      "keyword": "magazzini di custodia e deposito",
+      "atecoDivisions": ["52"],
+      "queryVariants": ["magazzini di custodia e deposito", "magazzinaggio"]
     }
   ]
 }

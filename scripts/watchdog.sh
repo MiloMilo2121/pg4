@@ -48,8 +48,17 @@ all_cells_done() {
   done
   return 0
 }
+# Liveness via PID-file di proprietà di QUESTO watchdog: pgrep sulla command
+# line matcherebbe anche le campagne di ALTRI worktree sulla stessa macchina
+# (misurato: lo scrape di un worktree gemello teneva questo watchdog in attesa
+# per sempre, campagna mai lanciata). kill -0 sul PID del NOSTRO nohup è
+# worktree-specifico per costruzione.
+CAMPAIGN_PIDFILE="$OUT/.watchdog_campaign.pid"
 campaign_running() {
-  pgrep -f "scripts/campaign.sh" >/dev/null 2>&1 || pgrep -f "cli/scrape.ts" >/dev/null 2>&1
+  local pid
+  [ -f "$CAMPAIGN_PIDFILE" ] || return 1
+  pid="$(cat "$CAMPAIGN_PIDFILE" 2>/dev/null)"
+  [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null
 }
 
 echo "[watchdog $(date +%H:%M:%S)] avvio — province: ${PROVINCES[*]} · settori: ${#SLUGS[@]}"
@@ -79,6 +88,7 @@ while true; do
     restarts=$((restarts+1))
     echo "[watchdog $(date +%H:%M:%S)] campagna non attiva — (ri)lancio #$restarts"
     nohup bash scripts/campaign.sh "${PROVINCES[@]}" >> "$OUT/_watchdog_driver.out" 2>&1 &
+    echo $! > "$CAMPAIGN_PIDFILE"
     sleep 15
   fi
   sleep "$CHECK_EVERY"
