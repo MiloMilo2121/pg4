@@ -1,8 +1,17 @@
 {
   "name": "pg4",
   "version": "0.1.0",
-  "description": "pg4 — clean lead generation & enrichment pipeline (Italian SMBs)",
+  "description": "Lead discovery & enrichment engine for Italian SMBs — free-first, cost-bounded, test-heavy.",
   "private": true,
+  "license": "MIT",
+  "author": "Marco Milanello",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/MiloMilo2121/pg4.git"
+  },
+  "homepage": "https://github.com/MiloMilo2121/pg4#readme",
+  "bugs": "https://github.com/MiloMilo2121/pg4/issues",
+  "keywords": ["lead-generation", "web-scraping", "data-enrichment", "playwright", "typescript", "italy", "smb", "mcp"],
   "type": "commonjs",
   "packageManager": "pnpm@10.33.2",
   "engines": {
@@ -16,7 +25,7 @@
     "test:all": "pnpm run test && pnpm run test:smoke",
     "scrape": "tsx src/cli/scrape.ts",
     "enrich": "tsx src/cli/enrich.ts",
-    "run": "tsx src/cli/run.ts",
+    "pipeline": "tsx src/cli/run.ts",
     "benchmark": "tsx src/cli/benchmark.ts",
     "judge": "tsx src/cli/judge.ts",
     "judge:eval": "tsx src/scripts/judgment_eval.ts",
@@ -28,6 +37,7 @@
     "recovery": "bash scripts/recovery_coordinator.sh",
     "serve": "tsx src/server/api_server.ts",
     "dev": "node scripts/dev.mjs",
+    "demo": "PG4_SEED_FILE=examples/demo/companies.jsonl node scripts/dev.mjs",
     "mcp": "tsx src/server/mcp_server.ts",
     "lint": "eslint src tools tests scripts",
     "test:coverage": "vitest run tests/unit --coverage --reporter=dot"

@@ -13,7 +13,7 @@ import { SuppressionList } from '../compliance/suppression';
 import { enforceRetention, resolveRetentionDays } from '../compliance/retention';
 
 /**
- * `pnpm run run -- --category "X" --province PD --out output/campaign`
+ * `pnpm run pipeline -- --category "X" --province PD --out output/campaign`
  *
  * Phase B.1 — the end-to-end command: scrape → enrich, one shared run id,
  * one run record, one log file. Output layout from `--out <base>`:
@@ -199,8 +199,8 @@ async function main(): Promise<number> {
 
 function printUsage(): void {
   process.stdout.write(`Usage:
-  pnpm run run -- --category "<category>" --province PD --out output/campaign
-  pnpm run run -- --category "<category>" --comuni "C1,C2" --maps --coverage full --out output/campaign
+  pnpm run pipeline -- --category "<category>" --province PD --out output/campaign
+  pnpm run pipeline -- --category "<category>" --comuni "C1,C2" --maps --coverage full --out output/campaign
 
 End-to-end pipeline: scrape -> enrich with one shared run id.
 Outputs: <out>_raw.csv/.jsonl, <out>_enriched.csv/.jsonl(+ledger), <out>.log.jsonl.

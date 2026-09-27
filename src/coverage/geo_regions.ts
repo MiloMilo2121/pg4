@@ -1,13 +1,13 @@
 /**
- * Geografia per la coverage gap map — gerarchia Macro-area → Regione → Provincia,
- * limitata al NORD ITALIA.
+ * Geography for the coverage gap map — Macro-area → Region → Provincia hierarchy,
+ * limited to NORTHERN ITALY.
  *
- * `src/discovery/sources/italy_geo.ts` modella solo province (sigle) e una lista
- * curata di comuni; non raggruppa per regione. Qui aggiungiamo il raggruppamento
- * che serve alla vista gerarchica Regione → drill-down Provincia, riusando
- * `PROVINCE_CODES` come unica fonte di verità per validare le sigle.
+ * `src/discovery/sources/italy_geo.ts` models only provinces (codes) and a curated
+ * list of comuni; it does not group by region. Here we add the grouping
+ * needed by the hierarchical Region → Provincia drill-down view, reusing
+ * `PROVINCE_CODES` as the single source of truth to validate the codes.
  *
- * "Nord Italia" = le 8 regioni ISTAT del Nord-Ovest + Nord-Est.
+ * "Nord Italia" = the 8 ISTAT regions of Nord-Ovest + Nord-Est.
  */
 
 import { PROVINCE_CODES } from '../discovery/sources/italy_geo';
@@ -15,16 +15,16 @@ import { PROVINCE_CODES } from '../discovery/sources/italy_geo';
 export type MacroArea = 'Nord-Ovest' | 'Nord-Est';
 
 export interface RegionDef {
-  /** Nome regione (chiave canonica). */
+  /** Region name (canonical key). */
   name: string;
   macroArea: MacroArea;
-  /** Sigle provinciali (2 lettere, maiuscole). */
+  /** Provincia codes (2 letters, uppercase). */
   provinces: string[];
 }
 
 /**
- * Le 8 regioni del Nord con le rispettive province (sigle automobilistiche).
- * Fonte ripartizioni: ISTAT (Nord-Ovest: Piemonte, Valle d'Aosta, Liguria,
+ * The 8 Northern regions with their provinces (vehicle registration codes).
+ * Source of the geographic divisions: ISTAT (Nord-Ovest: Piemonte, Valle d'Aosta, Liguria,
  * Lombardia; Nord-Est: Trentino-Alto Adige, Veneto, Friuli-Venezia Giulia,
  * Emilia-Romagna).
  */
@@ -39,46 +39,46 @@ export const NORD_REGIONS: readonly RegionDef[] = [
   { name: 'Emilia-Romagna', macroArea: 'Nord-Est', provinces: ['BO', 'FC', 'FE', 'MO', 'PR', 'PC', 'RA', 'RE', 'RN'] },
 ] as const;
 
-/** Tutte le sigle provinciali del Nord Italia (47 province). */
+/** All provincia codes of Northern Italy (47 provinces). */
 export const NORD_ITALIA_PROVINCES: ReadonlySet<string> = new Set(
   NORD_REGIONS.flatMap((r) => r.provinces),
 );
 
-/** Mappa sigla provincia → regione (solo Nord). */
+/** Provincia code → region map (North only). */
 export const PROVINCE_TO_REGION: ReadonlyMap<string, string> = new Map(
   NORD_REGIONS.flatMap((r) => r.provinces.map((p) => [p, r.name] as const)),
 );
 
-/** Mappa sigla provincia → macro-area (solo Nord). */
+/** Provincia code → macro-area map (North only). */
 export const PROVINCE_TO_MACRO: ReadonlyMap<string, MacroArea> = new Map(
   NORD_REGIONS.flatMap((r) => r.provinces.map((p) => [p, r.macroArea] as const)),
 );
 
 /**
- * Guardia d'integrita': ogni sigla del Nord deve esistere in PROVINCE_CODES.
- * Eseguita al load del modulo cosi' un refuso non passa silenzioso.
+ * Integrity guard: every Northern code must exist in PROVINCE_CODES.
+ * Runs at module load so a typo does not slip through silently.
  */
 const unknown = [...NORD_ITALIA_PROVINCES].filter((p) => !PROVINCE_CODES.has(p));
 if (unknown.length > 0) {
   throw new Error(`[geo_regions] sigle non in PROVINCE_CODES: ${unknown.join(', ')}`);
 }
 
-/** Normalizza una sigla provincia (trim + uppercase). */
+/** Normalizes a provincia code (trim + uppercase). */
 export function normProvince(code: string | undefined | null): string {
   return (code ?? '').trim().toUpperCase();
 }
 
-/** True se la provincia appartiene al Nord Italia. */
+/** True if the provincia belongs to Northern Italy. */
 export function isNordProvince(code: string | undefined | null): boolean {
   return NORD_ITALIA_PROVINCES.has(normProvince(code));
 }
 
-/** Regione di una provincia del Nord, o undefined se fuori scope. */
+/** Region of a Northern provincia, or undefined if out of scope. */
 export function regionForProvince(code: string | undefined | null): string | undefined {
   return PROVINCE_TO_REGION.get(normProvince(code));
 }
 
-/** Macro-area di una provincia del Nord, o undefined se fuori scope. */
+/** Macro-area of a Northern provincia, or undefined if out of scope. */
 export function macroForProvince(code: string | undefined | null): MacroArea | undefined {
   return PROVINCE_TO_MACRO.get(normProvince(code));
 }

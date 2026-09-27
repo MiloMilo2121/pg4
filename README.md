@@ -1,226 +1,170 @@
 # pg4
 
-pg4 is a Node 22 + TypeScript lead discovery and website-verification pipeline for technical B2B teams working on Italian SMB data.
+**Lead discovery and enrichment engine for Italian SMBs. It prefers free sources, puts a hard ceiling on every euro spent, and is heavily tested.**
 
-## Why pg4
+[![CI](https://github.com/MiloMilo2121/pg4/actions/workflows/ci.yml/badge.svg)](https://github.com/MiloMilo2121/pg4/actions/workflows/ci.yml)
+![Node 22](https://img.shields.io/badge/node-22-339933?logo=node.js&logoColor=white)
+![TypeScript strict](https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white)
+![Tests](https://img.shields.io/badge/unit%20tests-1.2k%2B-brightgreen)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-pg4 is the third generation of the PG Scraper workstream.
+Give pg4 a business category and a territory (*"real-estate agencies in the province of Padua"*). It scrapes every matching company from PagineGialle and Google Maps, then works out each company's **official website**, backed by evidence. From that site and from official registries it fills in email, PEC, phone, VAT number, revenue, headcount and social profiles. Every field records its source, every row records a status and a reason, and every euro spent is logged in a ledger.
 
-pg1 is kept as the legacy resolver reference. pg3 became the active runtime, but its April 2026 refactor notes show why a cleaner generation was needed: the production surface had BullMQ/Redis, crawler sidecars, monolithic orchestration, browser evasion concerns, and cost controls that were hard to reason about as one system. The pg3 benchmark logs also show operational symptoms: Redis degradation, Oracle sidecar failures, crt.sh 5xx/429 storms, SERP empty results treated as provider failures, and paid-provider pressure triggering stop-the-bleeding behavior.
+![Setaccio dashboard: cockpit](docs/assets/dashboard-cockpit.png)
 
-pg4 keeps the useful lessons and removes the operational sprawl:
+<sub>The *Setaccio* dashboard (Next.js, Italian UI), running on the synthetic demo dataset (`pnpm demo`).</sub>
 
-- One canonical `Lead` type and stable CSV/JSONL outputs.
-- Explicit module boundaries for scrape, enrichment, providers, runtime, and IO.
-- Free-first provider routing, paid providers default-denied by flag and API key.
-- Structured Pino logs plus JSONL cost ledger instead of ad hoc stdout.
-- Unit tests run offline by default; real-network smoke tests require `RUN_SMOKE=1`.
+---
+
+## What it does
+
+| Stage | How |
+|---|---|
+| **Discover** | Playwright drives PagineGialle and Google Maps page by page. The parsers are pure functions over saved HTML. Runs are checkpointed and resumable per `(provider, category, comune, page)`. Results are de-duplicated across comuni by `pg_url`, `maps_url`, phone and host. |
+| **Verify the website** | A ladder of stages: the input website, then the PG detail page, then domain guessing (NER + DNS), then SERP, then RDAP rescue. A candidate site is accepted only when the page itself proves it belongs to the company: a matching VAT or phone number, or semantic evidence that clears strict gates. |
+| **Enrich** | Extracts email, PEC, phone, socials and VAT from the site and its contact pages. Official data comes from VIES, business-register sources and public financial summaries (revenue, employees). Candidate emails are inferred and checked with MX/SMTP. |
+| **Judge** | An optional two-axis judgment layer: **A** is business potential, **B** is the quality of the company's digital presence. High A with low B marks a "silent gem": a strong company that is under-represented online. |
+| **Operate** | A CLI, a local dashboard, an MCP server so AI agents can drive the pipeline, a watchdog for overnight campaigns, and a recovery loop that opens fix PRs when a scraper breaks. |
+
+## Engineering highlights
+
+- **Money cannot leak.** All paid calls go through one `ProviderRouter`.
+  - Paid providers are denied by default. They need a feature flag, an API key **and** an explicit `--enable-paid`.
+  - Before every paid attempt, the router checks a per-lead cap re-read live from the `CostLedger`, plus an atomic run-level reservation.
+  - A failed call is recorded at its real cost (for example, an Apify run that was started and billed), never silently as €0.
+  - Incident that shaped this: a €0.10 run cap once reached €0.229 before anyone noticed. Tests now lock that entire class of bug.
+- **Precision before recall.** A website is never "found" because a search engine ranked it first.
+  - Directory portals, franchise flagships, parked domains and WhatsApp/click-to-call links are filtered out, following a taxonomy of every false positive pg3 produced ([`docs/legacy_failure_taxonomy.md`](docs/legacy_failure_taxonomy.md)).
+  - The paid-SERP pass was audited at **96.2% precision** on the websites it added.
+- **Nothing is dropped silently.**
+  - Every input row produces an output row with a `status` and a `reason_code`.
+  - A checkpoint that says "done" while its JSONL is missing is a hard stop.
+  - Only an explicit completion manifest lets a campaign cell count as finished.
+- **Built to survive a laptop.** On the first real campaigns, 99% of scraper failures were network drops, not anti-bot blocks. The answers are:
+  - retry with backoff, circuit breakers and per-provider rate limits;
+  - a PID-reuse-safe watchdog that relaunches dead campaigns;
+  - a recovery agent that turns a broken cell into a pull request, with the merge to `main` held behind a protected environment.
+- **Safe to hand to an agent.** The MCP server sandboxes every path an agent sends. Outputs must stay under `output/`, and traversal, symlink escapes and dotfiles are rejected.
+- **Strict gates.**
+  - TypeScript `strict`, with `noUnusedLocals`/`noUnusedParameters` on.
+  - Zero `any`.
+  - Type-aware lint for floating and misused promises.
+  - 1.2k+ offline unit tests.
+  - A production dependency audit in CI for both the engine and the dashboard.
 
 ## Architecture
 
-```text
-input category/geography
-        |
-        v
-  scrape command
-  discovery/sources/*
-  - PagineGialle parser/live source
-  - Google Maps parser/live source
-        |
-        v
-  raw Lead CSV + JSONL
-        |
-        v
-  enrich command
-  enrichment/stages/*
-  - input website verification
-  - PG detail backfill
-  - hyper-guesser
-  - SERP fallback
-  - RDAP boost
-        |
-        v
-  enriched CSV + JSONL + cost ledger
+```mermaid
+flowchart LR
+  Q["category × territory"] --> S["scrape<br/>PagineGialle + Google Maps<br/>(Playwright, checkpointed)"]
+  S --> R[("raw leads<br/>CSV + JSONL")]
+  R --> E["enrich<br/>per-lead stage ladder"]
+  E <--> P["ProviderRouter<br/>free-first · breakers · rate limits<br/>paid gate · live cost caps"]
+  P --> L[("CostLedger<br/>JSONL, per lead")]
+  E --> O[("enriched leads<br/>CSV + JSONL")]
+  O --> J["judgment layer<br/>(A × B gap)"]
+  O --> D["Setaccio dashboard"]
+  O --> M["MCP server"]
 ```
 
-Module boundaries:
-
 ```text
-src/cli/          command argument parsing and dispatch only
-src/config/       Zod-validated env and defaults
-src/types/        canonical Lead, provider, and output contracts
-src/runtime/      logger, cost ledger, cache, checkpoint, locks, breakers
-src/discovery/    scraper pipeline, parsers, dedupe, website evidence
-src/enrichment/   stage orchestration and per-lead result policy
-src/providers/    free/paid provider registry behind the router
-src/io/           CSV and JSONL readers/writers
+src/
+  cli/          thin entry points: scrape, enrich, run, judge, lookup, coverage, benchmark
+  discovery/    pure PG/Maps parsers, live navigators, dedupe, website evidence gates
+  enrichment/   stage ladder, field cascades, extraction, email inference, lead score
+  providers/    router + adapters (SERP, HTTP, LLM, Apify, OpenAPI, email)
+  runtime/      cost ledger, circuit breaker, rate limiter, checkpoint, locks, shutdown
+  judgment/     two-axis judgment layer (collectors, judges, critic, config)
+  compliance/   GDPR suppression list
+  server/       local dashboard API + MCP stdio server
+  types/        the one canonical Lead type and output schemas (append-only)
+web/            Setaccio dashboard (Next.js 15, own lockfile and CI gate)
+tools/          operator passes and research probes (typechecked, not shipped)
 ```
 
-## Quick Start
+More in [`docs/architecture.md`](docs/architecture.md) (invariants and command flow) and [`docs/provider_cascade_architecture.md`](docs/provider_cascade_architecture.md).
+
+## Quick start
+
+Requires Node 22 and pnpm.
 
 ```bash
-git clone https://github.com/MiloMilo2121/pg-omega.git
-cd pg-omega
-pnpm install
+git clone https://github.com/MiloMilo2121/pg4.git && cd pg4
+pnpm install && pnpm --dir web install
 cp .env.example .env
 ```
 
-The dashboard is a separate pnpm project; install it before `pnpm run dev`:
+**1. Enrich offline.** No keys, no network, no browser:
 
 ```bash
-pnpm --dir web install
-```
-
-Run the offline example first. It uses a mock HTTP fixture, so it does not need API keys, browser access, or network access.
-
-```bash
-pnpm run enrich -- \
-  --input examples/input_companies.csv \
+pnpm enrich --input examples/input_companies.csv \
   --out output/examples/enriched.csv \
   --mock-http examples/mock_http_pages.json
+# → [enrich] done  total=5 with_website=5 errors=0 · cost €0
 ```
 
-Expected result:
-
-```text
-[enrich] using offline mock HTTP fixture
-[CostLedger] run summary total_calls=5 total_cost_eur=0
-[enrich] done total=5 with_website=5 errors=0
-```
-
-The generated CSV should match the status/reason/website shape shown in `examples/expected_enriched.sample.csv`. Dynamic fields such as `duration_ms` are intentionally not exact.
-
-## Commands
-
-### scrape
-
-Offline fixture mode, used for deterministic parser work:
+**2. Open the dashboard on synthetic data:**
 
 ```bash
-pnpm run scrape -- \
-  --fixture pg=tests/fixtures/scraper/pg_belluno_normal.html,maps=tests/fixtures/scraper/maps_feltre_feed.html \
-  --category "agenzie immobiliari" \
-  --out output/raw.csv
+pnpm demo        # API on :8787 + dashboard on :3000, 427 fictional companies
 ```
 
-Example output from the checked-in fixtures:
-
-```text
-[scrape] fixture mode done fixtures=2 raw=8 out=output/raw.csv
-```
-
-Live mode uses Playwright Chromium and real PG/Maps pages:
+**3. Scrape for real** (Playwright Chromium, live pages):
 
 ```bash
-pnpm run scrape -- --category "agenzie immobiliari" --province BL --out output/raw.csv
+pnpm scrape --category "agenzie immobiliari" --province BL --out output/raw.csv
+pnpm enrich --input output/raw.csv --out output/enriched.csv          # free-only by default
+pnpm run pipeline --category "agenzie immobiliari" --province BL --out output/campaign
 ```
 
-### enrich
+| Command | What it does |
+|---|---|
+| `pnpm scrape` | Discovery from PG/Maps (live or `--fixture` HTML), resumable |
+| `pnpm enrich` | Website verification + enrichment; `--enable-paid --run-cost-ceiling-eur <€>` to allow paid providers |
+| `pnpm run pipeline` | Scrape → enrich under one run id; refuses to enrich an incomplete scrape |
+| `pnpm judge` | Two-axis judgment over an enriched CSV |
+| `pnpm lookup` | Find a lead already in `output/` by VAT or phone |
+| `pnpm coverage` | Coverage gap map: industry × territory against ISTAT counts |
+| `pnpm mcp` | MCP stdio server exposing the pipeline to agents |
 
-Default mode verifies candidate websites from raw CSV input and writes enriched CSV, JSONL, and cost ledger files:
+Every command accepts `--help`.
+
+<details>
+<summary>More screenshots</summary>
+
+![Companies archive](docs/assets/dashboard-aziende.png)
+![Coverage map](docs/assets/dashboard-italia.png)
+
+</details>
+
+## Quality gates
 
 ```bash
-pnpm run enrich -- --input output/raw.csv --out output/enriched.csv
+pnpm typecheck && pnpm lint && pnpm test && pnpm build
+RUN_SMOKE=1 pnpm test:smoke    # opt-in: touches real network/browser
 ```
 
-Offline mock mode:
+CI runs two independent jobs on every PR:
+- **core**: frozen install, typecheck, unit tests, lint, build and production dependency audit;
+- **dashboard**: typecheck, lint, `next build` and audit.
 
-```bash
-pnpm run enrich -- \
-  --input examples/input_companies.csv \
-  --out output/examples/enriched.csv \
-  --mock-http examples/mock_http_pages.json
-```
+## Why pg4 exists
 
-Example output from the mock fixture:
+pg4 is the third generation of the same project, and the earlier ones are the reason it looks the way it does.
 
-```text
-total=5 with_website=5 errors=0 total_cost_eur=0
-```
+- **pg1** was the first resolver. It is kept only as a reference for the lessons it taught.
+- **pg3** became the production runtime and then collapsed under its own operational weight. It had BullMQ/Redis, crawler sidecars, monolithic orchestration and cost controls nobody could reason about as a single system. Its logs show the symptoms: Redis degradation, sidecar crashes, crt.sh 5xx storms, empty search results counted as provider failures, and paid providers left to burn money until someone killed the process.
+- **pg4** started as a clean export and a deliberately small core. Every failure mode pg3 had was audited from its real outputs and turned into an explicit guardrail with a test. Examples: the same agency emitted 10 times across comuni, and 191 "websites" that were really immobiliare.it listings. The result is a short list of invariants and one boundary per concern. Adding a provider is one file; adding a stage is one file.
 
-### run
+## Responsible use
 
-```bash
-pnpm run run -- --category "agenzie immobiliari" --province BL --out output/campaign
-```
+This is a portfolio project. It collects **publicly listed business information**; that data is personal data under the GDPR only when it identifies a natural person (for example, a sole trader).
 
-This command performs scrape -> enrich under one run id. It stops after scrape
-with exit `1` if any PG/Maps query is partial or failed, preserving the raw
-artifacts and recovery evidence instead of enriching an incomplete dataset.
+- The repository contains **no scraped data**. Test fixtures are anonymised and the demo dataset is fictional (`*.example` domains, `999…` VAT numbers).
+- Scraping third-party sites may conflict with their terms of service. Check the terms and your legal basis before running live scrapes.
+- There is a GDPR toolkit in [`docs/gdpr/`](docs/gdpr/): a legitimate-interest assessment template, an Art. 14 notice and a pre-production checklist. A suppression list is enforced by the pipeline.
+- Paid providers are off unless you explicitly turn them on.
 
-### benchmark
+## License
 
-```bash
-pnpm run benchmark -- --input tests/fixtures/sample_companies.csv
-```
-
-Current status: code-level Phase 5 placeholder. The available pg3 evidence and pg4 measurement gaps are documented in `BENCHMARK.md`.
-
-All commands expose usage:
-
-```bash
-pnpm run scrape -- --help
-pnpm run enrich -- --help
-pnpm run run -- --help
-pnpm run benchmark -- --help
-```
-
-## Quality Gates
-
-Default gates are offline and deterministic:
-
-```bash
-pnpm run typecheck
-pnpm test
-```
-
-Smoke tests are intentionally gated because they touch real network/browser surfaces:
-
-```bash
-RUN_SMOKE=1 pnpm run test:smoke
-```
-
-Benchmark policy:
-
-- pg3 comparison data comes from checked-in pg3 `benchmark_*.log` files.
-- pg4 benchmark cells remain `TBD - to be measured` until a comparable real run exists.
-- Never infer accuracy from a found-count alone; use `TBD` unless there is a validated truth set.
-
-CI has two independent gates:
-
-- Core: frozen install, typecheck (including MCP), offline unit tests, lint,
-  and production dependency audit.
-- Dashboard: frozen `web/` install, typecheck, Next-aware lint, production build, and
-  production dependency audit.
-
-Smoke tests and secrets are excluded from CI.
-
-## Project Layout
-
-```text
-repo root/
-  .github/workflows/ci.yml      Core + dashboard CI gates
-  examples/                     offline CSV + mock HTTP example
-  docs/                         audit notes and recalibration reports
-  scripts/                      local audit/report helpers, not CI entrypoints
-  src/
-    browser/                    Playwright factory and consent handling
-    cli/                        scrape, enrich, run, benchmark
-    config/                     env schema and defaults
-    discovery/                  scraping, parsing, dedupe, website evidence
-    enrichment/                 enrichment stages and result policy
-    io/                         CSV/JSONL IO
-    providers/                  provider catalog and router
-    runtime/                    logging, ledgers, circuit breakers, locks
-    types/                      canonical data contracts
-  tests/
-    fixtures/                   saved parser fixtures and small CSVs
-    smoke/                      RUN_SMOKE=1 live checks
-    unit/                       offline unit coverage
-  web/                          independent Next.js local dashboard (own pnpm lockfile)
-```
-
-## Roadmap
-
-- Produce a real pg4 benchmark on the same target class as the pg3 wave benchmark and update `BENCHMARK.md`.
-- Replace the local dashboard adapter with an authenticated, durable API before any non-loopback deployment.
+[MIT](LICENSE) © Marco Milanello

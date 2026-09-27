@@ -7,23 +7,23 @@ import { readJsonlAsLeads } from '../src/io/jsonl_writer';
 import { runIfMain } from './enrich3/_shared';
 
 /**
- * Export OUTBOUND per il segmento autotrasporto/logistica — proietta i raw
- * JSONL delle celle (slug×provincia) nel CSV unico del brief di sourcing:
- * UTF-8, delimitatore ';', campi GREZZI (telefono_raw non normalizzato),
- * `scraped_at` ISO dall'mtime del file sorgente.
+ * OUTBOUND export for the road-haulage/logistics segment — projects the raw
+ * JSONL of the cells (slug×provincia) into the single CSV of the sourcing brief:
+ * UTF-8, ';' delimiter, RAW fields (telefono_raw not normalized),
+ * `scraped_at` as ISO from the source file's mtime.
  *
- * Regole del brief, implementate ALLA LETTERA:
- *   - esclusioni: record senza telefono; categorie chiaramente fuori target
- *     (taxi/NCC/trasporto persone/traslochi/autoscuole — rilevate sui token
- *     della ragione sociale, perché la categoria del record È la nostra query)
- *   - dedup SOLO esatto su telefono_1+comune (cifre + comune lowercase);
- *     stessa azienda in più categorie → un record, categorie concatenate
- *     con ' | ' e riempimento solo-campi-vuoti (mai sovrascrittura)
- *   - niente normalizzazione telefoni, niente arricchimento esterno
+ * Brief rules, implemented TO THE LETTER:
+ *   - exclusions: records without a phone; clearly off-target categories
+ *     (taxi/NCC/trasporto persone/traslochi/autoscuole — detected on the
+ *     ragione sociale tokens, because the record's category IS our query)
+ *   - EXACT-only dedup on telefono_1+comune (digits + lowercase comune);
+ *     same company in several categories → one record, categories joined
+ *     with ' | ' and fill-empty-fields-only (never overwrite)
+ *   - no phone normalization, no external enrichment
  *
- * telefono_2 resta vuoto: le card-lista PG espongono un solo numero (il
- * parser tiene il primo per contratto); il campo è nel layout per stabilità
- * dello schema a valle.
+ * telefono_2 stays empty: PG list cards expose a single number (the parser
+ * keeps the first one by contract); the field is in the layout for downstream
+ * schema stability.
  *
  *   pnpm tsx tools/export_outbound_logistica.ts \
  *     --raw-dir output/recall --out output/outbound_logistica_nord.csv
@@ -48,12 +48,12 @@ export const OUT_COLUMNS = [
 ] as const;
 
 /**
- * Esclusioni fuori-target (brief: "poche e sicure"). Due livelli:
- *   HARD — mai freight: taxi, NCC, noleggio con conducente, autoscuole.
- *   SOFT — traslochi / trasporto persone: escluso SOLO se il nome non porta
- *          anche un segnale freight/logistica esplicito. Così un'azienda che
- *          fa traslochi MA anche trasporto merci / deposito / spedizioni resta
- *          in lista (il filtro fine lo fa la pipeline a valle).
+ * Off-target exclusions (brief: "poche e sicure" — few and safe). Two levels:
+ *   HARD — never freight: taxi, NCC, noleggio con conducente, autoscuole.
+ *   SOFT — traslochi / trasporto persone: excluded ONLY if the name does not
+ *          also carry an explicit freight/logistics signal. So a company that
+ *          does traslochi BUT also trasporto merci / deposito / spedizioni stays
+ *          in the list (the fine-grained filter is done by the downstream pipeline).
  */
 export const HARD_OFF_TARGET_RE =
   /(?:^|[\s.,'"()-])(taxi|n\.?\s?c\.?\s?c\.?(?:[\s.,)]|$)|noleggio\s+con\s+conducente|autoscuol\w*)/i;
@@ -103,7 +103,7 @@ export function leadToRow(lead: Lead, scrapedAt: string): OutboundRow {
   };
 }
 
-/** Chiave dedup del brief: telefono_1 (solo cifre) + comune (lowercase). */
+/** Brief dedup key: telefono_1 (digits only) + comune (lowercase). */
 export function dedupKey(row: OutboundRow): string | undefined {
   const digits = row.telefono_1.replace(/\D/g, '');
   if (!digits) return undefined;
@@ -119,7 +119,7 @@ export function mergeRow(kept: OutboundRow, dup: OutboundRow): void {
   for (const k of ['telefono_2', 'indirizzo', 'cap', 'sito_web', 'email', 'descrizione'] as const) {
     if (!kept[k] && dup[k]) kept[k] = dup[k];
   }
-  // Un secondo numero DIVERSO emerso da un'altra categoria → telefono_2.
+  // A second, DIFFERENT number surfaced from another category → telefono_2.
   if (dup.telefono_1 && dup.telefono_1.replace(/\D/g, '') !== kept.telefono_1.replace(/\D/g, '') && !kept.telefono_2) {
     kept.telefono_2 = dup.telefono_1;
   }
@@ -140,7 +140,7 @@ async function main(): Promise<void> {
   if (files.length === 0) throw new Error(`nessun raw jsonl dei settori logistica in ${rawDir} — lancia prima la campagna`);
 
   const byKey = new Map<string, OutboundRow>();
-  const rows: OutboundRow[] = []; // ordine di arrivo, stabile
+  const rows: OutboundRow[] = []; // arrival order, stable
   const report = {
     files: files.length,
     perCell: {} as Record<string, number>,

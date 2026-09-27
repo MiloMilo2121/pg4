@@ -1,14 +1,14 @@
 /**
- * Crosswalk categoria di scraping <-> divisione ATECO.
+ * Crosswalk between scraping category <-> ATECO division.
  *
- * Forward  (classify): "agenzie immobiliari" -> "68". Bridge tra il `category`
- *          free-text dei lead e le righe dell'universo. Disambigua scegliendo il
- *          token MATCHATO PIU' LUNGO ("barbiere" batte "bar"), cosi' token corti
- *          non rubano categorie piu' specifiche.
+ * Forward  (classify): "agenzie immobiliari" -> "68". Bridge between the leads'
+ *          free-text `category` and the universe rows. Disambiguates by picking the
+ *          LONGEST MATCHED token ("barbiere" beats "bar"), so short tokens
+ *          do not steal more specific categories.
  * Reverse  (keywordsFor): "68" -> ["agenzie immobiliari", "mediatore ...", ...].
- *          Alimenta il backlog (cosa cercare per coprire una divisione).
+ *          Feeds the backlog (what to search for to cover a division).
  *
- * Dati: data/reference/category_ateco_map.json (letto a runtime).
+ * Data: data/reference/category_ateco_map.json (read at runtime).
  */
 
 import fs from 'fs';
@@ -23,7 +23,7 @@ export interface CrosswalkEntry {
 const REPO_ROOT = path.resolve(__dirname, '..', '..');
 const DEFAULT_PATH = path.join(REPO_ROOT, 'data', 'reference', 'category_ateco_map.json');
 
-/** lowercase + strip accenti + solo alfanumerici/spazi — stesso schema di category_match.ts. */
+/** lowercase + strip accents + alphanumerics/spaces only — same scheme as category_match.ts. */
 export function normalizeCategory(s: string): string {
   return s
     .toLowerCase()
@@ -36,7 +36,7 @@ export function normalizeCategory(s: string): string {
 
 export class Crosswalk {
   private readonly entries: CrosswalkEntry[];
-  /** (token normalizzato, lunghezza, divisione) precomputati, ordinati per lunghezza desc. */
+  /** Precomputed (normalized token, length, division), sorted by length desc. */
   private readonly tokenIndex: Array<{ token: string; len: number; division: string }>;
 
   constructor(file: string = DEFAULT_PATH) {
@@ -50,8 +50,8 @@ export class Crosswalk {
   }
 
   /**
-   * Classifica una categoria free-text nella divisione ATECO, o undefined se
-   * nessun token combacia. Vince il token combaciante piu' lungo.
+   * Classifies a free-text category into its ATECO division, or undefined if
+   * no token matches. The longest matching token wins.
    */
   classify(category: string | undefined | null): string | undefined {
     if (!category) return undefined;
@@ -63,12 +63,12 @@ export class Crosswalk {
     return undefined;
   }
 
-  /** Keyword di scraping consigliate per coprire una divisione (ordinate per resa). */
+  /** Recommended scraping keywords to cover a division (sorted by yield). */
   keywordsFor(division: string): string[] {
     return this.entries.find((e) => e.division === division)?.scrapeKeywords ?? [];
   }
 
-  /** Tutte le divisioni che il crosswalk sa classificare/coprire. */
+  /** All divisions the crosswalk can classify/cover. */
   knownDivisions(): string[] {
     return this.entries.map((e) => e.division);
   }

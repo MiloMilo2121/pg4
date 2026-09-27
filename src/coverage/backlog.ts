@@ -1,14 +1,14 @@
 /**
- * Generatore di backlog — l'output OPERATIVO della gap map.
+ * Backlog generator — the OPERATIONAL output of the gap map.
  *
- * Dalla mappa di copertura produce una lista prioritizzata di azioni. Due rami,
- * perche' "carenza" ha due cause con rimedi opposti:
- *   - SCRAPE: poche aziende vs universo indirizzabile  -> scrapare di piu'
- *   - ENRICH: aziende presenti ma con pochi dati        -> arricchire le esistenti
+ * From the coverage map it produces a prioritized list of actions. Two branches,
+ * because a "gap" has two causes with opposite remedies:
+ *   - SCRAPE: few companies vs addressable universe  -> scrape more
+ *   - ENRICH: companies present but with little data  -> enrich the existing ones
  *
- * Per il ramo scrape emette comandi `pnpm run run` pronti, per le province piu'
- * deboli, con le keyword del crosswalk. Per il ramo enrich da' indicazioni (in
- * pg4 l'enrichment parte da un CSV / dal dashboard, non da una query geo).
+ * For the scrape branch it emits ready-to-run `pnpm run pipeline` commands for the weakest
+ * provinces, using the crosswalk keywords. For the enrich branch it gives guidance (in
+ * pg4 enrichment starts from a CSV / the dashboard, not from a geo query).
  */
 
 import type { CoverageReport, CoverageCell, RegionRollup } from './coverage_engine';
@@ -23,12 +23,12 @@ export interface BacklogItem {
   priorityScore: number | null;
   coveragePct: number | null;
   reason: string;
-  // ramo scrape
+  // scrape branch
   keywords?: string[];
   targetProvinces?: string[];
   estLeadsNeeded?: number | null;
   commands?: string[];
-  // ramo enrich
+  // enrich branch
   haveToEnrich?: number;
   enrichScore?: number;
   weakFields?: string[];
@@ -36,11 +36,11 @@ export interface BacklogItem {
 
 export interface BacklogOptions {
   crosswalk?: Crosswalk;
-  /** Sotto questo enrichment score (0..100) una cella ben coperta diventa azione enrich. */
+  /** Below this enrichment score (0..100) a well-covered cell becomes an enrich action. */
   enrichScoreThreshold?: number;
-  /** Quante province deboli elencare per item scrape. */
+  /** How many weak provinces to list per scrape item. */
   maxProvincesPerItem?: number;
-  /** Massimo numero di item nel backlog. */
+  /** Maximum number of items in the backlog. */
   maxItems?: number;
 }
 
@@ -54,7 +54,7 @@ function slug(s: string): string {
   return s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 40);
 }
 
-const WEAK_FIELD_THRESHOLD = 50; // % fill sotto cui un campo e' "debole"
+const WEAK_FIELD_THRESHOLD = 50; // fill % below which a field is "weak"
 
 function weakFields(r: RegionRollup): string[] {
   const f = r.enrichment.fillRates;
@@ -68,15 +68,15 @@ function weakFields(r: RegionRollup): string[] {
 }
 
 /**
- * Costruisce il backlog dalla mappa di copertura (ragiona a livello
- * regione x divisione, con le province deboli come target operativo).
+ * Builds the backlog from the coverage map (reasons at the
+ * region x division level, with the weak provinces as the operational target).
  */
 export function buildBacklog(report: CoverageReport, opts: BacklogOptions = {}): BacklogItem[] {
   const o = { ...DEFAULTS, ...opts };
   const crosswalk = opts.crosswalk ?? new Crosswalk();
   const target = report.generated.config.targetCoverage;
 
-  // celle provincia indicizzate per regione|divisione, per scegliere le province deboli
+  // provincia cells indexed by region|division, to pick the weak provinces
   const cellsByRegionDiv = new Map<string, CoverageCell[]>();
   for (const c of report.cells) {
     const k = `${c.region}|${c.division}`;
@@ -93,13 +93,13 @@ export function buildBacklog(report: CoverageReport, opts: BacklogOptions = {}):
     const sampleInsufficient = !r.sampleOk;
 
     if (coverageInsufficient || sampleInsufficient) {
-      // ---- ramo SCRAPE ----
+      // ---- SCRAPE branch ----
       const keywords = crosswalk.keywordsFor(r.division);
       const targetProvinces = provinceCells.slice(0, o.maxProvincesPerItem).map((c) => c.province);
-      // se la regione non ha ancora celle (0 scrapate) usa tutte le province? lasciamo vuoto: il dato e' "0 ovunque"
+      // if the region has no cells yet (0 scraped), use all provinces? we leave it empty: the data point is "0 everywhere"
       const primaryKw = keywords[0] ?? r.atecoLabel;
       const commands = targetProvinces.map(
-        (prov) => `pnpm run run -- --category "${primaryKw}" --province ${prov} --maps --coverage full --out output/${slug(r.division + '_' + primaryKw)}_${prov}`,
+        (prov) => `pnpm run pipeline -- --category "${primaryKw}" --province ${prov} --maps --coverage full --out output/${slug(r.division + '_' + primaryKw)}_${prov}`,
       );
       const reason = r.universeKnown
         ? `copertura ${r.coveragePct === null ? 'n/d' : Math.round((r.coveragePct) * 100) + '%'} < target ${Math.round(target * 100)}%${sampleInsufficient ? ` · campione ${r.have}/${r.minSample} sotto soglia` : ''}`
@@ -119,7 +119,7 @@ export function buildBacklog(report: CoverageReport, opts: BacklogOptions = {}):
         commands,
       });
     } else if (r.enrichment.score < o.enrichScoreThreshold) {
-      // ---- ramo ENRICH (coperta a sufficienza ma dati poveri) ----
+      // ---- ENRICH branch (sufficiently covered but poor data) ----
       const wf = weakFields(r);
       items.push({
         rank: 0,
@@ -137,7 +137,7 @@ export function buildBacklog(report: CoverageReport, opts: BacklogOptions = {}):
     }
   }
 
-  // ordina: scrape con priorita' nota prima (desc), poi enrich per have desc
+  // sort: scrape with known priority first (desc), then enrich by have desc
   items.sort((a, b) => {
     if (a.action !== b.action) return a.action === 'scrape' ? -1 : 1;
     if (a.action === 'scrape') {

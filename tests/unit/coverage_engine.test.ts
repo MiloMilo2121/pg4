@@ -87,7 +87,7 @@ describe('buildBacklog', () => {
     expect(veneto68?.action).toBe('scrape');
     expect(veneto68?.keywords?.[0]).toBe('agenzie immobiliari');
     expect(veneto68?.targetProvinces).toContain('PD');
-    expect(veneto68?.commands?.[0]).toMatch(/pnpm run run .*--province PD/);
+    expect(veneto68?.commands?.[0]).toMatch(/pnpm run pipeline .*--province PD/);
   });
 
   it('i rank sono progressivi a partire da 1', () => {

@@ -1,25 +1,25 @@
 /**
- * Parametri della coverage gap map. Tutti override-abili dalla CLI.
+ * Coverage gap map parameters. All overridable from the CLI.
  *
- * Driver di priorita': COPERTURA (quanto manca per raggiungere il target sul
- * mercato indirizzabile) CON una soglia minima di campione per cella — sotto la
- * soglia non possiamo nemmeno stimare metriche di mercato in modo affidabile,
- * quindi quella cella riceve un boost di priorita'.
+ * Priority driver: COVERAGE (how much is missing to reach the target on the
+ * addressable market) WITH a minimum sample threshold per cell — below the
+ * threshold we cannot even estimate market metrics reliably,
+ * so that cell gets a priority boost.
  */
 
 import fs from 'fs';
 import path from 'path';
 
 export interface CoverageConfig {
-  /** Frazione di copertura target sull'universo INDIRIZZABILE (0..1). */
+  /** Target coverage fraction of the ADDRESSABLE universe (0..1). */
   targetCoverage: number;
-  /** Campione minimo per cella PROVINCIA x divisione (sufficienza statistica fine). */
+  /** Minimum sample per PROVINCIA x division cell (fine-grained statistical sufficiency). */
   minSampleProvince: number;
-  /** Campione minimo per cella REGIONE x divisione (stima di proporzione ~±10% IC 95%). */
+  /** Minimum sample per REGION x division cell (proportion estimate ~±10% at 95% CI). */
   minSampleRegion: number;
-  /** Moltiplicatore di priorita' quando una cella e' sotto la soglia di campione. */
+  /** Priority multiplier when a cell is below the sample threshold. */
   sampleBoost: number;
-  /** Soglia minima di imprese attive ISTAT perche' una divisione entri nella mappa. */
+  /** Minimum number of ISTAT active firms for a division to enter the map. */
   minUniverseForInclusion: number;
 }
 
@@ -32,35 +32,35 @@ export const DEFAULT_COVERAGE_CONFIG: CoverageConfig = {
 };
 
 /**
- * Fattore "INDIRIZZABILE-DA-DIRECTORY" per sezione ATECO: frazione stimata delle
- * imprese attive ISTAT che e' plausibile trovare su PagineGialle/Maps. Serve a
- * NON penalizzare i settori dominati da ditte individuali (assenti dalle
- * directory perche' non depositano bilancio).
+ * "ADDRESSABLE-VIA-DIRECTORY" factor per ATECO section: estimated fraction of
+ * ISTAT active firms that can plausibly be found on PagineGialle/Maps. It keeps
+ * sectors dominated by sole proprietorships (absent from the directories
+ * because they do not file financial statements) from being penalized.
  *
- * ATTENZIONE: sono EURISTICHE, non misure. Vanno tarate quando avremo abbastanza
- * dati per stimare il vero rapporto findable/attive per settore. Override via
- * CLI / file di config quando disponibile evidenza.
+ * WARNING: these are HEURISTICS, not measurements. They must be calibrated once we have enough
+ * data to estimate the true findable/active ratio per sector. Override via
+ * CLI / config file when evidence is available.
  */
 export const DIRECTORY_FACTOR_BY_SECTION: Record<string, number> = {
-  A: 0.15, // agricoltura — molte ditte individuali, poco su directory
+  A: 0.15, // agriculture — many sole proprietorships, little directory presence
   B: 0.4,
-  C: 0.55, // manifattura
+  C: 0.55, // manufacturing
   D: 0.5,
   E: 0.5,
-  F: 0.35, // costruzioni — molti artigiani/individuali
-  G: 0.7, // commercio — molto presente su directory
+  F: 0.35, // construction — many craftsmen/sole proprietors
+  G: 0.7, // retail/wholesale trade — strong directory presence
   H: 0.45,
-  I: 0.85, // alloggio/ristorazione — altissima presenza
+  I: 0.85, // accommodation/food service — very high presence
   J: 0.55,
   K: 0.6,
-  L: 0.7, // immobiliare
-  M: 0.5, // attivita' professionali
+  L: 0.7, // real estate
+  M: 0.5, // professional activities
   N: 0.5,
-  O: 0.2, // PA — fuori target
+  O: 0.2, // public administration — out of target
   P: 0.5,
   Q: 0.6,
   R: 0.5,
-  S: 0.6, // servizi alla persona
+  S: 0.6, // personal services
   T: 0.05,
   U: 0.05,
 };
@@ -68,11 +68,11 @@ export const DIRECTORY_FACTOR_BY_SECTION: Record<string, number> = {
 export const DEFAULT_DIRECTORY_FACTOR = 0.5;
 
 /**
- * Hook di calibrazione EMPIRICA. Se esiste
- * `data/reference/directory_factor_calibrated.json` (mappa sezione→fattore,
- * stimata da `have/universeTotal` osservato su celle affidabili — sampleOk +
- * universo istat-asia), i suoi valori vincono sull'euristica. Assente ⇒
- * nessun cambiamento (fallback all'euristica). Letto una volta e cachato.
+ * EMPIRICAL calibration hook. If
+ * `data/reference/directory_factor_calibrated.json` exists (section→factor map,
+ * estimated from the `have/universeTotal` observed on reliable cells — sampleOk +
+ * istat-asia universe), its values win over the heuristic. Absent ⇒
+ * no change (falls back to the heuristic). Read once and cached.
  */
 let calibratedFactors: Record<string, number> | null | undefined;
 function loadCalibratedFactors(): Record<string, number> | null {

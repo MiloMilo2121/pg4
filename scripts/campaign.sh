@@ -1,26 +1,26 @@
 #!/usr/bin/env bash
-# Campaign driver VERSIONATO e data-driven: legge i settori da
-# data/reference/sectors.json e i comuni da data/reference/comuni_nord.json.
-# Aggiungere un settore/provincia NON richiede toccare questo script.
+# VERSIONED, data-driven campaign driver: reads sectors from
+# data/reference/sectors.json and comuni from data/reference/comuni_nord.json.
+# Adding a sector/provincia does NOT require touching this script.
 #
-# Ora che la pipeline è indurita (checkpoint unico di default, retry in-pipeline,
-# preflight che degrada a PG-only) il driver è SEMPLICE: niente più --checkpoint,
-# --skip-preflight o pulizia manuale dei checkpoint. Resta:
-#   - SKIP idempotente solo con marker <slug>_<PROV>_raw.complete.json
-#   - un retry leggero di BACKSTOP per crash dell'intera cella (il resume riprende)
-#   - self-wrap in `caffeinate -i` su macOS → il Mac non si sospende durante il run
-#     (post-mortem: la sospensione era la causa #1 delle disconnessioni di rete).
+# Now that the pipeline is hardened (single checkpoint by default, in-pipeline
+# retry, preflight that degrades to PG-only) the driver is SIMPLE: no more
+# --checkpoint, --skip-preflight or manual checkpoint cleanup. What remains:
+#   - idempotent SKIP only with the <slug>_<PROV>_raw.complete.json marker
+#   - a light BACKSTOP retry for whole-cell crashes (the resume picks up)
+#   - self-wrap in `caffeinate -i` on macOS → the Mac doesn't sleep during the run
+#     (post-mortem: sleep was the #1 cause of network disconnects).
 #
-# Uso:
+# Usage:
 #   bash scripts/campaign.sh PD VR VI VE TV RO BL
 #   SECTORS=immobiliare,ristorazione MAPS=1 MAXPAGES=25 bash scripts/campaign.sh MI BG
 # Env: MAPS(1) MAXPAGES(25) RETRIES(3) BASE_BACKOFF(120) OUTDIR(output/recall)
-#      SECTORS(tutti) SUPPRESSION_LIST(auto: <OUTDIR>/suppression.csv se presente)
+#      SECTORS(all) SUPPRESSION_LIST(auto: <OUTDIR>/suppression.csv if present)
 set -u
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
-# Self-wrap in caffeinate (una sola volta) per impedire la sospensione del Mac.
+# Self-wrap in caffeinate (only once) to prevent the Mac from sleeping.
 if [ "${PG4_CAFFEINATED:-}" != "1" ] && command -v caffeinate >/dev/null 2>&1; then
   export PG4_CAFFEINATED=1
   exec caffeinate -i bash "${BASH_SOURCE[0]}" "$@"
@@ -34,7 +34,7 @@ LOG="$OUT/_campaign.log"
 MAPS="${MAPS:-1}"; MAXPAGES="${MAXPAGES:-25}"; RETRIES="${RETRIES:-3}"; BASE_BACKOFF="${BASE_BACKOFF:-120}"
 SECTOR_FILTER="${SECTORS:-}"
 
-# Suppression GDPR: esplicita se il file esiste (altrimenti la CLI la auto-scopre).
+# GDPR suppression: explicit if the file exists (otherwise the CLI auto-discovers it).
 if [ -z "${SUPPRESSION_LIST:-}" ] && [ -f "$OUT/suppression.csv" ]; then
   export SUPPRESSION_LIST="$OUT/suppression.csv"
 fi
@@ -43,7 +43,7 @@ fi
 [ -f "$SECTORS_JSON" ] || { echo "manca $SECTORS_JSON" >&2; exit 2; }
 PROVINCES=("$@"); [ ${#PROVINCES[@]} -eq 0 ] && PROVINCES=(PD VR VI VE TV RO BL)
 
-# read-loop invece di `mapfile` (assente in bash 3.2 di macOS)
+# read-loop instead of `mapfile` (missing in macOS bash 3.2)
 SECTOR_ROWS=()
 while IFS= read -r __row; do [ -n "$__row" ] && SECTOR_ROWS+=("$__row"); done < <(node -e '
   const fs=require("fs");

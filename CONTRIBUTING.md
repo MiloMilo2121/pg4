@@ -13,12 +13,14 @@ Keep `.env` local. The offline example and unit tests do not require API keys.
 
 ## Test Policy
 
-Before opening a PR:
+Before opening a PR, every gate must be green (CI runs the same ones):
 
 ```bash
-pnpm run typecheck
-pnpm test
+pnpm typecheck && pnpm lint && pnpm test && pnpm build
+pnpm --dir web run typecheck && pnpm --dir web run lint && pnpm --dir web run build   # if you touched web/
 ```
+
+Every bug fix comes with a test that fails without the fix.
 
 Smoke tests are opt-in because they touch real network/browser surfaces:
 

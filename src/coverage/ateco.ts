@@ -1,20 +1,20 @@
 /**
- * Tassonomia ATECO 2007 (divisioni a 2 cifre) — caricata da
+ * ATECO 2007 taxonomy (2-digit divisions) — loaded from
  * data/reference/ateco_divisions.json.
  *
- * Il file vive sotto data/ (fuori da rootDir=src), quindi lo leggiamo a runtime
- * via fs invece di importarlo, coerente con come api_server legge output/.
+ * The file lives under data/ (outside rootDir=src), so we read it at runtime
+ * via fs instead of importing it, consistent with how api_server reads output/.
  */
 
 import fs from 'fs';
 import path from 'path';
 
 export interface AtecoDivision {
-  /** Codice divisione a 2 cifre, es. "68". */
+  /** 2-digit division code, e.g. "68". */
   division: string;
-  /** Sezione ATECO (lettera A..U). */
+  /** ATECO section (letter A..U). */
   section: string;
-  /** Etichetta italiana. */
+  /** Italian label. */
   label: string;
 }
 
@@ -23,7 +23,7 @@ const DEFAULT_PATH = path.join(REPO_ROOT, 'data', 'reference', 'ateco_divisions.
 
 let cache: AtecoDivision[] | undefined;
 
-/** Carica (e cachea) la lista delle divisioni ATECO. */
+/** Loads (and caches) the list of ATECO divisions. */
 export function loadAtecoDivisions(file: string = DEFAULT_PATH): AtecoDivision[] {
   if (cache && file === DEFAULT_PATH) return cache;
   const raw = fs.readFileSync(file, 'utf8');
@@ -33,25 +33,25 @@ export function loadAtecoDivisions(file: string = DEFAULT_PATH): AtecoDivision[]
   return divisions;
 }
 
-/** Mappa division → AtecoDivision per lookup O(1). */
+/** division → AtecoDivision map for O(1) lookup. */
 export function atecoIndex(file: string = DEFAULT_PATH): ReadonlyMap<string, AtecoDivision> {
   return new Map(loadAtecoDivisions(file).map((d) => [d.division, d]));
 }
 
 /**
- * Normalizza un codice ATECO grezzo (qualsiasi forma: "68.31", "682010",
- * "68.20.01", "L68") alla divisione a 2 cifre ("68"). Ritorna undefined se non
- * estraibile.
+ * Normalizes a raw ATECO code (any form: "68.31", "682010",
+ * "68.20.01", "L68") to the 2-digit division ("68"). Returns undefined if it
+ * cannot be extracted.
  */
 export function atecoDivisionOf(rawAteco: string | undefined | null): string | undefined {
   if (!rawAteco) return undefined;
-  // Prima sequenza di 2+ cifre nel codice.
+  // First run of 2+ digits in the code.
   const m = String(rawAteco).match(/\d{2,}/);
   if (!m) return undefined;
   return m[0].slice(0, 2);
 }
 
-/** Etichetta leggibile di una divisione, o la divisione stessa se sconosciuta. */
+/** Human-readable label of a division, or the division itself if unknown. */
 export function atecoLabel(division: string, file: string = DEFAULT_PATH): string {
   return atecoIndex(file).get(division)?.label ?? division;
 }

@@ -1,13 +1,13 @@
 /**
- * Motore di copertura — il cuore della gap map.
+ * Coverage engine — the heart of the gap map.
  *
- * Prende le aziende accumulate, le classifica in (divisione ATECO, provincia,
- * regione), fa join con l'universo ISTAT e calcola per ogni cella:
+ * Takes the accumulated companies, classifies them into (ATECO division, provincia,
+ * region), joins them with the ISTAT universe and computes, for each cell:
  *   have / universe / addressable / coverage% / sample_ok / priority.
  *
- * Invariante di onesta' (come il resto di pg4): NIENTE drop silenzioso. Le
- * aziende fuori Nord-Italia e quelle non classificabili in una divisione sono
- * contate in bucket espliciti, non scartate.
+ * Honesty invariant (like the rest of pg4): NO silent drops. Companies outside
+ * Northern Italy and those that cannot be classified into a division are
+ * counted in explicit buckets, not discarded.
  */
 
 import type { Lead } from '../types/lead';
@@ -31,7 +31,7 @@ import {
 } from './config';
 import type { CoverageConfig } from './config';
 
-/** Campi "core" di enrichment su cui misuriamo la completezza dei dati. */
+/** "Core" enrichment fields on which we measure data completeness. */
 export interface EnrichmentFillRates {
   website: number; // %
   phone: number;
@@ -41,9 +41,9 @@ export interface EnrichmentFillRates {
 }
 
 export interface CellEnrichment {
-  /** % delle aziende della cella con il campo valorizzato (0..100). */
+  /** % of the cell's companies with the field populated (0..100). */
   fillRates: EnrichmentFillRates;
-  /** Media dei fill-rate core (0..100) — completezza dato della cella. */
+  /** Mean of the core fill rates (0..100) — data completeness of the cell. */
   score: number;
 }
 
@@ -54,26 +54,26 @@ export interface CoverageCell {
   province: string;
   region: string;
   macroArea: MacroArea;
-  // numeratore
+  // numerator
   have: number;
   withWebsite: number;
-  websitePct: number | null; // % delle scrapate con sito ufficiale
-  // enrichment (carenza di QUALITA', distinta dalla carenza di copertura)
+  websitePct: number | null; // % of scraped companies with an official website
+  // enrichment (QUALITY gap, distinct from the coverage gap)
   enrichment: CellEnrichment;
-  // denominatore
+  // denominator
   universeKnown: boolean;
-  universeTotal: number | null; // imprese attive ISTAT (tutte)
+  universeTotal: number | null; // ISTAT active firms (all)
   universeProvenance: UniverseProvenance | null;
   universeYear: number | null;
   directoryFactor: number;
-  addressable: number | null; // universeTotal * directoryFactor (arrotondato)
-  // metriche
-  coveragePct: number | null; // have / addressable (0..1+, null se universo ignoto)
+  addressable: number | null; // universeTotal * directoryFactor (rounded)
+  // metrics
+  coveragePct: number | null; // have / addressable (0..1+, null if universe unknown)
   minSample: number;
   sampleOk: boolean;
-  needForTarget: number | null; // aziende mancanti per il target coverage
-  needForSample: number; // aziende mancanti per la soglia campione
-  priorityScore: number | null; // null se universo ignoto (ordinato dopo i noti)
+  needForTarget: number | null; // companies missing to reach the target coverage
+  needForSample: number; // companies missing to reach the sample threshold
+  priorityScore: number | null; // null if universe unknown (sorted after the known ones)
 }
 
 export interface RegionRollup {
@@ -107,16 +107,16 @@ export interface CoverageReport {
   generated: { config: CoverageConfig; universeSource: string; universeHasData: boolean };
   summary: {
     totalLeads: number;
-    inScope: number; // Nord + classificate
-    outOfScope: number; // fuori Nord
-    unclassified: number; // Nord ma senza divisione
+    inScope: number; // North + classified
+    outOfScope: number; // outside the North
+    unclassified: number; // North but without a division
     cells: number;
     cellsUniverseKnown: number;
     cellsUniverseUnknown: number;
-    usesSampleUniverse: boolean; // true se almeno una cella usa righe `sample`
+    usesSampleUniverse: boolean; // true if at least one cell uses `sample` rows
   };
-  cells: CoverageCell[]; // granularita' provincia x divisione, ordinate per priorita'
-  regionRollup: RegionRollup[]; // regione x divisione, ordinate per priorita'
+  cells: CoverageCell[]; // provincia x division granularity, sorted by priority
+  regionRollup: RegionRollup[]; // region x division, sorted by priority
   buckets: {
     outOfScope: { count: number; byProvince: Record<string, number>; samples: CoverageBucketSample[] };
     unclassified: { count: number; byCategory: Record<string, number>; samples: CoverageBucketSample[] };
@@ -132,7 +132,7 @@ export interface CoverageEngineOptions {
 interface Accum {
   have: number;
   withWebsite: number;
-  // contatori enrichment (campi core valorizzati)
+  // enrichment counters (populated core fields)
   website: number;
   phone: number;
   email: number;
@@ -161,8 +161,8 @@ function pct(n: number, d: number): number {
 }
 
 /**
- * Risolve la divisione ATECO di un lead: prima il campo `ateco` esplicito
- * (da enrichment a pagamento, piu' affidabile), poi il crosswalk sul `category`.
+ * Resolves a lead's ATECO division: first the explicit `ateco` field
+ * (from paid enrichment, more reliable), then the crosswalk on `category`.
  */
 function divisionOf(lead: Lead, crosswalk: Crosswalk): string | undefined {
   return atecoDivisionOf(typeof lead.ateco === 'string' ? lead.ateco : undefined)
@@ -177,22 +177,22 @@ function priorityOf(
 ): number | null {
   if (needForTarget === null) return null;
   const boost = sampleOk ? 1 : sampleBoost;
-  // Driver = aziende mancanti al target (grande sui mercati dove manca di piu'),
-  // amplificato quando non possiamo nemmeno fare statistica sulla cella.
+  // Driver = companies missing to reach the target (large on the markets with the biggest gap),
+  // amplified when we cannot even compute statistics on the cell.
   return Math.round((needForTarget * boost + (sampleOk ? 0 : needForSample)) * 100) / 100;
 }
 
-/** Costruisce il report di copertura da un insieme di lead accumulati. */
+/** Builds the coverage report from a set of accumulated leads. */
 export function buildCoverageReport(leads: Iterable<Lead>, opts: CoverageEngineOptions = {}): CoverageReport {
   const universe = opts.universe ?? new IstatAsiaUniverse();
   const crosswalk = opts.crosswalk ?? new Crosswalk();
   const config: CoverageConfig = { ...DEFAULT_COVERAGE_CONFIG, ...opts.config };
   const ateco: ReadonlyMap<string, AtecoDivision> = atecoIndex();
 
-  // Settori multi-divisione (es. edilizia = ATECO 41+43): mappa ogni divisione
-  // del settore alla lista completa, così il denominatore somma l'universo di
-  // TUTTE le divisioni coperte (i lead "impresa edile" classificano solo su 41
-  // via crosswalk, ma il settore copre anche 43 → altrimenti copertura >100%).
+  // Multi-division sectors (e.g. construction = ATECO 41+43): map each division
+  // of the sector to the full list, so the denominator sums the universe of
+  // ALL covered divisions ("impresa edile" leads classify only into 41
+  // via the crosswalk, but the sector also covers 43 → otherwise coverage >100%).
   const divisionGroup = new Map<string, string[]>();
   for (const s of loadSectors()) {
     if (s.atecoDivisions.length > 1) for (const d of s.atecoDivisions) divisionGroup.set(d, s.atecoDivisions);
@@ -232,9 +232,9 @@ export function buildCoverageReport(leads: Iterable<Lead>, opts: CoverageEngineO
     total += 1;
     let province = normProvince(typeof lead.province === 'string' ? lead.province : '');
     if (!province) {
-      // Il parser Maps non risolve la sigla: recuperala dal nome comune
-      // (city → business_city → query_location). Solo quando la provincia è
-      // VUOTA — un lead che dichiara una provincia fuori Nord resta fuori scope.
+      // The Maps parser does not resolve the province code: recover it from the comune name
+      // (city → business_city → query_location). Only when the provincia is
+      // EMPTY — a lead that declares a provincia outside the North stays out of scope.
       province =
         provinceForComune(typeof lead.city === 'string' ? lead.city : undefined) ??
         provinceForComune(typeof lead.business_city === 'string' ? lead.business_city : undefined) ??
@@ -270,7 +270,7 @@ export function buildCoverageReport(leads: Iterable<Lead>, opts: CoverageEngineO
     cellAcc.set(k, acc);
   }
 
-  // ---- celle provincia x divisione ----
+  // ---- provincia x division cells ----
   let usesSampleUniverse = false;
   let cellsUniverseKnown = 0;
   const cells: CoverageCell[] = [];
@@ -329,11 +329,11 @@ export function buildCoverageReport(leads: Iterable<Lead>, opts: CoverageEngineO
     });
   }
 
-  // ---- rollup regione x divisione ----
+  // ---- region x division rollup ----
   interface RAcc {
     have: number; withWebsite: number; universeTotal: number; addressable: number;
     universeKnown: boolean; usesSample: boolean; region: string; macroArea: MacroArea; division: string;
-    // somma pesata (fill% * have) per campo: divisa per have a fine ricostruisce il fill-rate esatto
+    // weighted sum (fill% * have) per field: divided by have at the end it rebuilds the exact fill rate
     fw: number; fp: number; fe: number; fpec: number; fv: number;
   }
   const regionAcc = new Map<string, RAcc>();
@@ -399,7 +399,7 @@ export function buildCoverageReport(leads: Iterable<Lead>, opts: CoverageEngineO
     };
   });
 
-  // ordina per priorita' desc; universo ignoto (null) in fondo
+  // sort by priority desc; unknown universe (null) last
   const byPriority = <T extends { priorityScore: number | null }>(a: T, b: T): number => {
     if (a.priorityScore === null && b.priorityScore === null) return 0;
     if (a.priorityScore === null) return 1;
