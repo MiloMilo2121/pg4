@@ -5,7 +5,7 @@
  * only; touches no extraction logic.
  *
  *   pnpm exec tsx tools/probes/audit_validation.ts --label S1 --comuni "Padova" --n 15
- *   → docs/precision_evidence/audit_<label>.json
+ *   → output/probes/audit_<label>.json
  *
  * The 6 bugs re-checked on fresh data:
  *  #1 fatturato = max-year (revenue_year == max history year w/ fatturato)
@@ -135,7 +135,8 @@ async function main(): Promise<void> {
     structural_ceiling: { with_fatturato: withFatt.length, no_fatturato_genuine: genuineNoData, note: 'no-fatturato should be ditte individuali / non-filers = honest empties' },
     companies,
   };
-  const dest = path.resolve(`docs/precision_evidence/audit_${label}.json`);
+  const dest = path.resolve(`output/probes/audit_${label}.json`);
+  fs.mkdirSync(path.dirname(dest), { recursive: true });
   fs.writeFileSync(dest, JSON.stringify(out, null, 2));
   console.log(`=== AUDIT ${label} (${comuni.join('+')}) n=${companies.length} ===`);
   console.log('fill:', JSON.stringify(out.fill_rate));

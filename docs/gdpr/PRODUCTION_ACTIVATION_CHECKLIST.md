@@ -46,7 +46,7 @@ not *send* to them before the notice + LIA exist.
 
 | # | Step | How |
 |---|------|-----|
-| 2.1 | **Run the live €0.02 ceiling test.** | Provide `SERPER_API_KEY`; run the command in `docs/saas_foundation_report.md §A4`. Confirm the ledger never exceeds €0.02 and the latched `run_cost_ceiling_hit` fired. This is the ONE real spend that proves the guard end-to-end. |
+| 2.1 | **Run the live €0.02 ceiling test.** | Provide `SERPER_API_KEY`; run a paid enrich with `--enable-paid --run-cost-ceiling-eur 0.02`. Confirm the ledger never exceeds €0.02 and the latched `run_cost_ceiling_hit` fired. This is the ONE real spend that proves the guard end-to-end. |
 | 2.2 | Wire the official-data providers (INI-PEC, VIES, fatturatoitalia) and flip their `enabled` in `field_registry.ts`. | Phase 3 of the roadmap. Each is already declared as a disabled step. |
 | 2.3 | Enable paid field steps (email-finder, people-finder) per tenant plan. | Flip `enabled` + provide the provider; the per-field ceiling already gates them. |
 | 2.4 | Prove the cross-worker run ceiling (DB advisory lock + ledger SUM) before scale (Gate B). | Multi-worker version of 2.1. |
@@ -66,7 +66,7 @@ not *send* to them before the notice + LIA exist.
 
 | # | Step | How |
 |---|------|-----|
-| 4.1 | Build the Next.js frontend per `docs/frontend_spec.md`; wire it to the API + a dev tenant. | Separate app (intentionally not built this pass). |
+| 4.1 | ✅ Next.js dashboard built (`web/`), wired to the local API + a dev tenant. | Single-tenant dev build. |
 | 4.2 | Deploy with a preview environment + Lighthouse CI gate. | Vercel. |
 | 4.3 | Wire the worker pool (lease queue) + n8n scheduling. | Phase 7 of the roadmap. |
 

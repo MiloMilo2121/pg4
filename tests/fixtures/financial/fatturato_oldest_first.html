@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="it">
+<head><title>Fatturato AGENZIA IMMOBILIARE ESEMPIO CASE S.R.L.</title></head>
+<body>
+  <!-- Golden regression fixture: the REAL chart vars from
+       a real fatturatoitalia.it page (captured 2026-06-12; company anonymised).
+       The arrays are OLDEST-FIRST (2020 → 2024). The headline revenue MUST be
+       the most recent year (2024 = € 51.619), NOT history[0] (2020 = € 35.550).
+       This locks the wrong-year bug Marco's sample-check caught. -->
+  <h1>AGENZIA IMMOBILIARE ESEMPIO CASE S.R.L.</h1>
+  <script>
+    var labelChart = ['2020','2021','2022','2023','2024'];
+    var datiChartFatturato = [35550,24903,53822,37769,51619];
+    var datiChartUtile = [3519,-4314,13488,-11519,-2734];
+  </script>
+  <div class="col-xs-5">Partita IVA</div><div class="col-xs-7">09999990287</div>
+  <div class="col-xs-5">N. dipendenti</div><div class="col-xs-7">1</div>
+</body>
+</html>

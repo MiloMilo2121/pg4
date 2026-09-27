@@ -50,8 +50,7 @@ explicit operator request. It is the deliberate, paid, deep-enrich — not the f
   REA, ATECO. Response field paths PENDING — confirm + golden on the FIRST real call.
 - `IT-pec` (€0.03 / ~€0.015 best) by VAT: certified email. Response PENDING.
 - License gate (unchanged): redistribution-in-a-sold-product is a separate ToS question;
-  the ENRICHMENT model (enrich the customer's own leads) is the cleared use — see
-  docs/coverage_planB_official_sources.md.
+  the ENRICHMENT model (enrich the customer's own leads) is the cleared use.
 
 ## Activation checklist (when Marco says go)
 1. Key in `.env` (`OPENAPI_API_KEY`, `OPENAPI_ENABLED=true`). Sandbox first via `OPENAPI_BASE_URL=https://test.company.openapi.com`.

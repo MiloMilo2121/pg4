@@ -12,7 +12,7 @@ import { normalizeVatCode, validateItalianVatChecksum } from '../financial/vat';
  * DISABLED BY DEFAULT and NOT wired into the production ladder
  * (`enrichment_pipeline.ts`). This is a safe placeholder that establishes
  * the contract; the live/paid paths land in later phases (see
- * docs/r13_financial_enrichment_audit.md §9).
+ * the R13 financial-enrichment audit, §9).
  *
  * Hard rules (enforced here):
  *   - NO network. The only work done is PURE: validate the input

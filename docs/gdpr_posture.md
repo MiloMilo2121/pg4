@@ -88,5 +88,5 @@ spetta all'operatore (vedi §5).
 ## 6. Riferimenti interni
 
 - `docs/decision_log.md` — default conservativi scelti e perché.
-- `docs/operator_playbook.md` — comandi operativi (suppression, lookup).
+- `docs/production_runbook.md` — comandi operativi (suppression, lookup).
 - `_runs.jsonl` — registro dei run (mai cancellato da pg4).

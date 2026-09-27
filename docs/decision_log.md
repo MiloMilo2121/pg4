@@ -106,9 +106,8 @@ are irreversible; all are config- or flag-gated.
 
 ## B.3 — Scheduler
 
-- **OPERATOR DECISION PENDING:** nessuno scheduler installato. Esempi
-  pronti (launchd, cron, GH Actions commentato) in
-  `docs/scheduling_examples.md`. CLI già non-interattivi by design.
+- **OPERATOR DECISION PENDING:** nessuno scheduler installato (launchd,
+  cron o GitHub Actions funzionano tutti). CLI già non-interattivi by design.
 
 ## B.4 — Secrets
 

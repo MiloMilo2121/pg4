@@ -4,7 +4,7 @@ Estende PG4 con discovery refinement (sito+social) e un **giudizio a due assi**:
 **A** = forza intrinseca (fonti TERZE), **B** = qualità auto-espressione (canali OWNED),
 **GAP = A−B**, verdetto target + leva. Target = A alto + B basso; falso positivo = "fuffa" (A basso + B alto).
 
-Fonte di verità del giudizio: `docs/ontology/ontologia_forza_commerciale_v2.md` (v2).
+Fonte di verità del giudizio: l'ontologia interna della forza commerciale (v2, non pubblicata).
 La logica vive in `src/judgment/config/` (trascritta da v2, ogni voce con `ref`; un test lo impone).
 Solo i **numeri** (soglie/pesi) sono estensione di sistema — `thresholds` in `config/v0.ts`.
 

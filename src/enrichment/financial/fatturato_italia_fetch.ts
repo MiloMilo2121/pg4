@@ -4,7 +4,7 @@
  * network; this is the small, rate-limited fetch that feeds it.
  *
  * URL scheme (re-probed 2026-07-18 — the site changed, see O6 in
- * .context/pg4-review-log.md and docs/measurement_evidence/):
+ * the R13 review and its measurements):
  *   - The old direct `https://www.fatturatoitalia.it/<P.IVA>` now 404s for
  *     every VAT (it parsed the 404 shell → silent garbage).
  *   - The company page lives at a slug URL `/<slug>-<P.IVA>`, reachable only

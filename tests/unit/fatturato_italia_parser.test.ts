@@ -107,7 +107,7 @@ describe('GOLDEN regression — most-recent-year selection (the wrong-year bug)'
   // history.find(first positive) returned 2020 (€35.550) for every company.
   // Marco's sample-check caught it (dashboard showed €35.550; the 2024 figure
   // is €51.619). This locks the fix: headline revenue = the MOST RECENT year.
-  const r = parseFatturatoItaliaPage(read('fatturato_euganea_oldest_first.html'));
+  const r = parseFatturatoItaliaPage(read('fatturato_oldest_first.html'));
 
   it('returns the MOST RECENT year (2024), not the oldest (2020)', () => {
     expect(r.revenue_year).toBe('2024');

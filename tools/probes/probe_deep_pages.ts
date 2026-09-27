@@ -7,7 +7,7 @@
  *
  *   pnpm exec tsx tools/probes/probe_deep_pages.ts --n 30 [--step 7]
  *
- * Output → docs/precision_evidence/probe_deep_pages_output.json. €0 (HTTP only).
+ * Output → output/probes/probe_deep_pages_output.json. €0 (HTTP only).
  */
 import fs from 'fs';
 import path from 'path';
@@ -31,7 +31,7 @@ async function main(): Promise<void> {
   const n = arg('--n', 30);
   const step = arg('--step', 7);
   const seed = argStr('--input', SEED);
-  const outPath = argStr('--out', 'docs/precision_evidence/probe_deep_pages_output.json');
+  const outPath = argStr('--out', 'output/probes/probe_deep_pages_output.json');
   const fetcher = new DirectFetchProvider();
   const fetch = async (url: string): Promise<string | undefined> => {
     try {
@@ -89,6 +89,7 @@ async function main(): Promise<void> {
     lift_samples: liftSamples,
   };
   const dest = path.resolve(outPath);
+  fs.mkdirSync(path.dirname(dest), { recursive: true });
   fs.writeFileSync(dest, JSON.stringify(out, null, 2));
   console.log(JSON.stringify(out, null, 2));
   console.error(`\nwrote ${dest}`);
