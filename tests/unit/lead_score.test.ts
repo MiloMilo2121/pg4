@@ -73,14 +73,18 @@ describe('computeLeadScore', () => {
     expect(parseNum('1,234')).toBe(1234);
     expect(parseNum('(1.234 recensioni)')).toBe(1234);
     expect(parseNum(12)).toBe(12);
+    expect(parseNum('.5')).toBe(0.5);
+    expect(parseNum('4,5/5')).toBe(4.5);
+    expect(parseNum('4.5 stelle')).toBe(4.5);
     expect(parseNum('N/A')).toBeUndefined();
     expect(parseNum('—')).toBeUndefined();
     expect(parseNum('')).toBeUndefined();
     expect(parseNum(Number.NaN)).toBeUndefined();
   });
 
-  it('a placeholder rating ("N/A") earns NO reputation credit', () => {
+  it('a placeholder or out-of-scale rating earns NO reputation credit', () => {
     expect(computeLeadScore(L({ rating: 'N/A' }))).toBe(computeLeadScore(L({})));
+    expect(computeLeadScore(L({ rating: '4.000', reviews_count: '100' }))).toBe(computeLeadScore(L({ reviews_count: '100' })));
   });
 
   it('rankByLeadScore: descending, stable, top-N, score computed once per lead', () => {

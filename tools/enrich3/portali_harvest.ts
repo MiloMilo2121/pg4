@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { parseArgs, optString } from '../../src/cli/_args';
-import { ApifyProvider, ApifyRunError, type ApifyActor } from '../../src/providers/apify/apify_provider';
+import { ApifyDatasetError, ApifyProvider, ApifyRunError, type ApifyActor } from '../../src/providers/apify/apify_provider';
 import { buildE3Run, closeLedger, runIfMain } from './_shared';
 import { logger } from '../../src/runtime/logger';
 
@@ -107,9 +107,8 @@ async function main(): Promise<void> {
       continue;
     }
     const pendingPath = `${rawPath}.pending.json`;
-    const items = fs.existsSync(pendingPath)
-      ? await recoverPaidDataset(provider, pendingPath, unit.maxItems)
-      : await harvestUnit(provider, router, unit, ceiling, pendingPath);
+    const recovered = fs.existsSync(pendingPath) ? await recoverPaidDataset(provider, pendingPath, unit.maxItems) : 'none';
+    const items = Array.isArray(recovered) ? recovered : recovered === 'retry-later' ? null : await harvestUnit(provider, router, unit, ceiling, pendingPath);
     if (!items) {
       logger.warn({ actor: unit.actor, slug: unit.slug }, '[portali] no items (gated, failed, or empty) — raw not written');
       continue;
@@ -156,16 +155,35 @@ async function harvestUnit(
   );
 }
 
-/** Resume path for an already-paid run: download its dataset (a read, no new run). */
-async function recoverPaidDataset(provider: ApifyProvider, pendingPath: string, maxItems: number): Promise<unknown[] | null> {
-  const { datasetId } = JSON.parse(fs.readFileSync(pendingPath, 'utf8')) as { datasetId: string };
+/**
+ * Resume path for an already-paid run: download its dataset (a read, no new
+ * run). Returns the items; 'retry-later' on a transient failure (pending
+ * kept); 'none' when the dataset is gone (404 — past Apify retention), empty
+ * or the pending file is unreadable — pending dropped, so the unit is
+ * harvested again instead of being stuck forever.
+ */
+export async function recoverPaidDataset(provider: ApifyProvider, pendingPath: string, maxItems: number): Promise<unknown[] | 'retry-later' | 'none'> {
+  const drop = (reason: string, datasetId?: string): 'none' => {
+    logger.warn({ datasetId, reason }, '[portali] paid dataset unrecoverable — pending dropped, unit will be harvested again');
+    fs.rmSync(pendingPath, { force: true });
+    return 'none';
+  };
+  let datasetId: unknown;
+  try {
+    datasetId = (JSON.parse(fs.readFileSync(pendingPath, 'utf8')) as { datasetId?: unknown }).datasetId;
+  } catch (err) {
+    return drop(`unreadable pending file: ${(err as Error).message}`);
+  }
+  if (typeof datasetId !== 'string' || !datasetId) return drop('pending file has no datasetId');
   try {
     const items = await provider.fetchDatasetItems(datasetId, maxItems);
+    if (items.length === 0) return drop('dataset is empty', datasetId);
     logger.info({ datasetId, items: items.length }, '[portali] recovered paid dataset (no new run)');
-    return items.length > 0 ? items : null;
+    return items;
   } catch (err) {
+    if (err instanceof ApifyDatasetError && err.status === 404) return drop('dataset gone (404, past retention?)', datasetId);
     logger.warn({ datasetId, err: (err as Error).message }, '[portali] dataset re-download failed — pending kept for the next resume');
-    return null;
+    return 'retry-later';
   }
 }
 

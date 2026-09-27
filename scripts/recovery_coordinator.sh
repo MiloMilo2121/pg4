@@ -166,7 +166,9 @@ ensure_dispatch() {
     dispatching)
       outcome="$(workflow_outcome "$state")" || return 1
       case "$outcome" in
-        queued:*|in_progress:*|completed:*) return 0 ;;
+        # `waiting`/`pending`/`requested`: the run exists (e.g. held by the
+        # recovery-merge environment approval) — never re-dispatch it.
+        queued:*|in_progress:*|waiting:*|pending:*|requested:*|completed:*) return 0 ;;
       esac
       elapsed="$(node -e 'const s=JSON.parse(process.argv[1]);const t=Date.parse(s.dispatch_requested_at||"");process.stdout.write(String(Number.isFinite(t)?Math.max(0,Math.floor((Date.now()-t)/1000)):999999))' "$state_json")"
       if [ "$elapsed" -lt "${RECOVERY_DISPATCH_GRACE_SECONDS:-90}" ]; then

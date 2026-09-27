@@ -16,6 +16,7 @@
 
 import { isDirectoryOrSocial } from '../../discovery/website/content_filter';
 import { str } from '../../util/values';
+import { isGoogleMapsUrl } from '../../discovery/sources/maps_url';
 
 export interface PortalAgencyRecord {
   portal: 'immobiliare' | 'immobiliare_ads' | 'wikicasa';
@@ -118,7 +119,7 @@ const ownWebsite = (...vs: unknown[]): string | undefined => {
   const s = firstStr(...vs);
   if (!s) return undefined;
   const url = /^https?:\/\//i.test(s) ? s : `https://${s}`;
-  return isDirectoryOrSocial(url) ? undefined : url;
+  return isDirectoryOrSocial(url) || isGoogleMapsUrl(url) ? undefined : url;
 };
 
 /** azzouzana~immobiliare-agencies-scraper — email + socials + isPaid/#ads per agency. */

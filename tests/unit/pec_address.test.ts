@@ -18,6 +18,16 @@ describe('isPecAddress — one anchored PEC test for the whole codebase', () => 
     'acme@mypec.eu',
     'acme@pec.cloud',
     'ACME@PEC.IT',
+    // provider brands whose label ENDS in "pec"
+    'agenzia@registerpec.it',
+    'agenzia@casellapec.com',
+    'agenzia@gigapec.it',
+    'agenzia@sicurpec.it',
+    'agenzia@emailcertificatapec.it',
+    // non-"pec" provider labels
+    'agenzia@pecsicura.it',
+    'ente@legalmailpa.it',
+    'agenzia@actaliscertymail.it',
   ])('PEC: %s', (email) => {
     expect(isPecAddress(email)).toBe(true);
   });

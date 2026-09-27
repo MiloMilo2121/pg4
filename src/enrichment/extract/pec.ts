@@ -3,27 +3,27 @@
  *
  * PEC is a legal channel, never an outreach one, so it is routed to the `pec`
  * field and kept out of `email_inferred` / email-domain inference. The match is
- * anchored on whole domain LABELS: a label equal to a known PEC provider name
- * (`pec`, `legalmail`, `arubapec`, `cert`, …) followed by at least one more
- * label. A bare substring test (`/pec/`) wrongly flagged business domains such
- * as `speciale.it`, `pecoraimmobiliare.it` or `spectrum.it`.
+ * on whole domain LABELS (each followed by at least one more label):
+ *   - any label ENDING in `pec` — the providers' naming convention: pec,
+ *     arubapec, lamiapec, registerpec, casellapec, gigapec, sicurpec, …
+ *   - a known provider label that does not: legalmail(pa), postecert, cert, …
+ * A bare substring test (`/pec/`) wrongly flagged business domains such as
+ * `speciale.it`, `pecoraimmobiliare.it` or `spectrum.it`.
  *
  *   isPecAddress('amministrazione@pec.acme.it')  → true
- *   isPecAddress('acme@pec.aruba.it')           → true
- *   isPecAddress('acme@lamiapec.it')            → true
+ *   isPecAddress('acme@registerpec.it')         → true
  *   isPecAddress('info@pecoraimmobiliare.it')   → false
  */
 const PEC_LABELS = [
-  'pec',
+  '[a-z0-9-]*pec',
   'legalmail',
-  'arubapec',
+  'legalmailpa',
   'postecert',
   'postacert',
   'pecimprese',
-  'legpec',
-  'lamiapec',
-  'mypec',
+  'pecsicura',
   'sicurezzapostale',
+  'actaliscertymail',
   'twtcert',
   'cert',
 ];

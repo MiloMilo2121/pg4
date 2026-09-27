@@ -37,7 +37,7 @@ const EMAIL_STATUS_FACTOR: Record<NonNullable<Lead['email_status']>, number> = {
 export function parseNum(v: unknown): number | undefined {
   if (typeof v === 'number') return Number.isFinite(v) ? v : undefined;
   if (typeof v !== 'string') return undefined;
-  const token = v.match(/-?\d[\d.,]*/)?.[0].replace(/[.,]$/, '');
+  const token = v.match(/-?(?:\d[\d.,]*|[.,]\d+)/)?.[0].replace(/[.,]$/, '');
   if (!token) return undefined;
   let normalized: string;
   if (/^-?\d{1,3}(?:\.\d{3})+(?:,\d+)?$/.test(token)) normalized = token.replace(/\./g, '').replace(',', '.'); // IT thousands
@@ -75,7 +75,7 @@ export function computeLeadScore(lead: Partial<Lead>): number {
   // log10 so 10 reviews ≈ half credit, 100+ ≈ full.
   let reputation = 0;
   const rating = parseNum(lead.rating);
-  if (rating !== undefined) {
+  if (rating !== undefined && rating >= 0 && rating <= 5) {
     const reviews = parseNum(lead.reviews_count) ?? 0;
     reputation = 0.3 + 0.7 * clamp01((rating - 3) / 2) * Math.min(1, Math.log10(1 + reviews) / 2);
   }

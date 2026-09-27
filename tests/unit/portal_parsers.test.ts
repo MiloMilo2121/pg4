@@ -40,6 +40,10 @@ describe('portal parsers', () => {
     expect(parseWikicasaItem({ name: 'Mia Casa', website: 'miacasa.it' })!.website).toBe('https://miacasa.it');
     expect(parseImmobiliareAgencyItem({ name: 'Acme', website: 'https://maps.google.com/?cid=1' })!.website).toBeUndefined();
     expect(parseImmobiliareAgencyItem({ name: 'Acme', website: 'https://www.google.it/maps/place/Acme' })!.website).toBeUndefined();
+    // Maps on any Google ccTLD, not just the .com/.it in the directory list
+    expect(parseImmobiliareAgencyItem({ name: 'Acme', website: 'https://www.google.de/maps/place/Acme' })!.website).toBeUndefined();
+    expect(parseImmobiliareAgencyItem({ name: 'Acme', website: 'https://maps.google.fr/?cid=1' })!.website).toBeUndefined();
+    expect(parseImmobiliareAgencyItem({ name: 'Acme', website: 'https://www.google.co.uk/maps/place/X' })!.website).toBeUndefined();
   });
 
   it('normalizes a bare-host declared website to https', () => {

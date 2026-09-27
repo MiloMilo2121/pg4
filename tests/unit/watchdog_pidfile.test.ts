@@ -50,13 +50,17 @@ describe('pidfile_alive', () => {
     expect(alive(f, 'scripts/campaign.sh')).toBe(false);
   });
 
-  it('false for a dead PID, a legacy bare-PID file, and a missing file', () => {
+  it('false for a dead PID and a missing file', () => {
     const dead = path.join(dir, 'dead.pid');
     fs.writeFileSync(dead, '999999\tMon Jan  1 00:00:00 2001\n');
     expect(alive(dead, 'sleep')).toBe(false);
+    expect(alive(path.join(dir, 'missing.pid'), 'sleep')).toBe(false);
+  });
+
+  it('a legacy bare-PID file (pre-upgrade watchdog) is judged on liveness + command, never blindly relaunched', () => {
     const legacy = path.join(dir, 'legacy.pid');
     fs.writeFileSync(legacy, `${child.pid}\n`);
-    expect(alive(legacy, 'sleep')).toBe(false);
-    expect(alive(path.join(dir, 'missing.pid'), 'sleep')).toBe(false);
+    expect(alive(legacy, 'sleep')).toBe(true);
+    expect(alive(legacy, 'scripts/campaign.sh')).toBe(false);
   });
 });
