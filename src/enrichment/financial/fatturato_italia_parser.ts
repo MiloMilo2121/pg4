@@ -2,7 +2,7 @@
  * R13 — fatturatoitalia.it page parser. PURE: takes HTML, returns data.
  * NO fetch, NO network, NO live scraper. The live lookup (deterministic
  * POST by P.IVA) is deferred to a later, rate-limited, opt-in phase
- * (see docs/r13_financial_enrichment_audit.md §9). This module only
+ * (R13 financial-enrichment audit, §9). This module only
  * understands the *shape* of a company page.
  *
  * Extraction paths, tried in order — first hit wins:

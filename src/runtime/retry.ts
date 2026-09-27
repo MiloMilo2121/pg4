@@ -2,18 +2,18 @@ import { setTimeout as wait } from 'timers/promises';
 import { DEFAULTS } from '../config/defaults';
 
 /**
- * Retry-with-backoff per operazioni di navigazione fragili (Playwright).
+ * Retry-with-backoff for fragile navigation operations (Playwright).
  *
- * Motivazione (post-mortem campagne Veneto): il 99% dei fallimenti NON erano
- * blocchi anti-bot ma cadute di rete del client — 3.626 `net::ERR_INTERNET_
- * DISCONNECTED` / `ERR_NETWORK_CHANGED` / `ERR_NAME_NOT_RESOLVED` (laptop in
- * movimento: sospensione + wifi che salta). Un singolo `page.goto` fallito
- * perdeva la pagina/comune o uccideva l'intero run. `withRetry` riprova la
- * stessa operazione con backoff esponenziale finché la rete non rientra,
- * rispettando l'abort cooperativo.
+ * Rationale (Veneto campaigns post-mortem): 99% of failures were NOT
+ * anti-bot blocks but client-side network drops — 3,626 `net::ERR_INTERNET_
+ * DISCONNECTED` / `ERR_NETWORK_CHANGED` / `ERR_NAME_NOT_RESOLVED` (laptop on
+ * the move: sleep + flaky wifi). A single failed `page.goto` would
+ * lose the page/comune or kill the whole run. `withRetry` retries the
+ * same operation with exponential backoff until the network comes back,
+ * honoring cooperative abort.
  */
 
-/** Errori transitori di rete/navigazione che vale la pena ritentare. */
+/** Transient network/navigation errors worth retrying. */
 const RETRIABLE_RE =
   /net::ERR_|ERR_NETWORK|ERR_NAME_NOT_RESOLVED|ERR_CONNECTION|ERR_TIMED_OUT|ERR_INTERNET_DISCONNECTED|ERR_ADDRESS_UNREACHABLE|Timeout.*exceeded|Navigation timeout|ECONNRESET|ETIMEDOUT|EAI_AGAIN|socket hang up|Target closed|frame was detached/i;
 
@@ -23,19 +23,19 @@ export function isRetriableNavError(err: unknown): boolean {
 }
 
 export interface RetryOptions {
-  /** Tentativi EXTRA dopo il primo (default 3 → fino a 4 esecuzioni). */
+  /** EXTRA attempts after the first (default 3 → up to 4 executions). */
   retries?: number;
-  /** Backoff base ms; raddoppia a ogni tentativo. Default = interPageDelayMs. */
+  /** Base backoff in ms; doubles on every attempt. Default = interPageDelayMs. */
   baseBackoffMs?: number;
-  /** Cap del backoff. Default 30s. */
+  /** Backoff cap. Default 30s. */
   maxBackoffMs?: number;
-  /** Jitter frazionario ±; applicato solo se baseBackoffMs > 0. Default 0.2. */
+  /** Fractional ± jitter; applied only if baseBackoffMs > 0. Default 0.2. */
   jitter?: number;
-  /** Abort cooperativo: se abortito, non ritenta e propaga. */
+  /** Cooperative abort: if aborted, does not retry and propagates. */
   abortSignal?: AbortSignal;
-  /** Predicato di ritentabilità. Default: errori di rete/navigazione. */
+  /** Retriability predicate. Default: network/navigation errors. */
   isRetriable?: (err: unknown) => boolean;
-  /** Notifica ogni retry (per logging/telemetria). */
+  /** Notified on every retry (for logging/telemetry). */
   onRetry?: (info: { attempt: number; delayMs: number; err: unknown }) => void;
 }
 
@@ -47,9 +47,9 @@ class AbortedError extends Error {
 }
 
 /**
- * Esegue `fn` con retry+backoff. `fn` riceve il numero di tentativo (0-based).
- * Rilancia l'ultimo errore quando i tentativi si esauriscono o l'errore non è
- * ritentabile o l'abortSignal scatta.
+ * Runs `fn` with retry+backoff. `fn` receives the attempt number (0-based).
+ * Rethrows the last error when attempts are exhausted, the error is not
+ * retriable, or the abortSignal fires.
  */
 export async function withRetry<T>(fn: (attempt: number) => Promise<T>, opts: RetryOptions = {}): Promise<T> {
   const retries = opts.retries ?? 3;

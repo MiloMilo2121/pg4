@@ -4,7 +4,7 @@ import { ItalianNerParser } from './hyper_guesser/italian_ner_parser';
 /**
  * Pure semantic-evidence helpers used by `PreVerifyGate` (Phase D).
  *
- * The audit (`pg4/docs/free_enrichment_audit.md`) showed the looser
+ * The Phase C free-enrichment audit showed the looser
  * Phase 4.2 gate accepted ~50% wrong matches. The helpers here
  * surface the deterministic signals the gate now requires:
  *
@@ -78,7 +78,7 @@ const COMMON_BARE_STEMS = new Set<string>([
   // Phase D.5 TV audit (p65): manually verified false-positive
   // single-token brand stems matching well-known third-party domains.
   // Each verified individually via WebFetch — see
-  // pg4/docs/phase_d5_tv_suspect_audit.md for the per-case evidence.
+  // the Phase D.5 TV suspect audit (internal report) for the per-case evidence.
   'broker',     // p65: "Broker S.r.l." (Montebelluna) → broker.eu = Belgian real-estate broker (Oostende)
   'contea',     // p65: "Contea S.r.l." (Montebelluna) → contea.com = Spaceship.com domain marketplace listing
   'galileo',    // p65: "Immobiliare Galileo S.r.l." → galileo.it = Italian e-learning platform
@@ -94,7 +94,7 @@ const COMMON_BARE_STEMS = new Set<string>([
   'possagno',
   // Phase E (p71 VR audit) — manually verified single-token brand stems
   // matching well-known third-party domains. Per-case evidence in
-  // pg4/docs/phase_e_vr_audit.md.
+  // the Phase E VR audit (internal report).
   'palace',     // p71: "Palace Immobiliare" (Montagnana) → palace.it = Palace Merano medical spa (BZ)
   'domino',     // p71: "Domino S.r.l." (Lazise) → domino.it = digital marketing agency (Turin/Venice)
   'camelot',    // p71: "Camelot Sas" (Villafranca VR) → camelot.it = e-voting platform (Ivrea)
@@ -102,7 +102,7 @@ const COMMON_BARE_STEMS = new Set<string>([
   'alfaomega',  // p71: "Alfa Omega Immobiliare" (Verona) → alfaomega.it = pharma/nutraceutical (Monza)
   // Phase F (p81 PD audit) — manually verified single-token brand stems
   // matching well-known third-party domains. Per-case evidence in
-  // pg4/docs/phase_f_pd_audit.md.
+  // the Phase F PD audit (internal report).
   'americanino', // p81: "Americanino" (Padova) → americanino.eu = clothing/footwear brand (Sport Commerce Italia)
   'raffaello',   // p81: "Raffaello S.r.l." (Limena) → raffaello.it = Ferrero confectionery brand
   'cantele',     // p81: "Cantele S.r.l." (Padova) → cantele.it = Cantele Vini wine producer (Guagnano LE)
@@ -114,13 +114,13 @@ const COMMON_BARE_STEMS = new Set<string>([
   'alessandra',  // p81: "Alessandra S.r.l." (Padova) → alessandra.com = Dr. Tony Alessandra US business consultant
   // Phase F.1 (p82 PD suspect audit) — manually verified single-token
   // brand stems matching well-known third-party domains. Per-case
-  // evidence in pg4/docs/phase_f1_pd_suspect_audit.md.
+  // evidence in the Phase F.1 PD suspect audit (internal report).
   'franca',     // p82: "Franca Immobiliare" (Albignasego) → franca.it = Residence Franca tourist residence (Arco TN, Lago di Garda)
   'sartori',    // p82: "Immobiliare Sartori" (Casalserugo) → sartori.it = Sartori Studio Legale law firm (Trento)
   'colonna',    // p82: "Studio Immobiliare Colonna" (Montegrotto) → colonna.net = Wittmann family personal site (US / Germany)
   'chemello',   // p82: "Immobiliare Chemello" (Sandrigo VI) → chemello.it = Chemello Metalworking (same town, funeral-art metalwork, NOT real estate)
   // Phase F.3 (p84 PD pre-Serper sanity audit) — see
-  // pg4/docs/phase_f3_pre_serper_sanity_audit.md.
+  // the Phase F.3 pre-Serper sanity audit (internal report).
   'academy',    // p84: "Academy S.r.l." (Rovigo) → academy.it = The British Academy English-language school (Cassino/Sora, Lazio)
   'giemme',     // p84: "Giemme S.r.l." (Albignasego) → giemme.org = Gi. Emme Macchine Utensili machine tools (same town, different sector — same family pattern as Chemello)
   // generic single-token Italian brand-noise:

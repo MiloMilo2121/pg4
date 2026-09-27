@@ -89,7 +89,7 @@ const DIRECTORIES = new Set([
   'dbiz.it',                       // METRIKS.AI — Italian business directory
   'sahibkimdir.com',               // Turkish phone/business lookup portal
   'creditsafe.com',                // credit-reporting / business-data aggregator
-  'openbdap.rgs.mef.gov.it',       // Italian Min. Economia public-admin DB
+  'openbdap.rgs.mef.gov.it',       // Italian Ministry of Economy public-admin DB
   'bur.regione.veneto.it',         // Bollettino Ufficiale Regione Veneto
   'comunichiamoimpresa.it',        // Italian state-aid disclosure registry
   'amministrazionicomunali.it',    // Italian municipal-tax tools portal
@@ -124,7 +124,7 @@ const DIRECTORIES = new Set([
   // Each verified by inspection.
   'gazzettaufficiale.it',           // Italian Official Gazette
   'cercaaziendepro.it',             // business directory (CercaAziendePro)
-  'cenatesotto.halleyweb.it',       // Comune di Cenate Sotto bandi-gara portal
+  'cenatesotto.halleyweb.it',       // Comune di Cenate Sotto public-tenders portal
   'domus-picta.com',                // Prosecco DOC wine portal (vineyard)
   // R10 (paid VR rerun with R9 gate) — confirmation surfaced 2 FPs
   // that bypassed the sector-density rule because the page lists
@@ -152,7 +152,7 @@ const DIRECTORIES = new Set([
   'cnr.it',                         // Italian National Research Council (CNR)
   'opencup.gov.it',                 // Italian govt project tracker (PNRR class)
   'visure24.com',                   // visure/business-document aggregator
-  'univalpo.it',                    // libera università popolare Valpolicella (educ)
+  'univalpo.it',                    // Valpolicella free people's university (educ)
   'startuplus.it',                  // startup directory / incubator portal
   'sihappy.it',                     // multi-category marketplace (immobiliare among others)
   'ingebau.it',                     // engineering / construction firm (wrong sector)

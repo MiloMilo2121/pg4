@@ -12,7 +12,7 @@ import type { SerpProvider } from '../../src/types/providers';
  * ceiling, no matter how many paid calls are attempted") was asserted only by
  * inspection. This test exercises that invariant directly with a mock paid
  * provider. The complementary LIVE €0.02 Serper run (the only real spend in
- * this pass) is documented in docs/saas_foundation_report.md + the operator
+ * this pass) is documented in docs/gdpr/PRODUCTION_ACTIVATION_CHECKLIST.md + the operator
  * playbook and runs once a SERPER_API_KEY is provided.
  */
 function paidSerp(id: string, costPerCallEur: number): SerpProvider {

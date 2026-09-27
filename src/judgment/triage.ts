@@ -29,7 +29,7 @@ export function triage(lead: Lead, config: JudgmentConfig): TriageResult {
     return { pass: false, disqualifier: 'pure_reseller', reason: 'puro arbitraggio/rivendita senza marca' };
   }
 
-  // no resolvable identity at all → nothing to judge (parcheggia, motivo esplicito).
+  // no resolvable identity at all → nothing to judge (park it, with an explicit reason).
   const hasIdentity =
     !!(lead.official_website || lead.website || lead.vat_code_final || lead.vat_code || lead.company_name);
   if (!hasIdentity) {

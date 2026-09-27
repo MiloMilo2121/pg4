@@ -1,10 +1,10 @@
 /**
- * UniverseSource — il DENOMINATORE della coverage gap map.
+ * UniverseSource — the DENOMINATOR of the coverage gap map.
  *
- * Astrazione deliberata: oggi l'unica impl e' `IstatAsiaUniverse` (CSV gratuito
- * ISTAT ASIA, imprese attive per divisione ATECO x provincia). L'interfaccia e'
- * l'hook per agganciare in futuro una fonte a pagamento azienda-per-azienda
- * (Registro Imprese / openapi) senza toccare il motore di copertura.
+ * Deliberate abstraction: today the only impl is `IstatAsiaUniverse` (free ISTAT
+ * ASIA CSV, active firms per ATECO division x provincia). The interface is
+ * the hook for plugging in a paid company-by-company source in the future
+ * (Registro Imprese / openapi) without touching the coverage engine.
  */
 
 import fs from 'fs';
@@ -16,18 +16,18 @@ import { atecoDivisionOf } from './ateco';
 export type UniverseProvenance = 'istat-asia' | 'sample' | string;
 
 export interface UniverseCount {
-  /** Numero imprese attive (universo totale, incl. ditte individuali). */
+  /** Number of active firms (total universe, incl. sole proprietorships). */
   activeFirms: number;
   year?: number;
   provenance: UniverseProvenance;
 }
 
 export interface UniverseSource {
-  /** Conteggio universo per (divisione ATECO 2 cifre, sigla provincia), o null se ignoto. */
+  /** Universe count for (2-digit ATECO division, provincia code), or null if unknown. */
   count(division: string, province: string): UniverseCount | null;
-  /** True se la fonte ha almeno una riga caricata. */
+  /** True if the source has at least one row loaded. */
   hasData(): boolean;
-  /** Etichetta della fonte (per provenance nel report). */
+  /** Source label (for provenance in the report). */
   readonly label: string;
 }
 
@@ -46,13 +46,13 @@ function key(division: string, province: string): string {
   return `${division}|${province}`;
 }
 
-/** Universo da CSV ISTAT ASIA. Preferisce righe `istat-asia` su `sample` per la stessa cella. */
+/** Universe from the ISTAT ASIA CSV. Prefers `istat-asia` rows over `sample` for the same cell. */
 export class IstatAsiaUniverse implements UniverseSource {
   readonly label = 'istat-asia';
   private readonly map = new Map<string, UniverseCount>();
 
   constructor(file: string = DEFAULT_PATH) {
-    if (!fs.existsSync(file)) return; // nessun dato: count() ritorna null, il motore segnala "ignoto"
+    if (!fs.existsSync(file)) return; // no data: count() returns null, the engine reports "unknown"
     const rows = parse(fs.readFileSync(file, 'utf8'), {
       columns: true,
       skip_empty_lines: true,
@@ -72,7 +72,7 @@ export class IstatAsiaUniverse implements UniverseSource {
       };
       const k = key(division, province);
       const existing = this.map.get(k);
-      // Dato reale vince sempre sul sample; a parita' tiene il primo.
+      // Real data always wins over sample; on a tie the first one is kept.
       if (!existing || (existing.provenance === 'sample' && provenance !== 'sample')) {
         this.map.set(k, entry);
       }

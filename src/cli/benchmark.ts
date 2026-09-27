@@ -12,8 +12,7 @@ import { logger } from '../runtime/logger';
  * / financial-source breakdown + total cost over a real enriched output.
  *
  * Honesty policy (README): we report FILL-RATE (a measured fact), never accuracy
- * inferred from a found-count. The pg3 comparison stays in BENCHMARK.md from the
- * checked-in pg3 logs (found-counts only).
+ * inferred from a found-count.
  */
 
 const FIELDS: Array<{ key: string; label: string }> = [
@@ -126,7 +125,7 @@ async function main() {
     md.push('');
     md.push(`**Email types:** ${JSON.stringify(emailTypes)}`);
     md.push('');
-    md.push(`> Fill-rate is a MEASURED fact. Accuracy is NOT inferred from found-counts (README policy); the pg3 comparison lives in BENCHMARK.md from the checked-in pg3 logs.`);
+    md.push(`> Fill-rate is a MEASURED fact. Accuracy is NOT inferred from found-counts (README policy).`);
     fs.writeFileSync(outMd, md.join('\n') + '\n');
     logger.info({ out: outMd }, '[benchmark] markdown report written');
   }

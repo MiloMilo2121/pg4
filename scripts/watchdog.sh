@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Watchdog: mantiene viva la campagna finché TUTTE le celle richieste hanno il
-# loro <slug>_<PROV>_raw.csv. Se il processo muore (tipicamente: sospensione del
-# Mac che uccide il nohup) la rilancia — le celle già fatte vengono saltate.
-# Gira sotto caffeinate. Il completamento è verificato sui FILE (non sul log
-# condiviso), quindi è specifico del set di province richiesto.
+# Watchdog: keeps the campaign alive until ALL requested cells have their
+# <slug>_<PROV>_raw.csv. If the process dies (typically: Mac sleep killing the
+# nohup) it relaunches it — cells already done are skipped.
+# Runs under caffeinate. Completion is verified on the FILES (not on the shared
+# log), so it is specific to the requested set of provinces.
 #
-# Uso: bash scripts/watchdog.sh PD VR VI VE TV RO BL
-# Env: CHECK_EVERY(60) OUTDIR(output/recall) SECTORS MAPS MAXPAGES (passati alla campagna)
+# Usage: bash scripts/watchdog.sh PD VR VI VE TV RO BL
+# Env: CHECK_EVERY(60) OUTDIR(output/recall) SECTORS MAPS MAXPAGES (passed to the campaign)
 set -u
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"; cd "$ROOT"
 
@@ -19,8 +19,8 @@ OUT="${OUTDIR:-output/recall}"; mkdir -p "$OUT"
 CHECK_EVERY="${CHECK_EVERY:-60}"
 PROVINCES=("$@"); [ ${#PROVINCES[@]} -eq 0 ] && PROVINCES=(PD VR VI VE TV RO BL)
 
-# slugs dei settori richiesti (rispetta il filtro SECTORS).
-# read-loop invece di `mapfile` (assente in bash 3.2 di macOS).
+# Slugs of the requested sectors (honours the SECTORS filter).
+# read-loop instead of `mapfile` (missing in macOS bash 3.2).
 SLUGS=()
 while IFS= read -r __s; do [ -n "$__s" ] && SLUGS+=("$__s"); done < <(node -e '
   const fs=require("fs");
@@ -48,12 +48,12 @@ all_cells_done() {
   done
   return 0
 }
-# Liveness via PID-file di proprietà di QUESTO watchdog: pgrep sulla command
-# line matcherebbe anche le campagne di ALTRI worktree sulla stessa macchina
-# (misurato: lo scrape di un worktree gemello teneva questo watchdog in attesa
-# per sempre, campagna mai lanciata). Il PID del NOSTRO nohup è
-# worktree-specifico per costruzione; pid + start-time + command line (vedi
-# scripts/lib/pidfile.sh) lo rendono immune al riuso del PID dopo sleep/reboot.
+# Liveness via a PID file owned by THIS watchdog: pgrep on the command line
+# would also match campaigns from OTHER worktrees on the same machine
+# (measured: a sibling worktree's scrape kept this watchdog waiting forever,
+# campaign never launched). The PID of OUR nohup is worktree-specific by
+# construction; pid + start-time + command line (see scripts/lib/pidfile.sh)
+# make it immune to PID reuse after sleep/reboot.
 # shellcheck source=lib/pidfile.sh
 . "$ROOT/scripts/lib/pidfile.sh"
 CAMPAIGN_PIDFILE="$OUT/.watchdog_campaign.pid"
@@ -61,13 +61,13 @@ campaign_running() {
   pidfile_alive "$CAMPAIGN_PIDFILE" "scripts/campaign.sh"
 }
 
-# Il percorso di recovery via GitHub Actions esiste SOLO con le credenziali
-# configurate. Senza (setup laptop: la decisione documentata è "bastano
-# watchdog + checkpoint + gate"), ogni cella PARTIAL produce uno stato
-# `blocked: credentials not configured` e i rami sotto congelerebbero il
-# watchdog per sempre ("intervento manuale richiesto" in loop) — misurato:
-# la campagna logistica non partiva. Il recupero locale è già il resume
-# da checkpoint della campagna, quindi senza credenziali i rami si saltano.
+# The GitHub Actions recovery path exists ONLY with credentials configured.
+# Without them (laptop setup: the documented decision is "watchdog +
+# checkpoint + gate are enough"), every PARTIAL cell produces a
+# `blocked: credentials not configured` state and the branches below would
+# freeze the watchdog forever ("intervento manuale richiesto" in a loop) —
+# measured: the logistics campaign never started. Local recovery is already
+# the campaign's checkpoint resume, so without credentials the branches are skipped.
 RECOVERY_ENABLED=0
 [ -n "${GH_RECOVERY_TOKEN:-}" ] && [ -n "${GH_REPOSITORY:-}" ] && RECOVERY_ENABLED=1
 

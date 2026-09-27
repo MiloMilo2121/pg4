@@ -137,8 +137,7 @@ SERP. Cost ledger will show `total_cost_eur=0`.
 - For Italian real-estate categories (anything matching `/immobil/` — `agenzie
   immobiliari`, `consulenza immobiliare`, etc.) the free pass runs **`bing_html`
   only**; `dns_mx`, `crtsh`, `ddg_lite` are skipped. R12 evidence: those three
-  converted **0** final websites on 1,492 leads (see
-  `docs/r14_free_serp_routing_audit.md`).
+  converted **0** final websites on 1,492 leads.
 - All other categories run the full free SERP set (unchanged).
 - To force the full set for a real-estate run (debug / evaluation), set
   `SERP_EXPANDED_FREE_ENABLED=true`. A `debug`-level log line records which

@@ -1,5 +1,5 @@
 /**
- * Italian provinces (sigle automobilistiche) and a curated subset of
+ * Italian provinces (vehicle-registration codes) and a curated subset of
  * comuni per province.
  *
  * The full Italian comune list is ~7900 entries; we don't ship that here.

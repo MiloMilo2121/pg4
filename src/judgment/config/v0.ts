@@ -4,7 +4,7 @@ import type { JudgmentConfig } from './types';
  * judgment_config v0 — the SUBSTANTIVE deliverable (plan §4bis).
  *
  * CRETA-LOGICA: every rubric/cause/disqualifier/lever/archetype/trap below is
- * TRANSCRIBED from `docs/ontology/ontologia_forza_commerciale_v2.md` (v2), each
+ * TRANSCRIBED from the internal sales-force ontology (v2, not published), each
  * with a `ref` to its section. NOT invented. A test enforces that every logic
  * entry carries a v2 ref (see tests/unit/judgment/config_fidelity.test.ts).
  *

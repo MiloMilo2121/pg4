@@ -11,7 +11,7 @@
  * pages, ignoring blocks. Spacing is ~4s (MEASURED reliable) to avoid blocks. €0.
  *
  *   pnpm exec tsx tools/probes/probe_vat_multiplier.ts --n 30 [--step 18]
- *   → docs/precision_evidence/probe_vat_multiplier_output.json
+ *   → output/probes/probe_vat_multiplier_output.json
  */
 import fs from 'fs';
 import path from 'path';
@@ -91,7 +91,8 @@ async function main(): Promise<void> {
     spacing: '~4s/req (rate-limited; bulk free scraping is reliable only when throttled)',
     samples,
   };
-  const dest = path.resolve('docs/precision_evidence/probe_vat_multiplier_output.json');
+  const dest = path.resolve('output/probes/probe_vat_multiplier_output.json');
+  fs.mkdirSync(path.dirname(dest), { recursive: true });
   fs.writeFileSync(dest, JSON.stringify(out, null, 2));
   console.log(JSON.stringify(out, null, 2));
   console.error(`\nwrote ${dest}`);
