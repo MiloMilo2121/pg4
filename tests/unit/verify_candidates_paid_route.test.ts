@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { verifyCandidates, routeFromLeadContext } from '../../src/enrichment/stages/verify_candidates';
-import type { ProviderRouter, RouteOptions } from '../../src/providers/provider_router';
+import { ProviderRouter, type RouteOptions } from '../../src/providers/provider_router';
+import { CostLedger } from '../../src/runtime/cost_ledger';
+import type { HttpFetchResult, HttpProvider } from '../../src/types/providers';
 import type { Lead } from '../../src/types/lead';
 import { normalizeLead } from '../../src/discovery/input_normalizer';
 
@@ -67,6 +69,8 @@ describe('routeFromLeadContext', () => {
     expect(route?.paidEnabled).toBe(true);
     expect(route?.remainingLeadBudgetEur).toBeCloseTo(0.07);
     expect(route?.runCostCeilingEur).toBe(5);
+    // The live cap the router re-reads from the ledger before every paid attempt.
+    expect(route?.leadCostCeilingEur).toBe(0.1);
     const exhausted = routeFromLeadContext({ paidEnabled: true, costCeilingEur: 0.02, costEur: 0.05, runCostCeilingEur: 5 });
     expect(exhausted?.remainingLeadBudgetEur).toBe(0);
   });
@@ -74,5 +78,35 @@ describe('routeFromLeadContext', () => {
   it('paidEnabled defaults to false when the context does not opt in', () => {
     const route = routeFromLeadContext({ costCeilingEur: 0.1, costEur: 0 });
     expect(route?.paidEnabled).toBe(false);
+  });
+});
+
+describe('verify_candidates — per-lead cap holds across candidates × retries (real router)', () => {
+  it('6 candidates on a paid-only route never spend past the lead cap', async () => {
+    let paidCalls = 0;
+    const paid: HttpProvider = {
+      id: 'paid_render',
+      family: 'http',
+      tier: 2,
+      costPerCallEur: 0.01,
+      available: () => true,
+      fetch: async (): Promise<HttpFetchResult> => {
+        paidCalls += 1;
+        return { status: 503, error: 'upstream 503', duration_ms: 1, cost_eur: 0.01 };
+      },
+    };
+    const ledger = new CostLedger();
+    const router = new ProviderRouter([], [paid], [], ledger);
+    const candidates = Array.from({ length: 6 }, (_, i) => `https://acme${i}.it`);
+    await verifyCandidates(router, candidates, NORM, { ...LEAD }, {
+      corroborateWithRdap: false,
+      retryDelaysMs: [1],
+      jitter: () => 0,
+      sleep: async () => {},
+      meta: { lead_id: 'L1' },
+      route: routeFromLeadContext({ paidEnabled: true, costCeilingEur: 0.03, costEur: 0, runCostCeilingEur: 5 }),
+    });
+    expect(paidCalls).toBe(3);
+    expect(ledger.costForLead('L1')).toBeCloseTo(0.03);
   });
 });

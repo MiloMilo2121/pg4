@@ -2,7 +2,8 @@ import fs from 'fs';
 import path from 'path';
 import { describe, expect, it } from 'vitest';
 import { runEnrichmentPipeline } from '../../src/enrichment/enrichment_pipeline';
-import { ProviderRouter } from '../../src/providers/provider_router';
+import { ProviderRouter, type RouteOptions } from '../../src/providers/provider_router';
+import { resetEnvCache } from '../../src/config/env';
 import { CostLedger } from '../../src/runtime/cost_ledger';
 import { createPerLeadContext, createRun } from '../../src/runtime/run_context';
 import type { Lead } from '../../src/types/lead';
@@ -68,5 +69,35 @@ describe('free-gold pipeline integration (zero-cost)', () => {
     const result = await runEnrichmentPipeline({ run, perLead, router, lead, dnsResolver: deadDns });
     expect(result.stage_outcomes.free_gold).toBeUndefined();
     expect(result.lead.email_inferred).toBeUndefined();
+  });
+});
+
+describe('deep pages stay FREE even on a paid-enabled lead', () => {
+  it('never opts the deep-pages fetches into paid providers (budget belongs to the last-resort stages)', async () => {
+    process.env.DEEP_PAGES_ENABLED = 'true';
+    resetEnvCache();
+    try {
+      const run = createRun();
+      const router = new ProviderRouter([], [], [], new CostLedger());
+      const deepCalls: RouteOptions[] = [];
+      const orig = router.fetch.bind(router);
+      router.fetch = async (url, opts = {}) => {
+        if (opts.meta?.stage === 'deep_pages') deepCalls.push(opts);
+        return orig(url, opts);
+      };
+      const perLead = createPerLeadContext(run);
+      perLead.paidEnabled = true;
+      perLead.costCeilingEur = 1;
+      const lead: Lead = {
+        company_name: 'Neri Servizi Srl', city: 'Treviso', province: 'TV',
+        address: 'Via Roma 1', official_website: 'https://neriservizi.it',
+      };
+      await runEnrichmentPipeline({ run, perLead, router, lead, dnsResolver: deadDns });
+      expect(deepCalls.length).toBeGreaterThan(0);
+      for (const c of deepCalls) expect(c.paidEnabled).not.toBe(true);
+    } finally {
+      delete process.env.DEEP_PAGES_ENABLED;
+      resetEnvCache();
+    }
   });
 });

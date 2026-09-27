@@ -239,10 +239,12 @@ export async function runEnrichmentPipeline(input: PipelineInput): Promise<Enric
   // data printed only on /contatti or /chi-siamo, is lost (measured: ~2/3 of
   // discovered sites are semantic-only → never mined). When DEEP_PAGES_ENABLED,
   // mine every lead that HAS an official_website multipage, reusing the already
-  // fetched verified body as the homepage when present (one fewer fetch). Uses
-  // router.fetch: direct_fetch → €0 in the free profile; the paid render fallback
-  // applies only when the paid gate is on. Fill-only-empty + wrapped so it can
-  // never break the row; extractFromBody keeps the same-domain email precision.
+  // fetched verified body as the homepage when present (one fewer fetch). FREE
+  // ONLY by construction: router.fetch without `paidEnabled` never reaches the
+  // paid render fallbacks, so up to 3 pages per lead cannot drain the per-lead
+  // budget reserved for the paid last-resort stages below (Maps, Perplexity,
+  // Bilanci, Registro). Fill-only-empty + wrapped so it can never break the
+  // row; extractFromBody keeps the same-domain email precision.
   if (fcEnv.DEEP_PAGES_ENABLED && lead.official_website) {
     try {
       const deepFetcher: PageFetcher = async (url) => {
@@ -250,9 +252,6 @@ export async function runEnrichmentPipeline(input: PipelineInput): Promise<Enric
           const res = await router.fetch(url, {
             timeoutMs: DEFAULTS.pipeline.requestTimeoutMs,
             meta: { lead_id: perLead.leadId, stage: 'deep_pages' },
-            paidEnabled: perLead.paidEnabled === true,
-            remainingLeadBudgetEur: Math.max(0, (perLead.costCeilingEur ?? 0) - perLead.costEur),
-            runCostCeilingEur: perLead.runCostCeilingEur,
           });
           return res.status >= 200 && res.status < 400 ? res.html : undefined;
         } catch {
@@ -274,9 +273,6 @@ export async function runEnrichmentPipeline(input: PipelineInput): Promise<Enric
             .join(' '),
         };
       }
-      // Cost honesty: deep fetches are €0 (direct_fetch) in the free profile, but
-      // sync in case the paid render fallback was engaged.
-      perLead.costEur = run.ledger.costForLead(perLead.leadId);
     } catch (err) {
       logger.warn({ err: (err as Error).message }, '[pipeline] deepened free-gold pass threw');
     }
