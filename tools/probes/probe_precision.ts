@@ -19,15 +19,15 @@
  *  - social: is the URL a real profile (handle path), not a platform root /
  *            share / embed? (ownership needs an eyeball — flagged).
  *
- * Usage: pnpm exec tsx src/scripts/probe_precision.ts [--input <jsonl>] [--n 24]
+ * Usage: pnpm exec tsx tools/probes/probe_precision.ts [--input <jsonl>] [--n 24]
  */
 import fs from 'fs';
 import path from 'path';
-import { parseArgs, optString } from '../cli/_args';
-import { DirectFetchProvider } from '../providers/http/direct_fetch';
-import { extractFromBody, registrableDomain } from '../enrichment/extract/extract_from_body';
-import { checkVatViaVies } from '../enrichment/financial/vies';
-import { normalizeCompanyNameForKey } from '../discovery/deduper';
+import { parseArgs, optString } from '../../src/cli/_args';
+import { DirectFetchProvider } from '../../src/providers/http/direct_fetch';
+import { extractFromBody, registrableDomain } from '../../src/enrichment/extract/extract_from_body';
+import { checkVatViaVies } from '../../src/enrichment/financial/vies';
+import { normalizeCompanyNameForKey } from '../../src/discovery/deduper';
 
 interface Row { company_name?: string; official_website?: string }
 

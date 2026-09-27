@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { Lead } from '../../src/types/lead';
-import { isOffTarget, leadToRow, dedupKey, mergeRow, type OutboundRow } from '../../src/scripts/export_outbound_logistica';
+import { isOffTarget, leadToRow, dedupKey, mergeRow, type OutboundRow } from '../../tools/export_outbound_logistica';
 
 describe('isOffTarget (esclusioni brief: poche e sicure)', () => {
   it('HARD: taxi / NCC / noleggio con conducente / autoscuole sempre esclusi', () => {

@@ -16,16 +16,16 @@
  *   leads/_MASTER/all_leads_master.csv     (enriched schema, human-readable)
  *   leads/_MASTER/consolidation_report.json
  *
- * Run from pg4/:  pnpm tsx src/scripts/consolidate_leads.ts
+ * Run from pg4/:  pnpm tsx tools/consolidate_leads.ts
  */
 import fs from 'fs';
 import path from 'path';
-import { readCsvAsLeads } from '../io/csv_reader';
-import { readJsonlAsLeads } from '../io/jsonl_writer';
-import { CsvWriter } from '../io/csv_writer';
-import { JsonlWriter } from '../io/jsonl_writer';
-import { Deduplicator } from '../discovery/deduper';
-import type { Lead } from '../types/lead';
+import { readCsvAsLeads } from '../src/io/csv_reader';
+import { readJsonlAsLeads } from '../src/io/jsonl_writer';
+import { CsvWriter } from '../src/io/csv_writer';
+import { JsonlWriter } from '../src/io/jsonl_writer';
+import { Deduplicator } from '../src/discovery/deduper';
+import type { Lead } from '../src/types/lead';
 
 const PG4 = process.cwd();
 const REPO_ROOT = path.resolve(PG4, '..'); // contains pg1/ pg3/ pg4/

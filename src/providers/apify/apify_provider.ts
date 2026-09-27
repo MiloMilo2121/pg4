@@ -4,6 +4,7 @@ import { ProviderBlockError } from '../../types/providers';
 import { getEnv } from '../../config/env';
 import { withRetry, isRetriableNavError } from '../../runtime/retry';
 import { isGoogleMapsUrl } from '../../discovery/sources/maps_url';
+import { str } from '../../util/values';
 
 /**
  * Apify — external actor marketplace (Google Maps, contact/social scrapers).
@@ -150,7 +151,8 @@ export interface ApifyRunResult {
   datasetId: string;
   /** Items the actor pushed — the pay-per-result billing basis (≥ items.length). */
   billedItems: number;
-  cost_eur: number;
+  /** Real cost; undefined when unknowable (the router then records the worst case). */
+  cost_eur: number | undefined;
 }
 
 /**
@@ -171,6 +173,23 @@ export class ApifyRunError extends Error {
     this.succeeded = info.succeeded === true;
     this.cost_eur = info.cost_eur;
   }
+}
+
+/** Non-2xx / non-array reply when reading a dataset (404 = gone, e.g. past retention). */
+export class ApifyDatasetError extends Error {
+  constructor(readonly datasetId: string, readonly status: number, detail: string) {
+    super(`dataset ${datasetId} items: status ${status}${detail ? `, ${detail}` : ''}`);
+    this.name = 'ApifyDatasetError';
+  }
+}
+
+/** Socket/DNS/timeout failures from undici (matched on `code`, with a message fallback). */
+const TRANSIENT_NET_CODES = new Set(['ECONNRESET', 'ECONNREFUSED', 'ENOTFOUND', 'EAI_AGAIN', 'ETIMEDOUT', 'EPIPE']);
+function isTransientNetworkError(err: unknown): boolean {
+  if (err instanceof ProviderBlockError) return false;
+  const code = (err as { code?: unknown } | null)?.code;
+  if (typeof code === 'string' && (code.startsWith('UND_ERR_') || TRANSIENT_NET_CODES.has(code))) return true;
+  return isRetriableNavError(err) || /other side closed|socket|timeout/i.test(err instanceof Error ? err.message : String(err));
 }
 
 class TransientApifyError extends Error {
@@ -350,19 +369,25 @@ export class ApifyProvider {
       throw new ApifyRunError(`apify run start failed for ${actor} (status ${start.status})`, { cost_eur: cost });
     }
 
+    // Once the run exists, any way out of supervision (deadline, a poll that
+    // keeps failing) ABORTS it first — an unsupervised run keeps billing and
+    // its result would be lost.
+    const abandon = async (reason: string, cause?: unknown): Promise<never> => {
+      await this.post(`${APIFY_API}/actor-runs/${runId}/abort?${tokenQs}`, {}, 30_000).catch(() => undefined);
+      if (cause instanceof ProviderBlockError) throw cause; // keep the breaker's 'blocked' classification
+      throw new ApifyRunError(`apify run ${runId} (${actor}) ${reason} — aborted`, { runId, datasetId, cost_eur: await this.pushedCostEur(actor, datasetId) });
+    };
     const deadline = Date.now() + timeoutMs;
     let runStatus = typeof startData.status === 'string' ? startData.status : 'READY';
     while (!TERMINAL_RUN_STATUSES.has(runStatus)) {
-      if (Date.now() > deadline) {
-        await this.post(`${APIFY_API}/actor-runs/${runId}/abort?${tokenQs}`, {}, 30_000).catch(() => undefined);
-        throw new ApifyRunError(`apify run ${runId} (${actor}) still ${runStatus} after ${timeoutMs}ms — aborted`, {
-          runId,
-          datasetId,
-          cost_eur: await this.pushedCostEur(actor, datasetId),
-        });
-      }
+      if (Date.now() > deadline) await abandon(`still ${runStatus} after ${timeoutMs}ms`);
       if (pollMs > 0) await new Promise<void>((r) => setTimeout(r, pollMs));
-      const st = await this.getWithRetry(`${APIFY_API}/actor-runs/${runId}?${tokenQs}`, 30_000);
+      let st: { status: number; json: unknown };
+      try {
+        st = await this.getWithRetry(`${APIFY_API}/actor-runs/${runId}?${tokenQs}`, 30_000);
+      } catch (err) {
+        return abandon(`status poll failed: ${(err as Error).message}`, err);
+      }
       const d = ((st.json ?? {}) as { data?: Record<string, unknown> }).data ?? {};
       if (typeof d.status === 'string') runStatus = d.status;
     }
@@ -386,8 +411,13 @@ export class ApifyProvider {
       });
     }
     // Billing basis is what the actor PUSHED, not what `limit` let us download.
-    const billedItems = Math.max(items.length, (await this.datasetItemCount(datasetId)) ?? 0);
-    return { items, runId, datasetId, billedItems, cost_eur: billedItems * ACTOR_COST_EUR[actor] };
+    // Unreadable count + a download truncated at the limit = unknown spend:
+    // leave cost undefined so the router records the worst-case reservation.
+    const pushed = await this.datasetItemCount(datasetId);
+    const truncated = opts.maxItems !== undefined && items.length >= opts.maxItems;
+    const billedItems = Math.max(items.length, pushed ?? 0);
+    const cost_eur = pushed === undefined && truncated ? undefined : billedItems * ACTOR_COST_EUR[actor];
+    return { items, runId, datasetId, billedItems, cost_eur };
   }
 
   /**
@@ -400,7 +430,7 @@ export class ApifyProvider {
     const limitQs = limit !== undefined ? `&limit=${limit}` : '';
     const res = await this.getWithRetry(`${APIFY_API}/datasets/${datasetId}/items?${this.tokenQs()}&clean=true${limitQs}`, 120_000);
     if (res.status < 200 || res.status >= 300 || !Array.isArray(res.json)) {
-      throw new Error(`dataset ${datasetId} items: status ${res.status}${Array.isArray(res.json) ? '' : ', body is not an array'}`);
+      throw new ApifyDatasetError(datasetId, res.status, Array.isArray(res.json) ? '' : 'body is not an array');
     }
     return res.json;
   }
@@ -432,7 +462,7 @@ export class ApifyProvider {
       {
         retries: 3,
         baseBackoffMs: this.retryBaseMs,
-        isRetriable: (err) => err instanceof TransientApifyError || (!(err instanceof ProviderBlockError) && isRetriableNavError(err)),
+        isRetriable: (err) => err instanceof TransientApifyError || isTransientNetworkError(err),
       },
     ).catch((err: unknown) => {
       // Retries exhausted on 5xx: surface the status as a response so callers decide.
@@ -470,7 +500,6 @@ export class ApifyProvider {
   /** PURE parser for a Google-Maps actor item (exposed for tests). Defensive on shape. */
   static parseMapsItem(raw: unknown): MapsPlace {
     const it = (raw ?? {}) as Record<string, unknown>;
-    const str = (v: unknown): string | undefined => (typeof v === 'string' && v.trim() ? v.trim() : typeof v === 'number' ? String(v) : undefined);
     const firstUrl = (v: unknown, host: RegExp): string | undefined => {
       const arr = Array.isArray(v) ? v : v ? [v] : [];
       for (const u of arr) if (typeof u === 'string' && host.test(u)) return u.split('?')[0];
@@ -522,7 +551,6 @@ export class ApifyProvider {
   /** PURE parser for a regdata registro-imprese item (exposed for tests). */
   static parseRegistroItem(raw: unknown): RegistroRecord {
     const it = (raw ?? {}) as Record<string, unknown>;
-    const str = (v: unknown): string | undefined => (typeof v === 'string' && v.trim() ? v.trim() : typeof v === 'number' ? String(v) : undefined);
     const ateco = [str(it.atecoCode), str(it.atecoDescription)].filter(Boolean).join(' — ') || undefined;
     // ENRICH-3 — the amministratore/titolare surfaces under different keys per
     // company form; also as the first entry of an `esponenti`-style array.
@@ -558,7 +586,6 @@ export class ApifyProvider {
    */
   static parseBilanciItem(raw: unknown): BilanciRecord {
     const it = (raw ?? {}) as Record<string, unknown>;
-    const str = (v: unknown): string | undefined => (typeof v === 'string' && v.trim() ? v.trim() : typeof v === 'number' ? String(v) : undefined);
     const ateco = str(it.ateco) ?? ([str(it.atecoCode), str(it.atecoDescription)].filter(Boolean).join(' — ') || undefined);
     return {
       vat: (str(it.partitaIva) ?? str(it.piva) ?? str(it.vatNumber) ?? str(it.vat))?.replace(/\D/g, '') || undefined,
@@ -581,9 +608,9 @@ export class ApifyProvider {
    */
   static parseEmailVerifyItem(raw: unknown): EmailVerifyResult {
     const it = (raw ?? {}) as Record<string, unknown>;
-    const str = (v: unknown): string | undefined => (typeof v === 'string' && v.trim() ? v.trim().toLowerCase() : undefined);
-    const email = str(it.email) ?? str(it.address) ?? str(it.emailAddress);
-    const verdictRaw = str(it.status) ?? str(it.result) ?? str(it.verdict) ?? str(it.state) ?? str(it.deliverability) ?? '';
+    const lower = (v: unknown): string | undefined => (typeof v === 'string' ? str(v)?.toLowerCase() : undefined);
+    const email = lower(it.email) ?? lower(it.address) ?? lower(it.emailAddress);
+    const verdictRaw = lower(it.status) ?? lower(it.result) ?? lower(it.verdict) ?? lower(it.state) ?? lower(it.deliverability) ?? '';
     const catchAll = it.catchAll === true || it.catch_all === true || it.isCatchAll === true || /catch/.test(verdictRaw);
     let status: EmailVerifyResult['status'] = 'unknown';
     if (catchAll) status = 'catch_all';

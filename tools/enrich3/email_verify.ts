@@ -1,10 +1,11 @@
-import { parseArgs, optString } from '../../cli/_args';
-import type { Lead } from '../../types/lead';
-import { ApifyProvider } from '../../providers/apify/apify_provider';
-import { resolveMx } from '../../enrichment/email/mx_smtp_verifier';
-import { loadState, saveState, buildE3Run, has, closeLedger, runIfMain } from './_shared';
-import { logger } from '../../runtime/logger';
-import { isPecAddress } from '../../enrichment/extract/pec';
+import { parseArgs, optString } from '../../src/cli/_args';
+import type { Lead } from '../../src/types/lead';
+import { ApifyProvider } from '../../src/providers/apify/apify_provider';
+import { resolveMx } from '../../src/enrichment/email/mx_smtp_verifier';
+import { loadState, saveState, buildE3Run, closeLedger, runIfMain } from './_shared';
+import { has } from '../../src/util/values';
+import { logger } from '../../src/runtime/logger';
+import { isPecAddress } from '../../src/enrichment/extract/pec';
 
 /**
  * ENRICH-3 R3 — email deliverability. Free shortcuts FIRST (nothing paid is
@@ -19,9 +20,9 @@ import { isPecAddress } from '../../enrichment/extract/pec';
  *
  *   # probe (validates the chosen actor on 10 emails):
  *   APIFY_ENABLED=true APIFY_EMAIL_VERIFY_ENABLED=true APIFY_EMAIL_VERIFY_ACTOR_ID=<id> \
- *     pnpm tsx src/scripts/enrich3/email_verify.ts --state ... --probe
+ *     pnpm tsx tools/enrich3/email_verify.ts --state ... --probe
  *   # full:
- *   ... pnpm tsx src/scripts/enrich3/email_verify.ts --state output/enrich3/state3.jsonl \
+ *   ... pnpm tsx tools/enrich3/email_verify.ts --state output/enrich3/state3.jsonl \
  *     --out output/enrich3/state4 --run-cost-ceiling-eur 6
  */
 

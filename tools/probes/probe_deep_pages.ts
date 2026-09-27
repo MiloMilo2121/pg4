@@ -5,15 +5,15 @@
  * (homepage + contact/about pages). Reports the fill lift AND verifies the lifted
  * emails are still same-domain (precision preserved, never traded for fill).
  *
- *   pnpm exec tsx src/scripts/probe_deep_pages.ts --n 30 [--step 7]
+ *   pnpm exec tsx tools/probes/probe_deep_pages.ts --n 30 [--step 7]
  *
  * Output → docs/precision_evidence/probe_deep_pages_output.json. €0 (HTTP only).
  */
 import fs from 'fs';
 import path from 'path';
-import { DirectFetchProvider } from '../providers/http/direct_fetch';
-import { extractFromBody, registrableDomain } from '../enrichment/extract/extract_from_body';
-import { deepExtractFromSite } from '../enrichment/extract/deep_pages';
+import { DirectFetchProvider } from '../../src/providers/http/direct_fetch';
+import { extractFromBody, registrableDomain } from '../../src/enrichment/extract/extract_from_body';
+import { deepExtractFromSite } from '../../src/enrichment/extract/deep_pages';
 
 const SEED = 'output/r12_maps_pd_province_full_enriched_free.jsonl';
 

@@ -92,7 +92,7 @@ describe('guardrail: three-state firewall (discovery failure ≠ B basso)', () =
     const segnaliB: SegnaliB = ['3.1', '3.8'].map((k): Signal => ({ axis: 'B', key: k, state: 'unknown_not_found', evidence: [] }));
     const a = await judgeA(strongA, 'B2B_manufacturing', undefined, { config });
     const b = await judgeB(segnaliB, undefined, 'B2B_manufacturing', { config });
-    const { verdict } = await gapReason(lead({}), 'B2B_manufacturing', a, b, strongA, segnaliB, undefined, { config });
+    const { verdict } = await gapReason(lead({}), 'B2B_manufacturing', a, b, strongA, undefined, { config });
     expect(verdict.target).toBe('borderline'); // never 'yes' on unknown B
   });
 });
@@ -112,7 +112,7 @@ describe('guardrail: quadrant label never lets "A unknown" read as "A low" (§5.
     ];
     const a = await judgeA(unknownA, 'B2B_manufacturing', undefined, { config });
     const b = await judgeB(presentB, undefined, 'B2B_manufacturing', { config });
-    const { verdict } = await gapReason(lead({}), 'B2B_manufacturing', a, b, unknownA, presentB, undefined, { config });
+    const { verdict } = await gapReason(lead({}), 'B2B_manufacturing', a, b, unknownA, undefined, { config });
     expect(verdict.quadrant.startsWith('A?')).toBe(true); // A not measured → '?'
     expect(verdict.quadrant).not.toBe('A-B+'); // must NOT read as fuffa
     expect(verdict.target).toBe('borderline');
@@ -122,7 +122,7 @@ describe('guardrail: quadrant label never lets "A unknown" read as "A low" (§5.
     const unknownB: SegnaliB = ['3.1', '3.8'].map((k): Signal => ({ axis: 'B', key: k, state: 'unknown_not_found', evidence: [] }));
     const a = await judgeA(strongA, 'B2B_manufacturing', undefined, { config });
     const b = await judgeB(unknownB, undefined, 'B2B_manufacturing', { config });
-    const { verdict } = await gapReason(lead({}), 'B2B_manufacturing', a, b, strongA, unknownB, undefined, { config });
+    const { verdict } = await gapReason(lead({}), 'B2B_manufacturing', a, b, strongA, undefined, { config });
     expect(verdict.quadrant.endsWith('B?')).toBe(true);
   });
 
@@ -133,7 +133,7 @@ describe('guardrail: quadrant label never lets "A unknown" read as "A low" (§5.
     const b = await judgeB(measuredLowB, undefined, 'B2B_manufacturing', { config });
     expect(a.level).toBe('high');
     expect(b.level).toBe('low'); // measured-low, NOT unknown
-    const { verdict, levers } = await gapReason(lead({ company_name: 'Forte Silente Srl' }), 'B2B_manufacturing', a, b, strongA, measuredLowB, undefined, { config });
+    const { verdict, levers } = await gapReason(lead({ company_name: 'Forte Silente Srl' }), 'B2B_manufacturing', a, b, strongA, undefined, { config });
     expect(verdict.quadrant).toBe('A+B-');
     expect(verdict.target).toBe('yes');
     expect(levers.length).toBeGreaterThan(0); // intervention levers recommended
@@ -160,7 +160,7 @@ describe('guardrail: disqualifiers operate BEFORE the gap logic (§4.5)', () => 
     const a = await judgeA(strongA, 'B2B_manufacturing', undefined, { config });
     const weakB: SegnaliB = [{ axis: 'B', key: '3.1', state: 'confirmed_absent', evidence: [] }];
     const b = await judgeB(weakB, undefined, 'B2B_manufacturing', { config });
-    const { verdict } = await gapReason(lead({ permanently_closed: true }), 'B2B_manufacturing', a, b, strongA, weakB, undefined, { config });
+    const { verdict } = await gapReason(lead({ permanently_closed: true }), 'B2B_manufacturing', a, b, strongA, undefined, { config });
     expect(verdict.target).toBe('no');
     expect(verdict.disqualifiers).toContain('permanently_closed');
   });

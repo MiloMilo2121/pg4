@@ -1,5 +1,5 @@
-import { parseArgs, optString } from '../../cli/_args';
-import { computeLeadScore } from '../../enrichment/lead_score';
+import { parseArgs, optString } from '../../src/cli/_args';
+import { computeLeadScore } from '../../src/enrichment/lead_score';
 import { loadState, saveState, runIfMain } from './_shared';
 
 /**
@@ -7,7 +7,7 @@ import { loadState, saveState, runIfMain } from './_shared';
  * batch twin of the pipeline-finalize hook) and print the distribution: a
  * degenerate one (p10 == p90) means an upstream pass didn't land.
  *
- *   pnpm tsx src/scripts/enrich3/recalc_lead_score.ts \
+ *   pnpm tsx tools/enrich3/recalc_lead_score.ts \
  *     --state output/enrich3/state7.jsonl --out output/enrich3/state8
  */
 async function main(): Promise<void> {

@@ -67,6 +67,58 @@ describe('recovery coordinator', { timeout: 30_000 }, () => {
     });
   });
 
+  it('never re-dispatches a run held for approval by the recovery-merge environment (status "waiting")', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pg4-recovery-coordinator-'));
+    dirs.push(dir);
+    const bin = path.join(dir, 'bin');
+    const out = path.join(dir, 'out');
+    const queue = path.join(out, '.recovery');
+    const curlLog = path.join(dir, 'curl.log');
+    fs.mkdirSync(bin, { recursive: true });
+    fs.mkdirSync(queue, { recursive: true });
+
+    makeExecutable(path.join(bin, 'git'), '#!/usr/bin/env bash\nexit 0\n');
+    makeExecutable(path.join(bin, 'sleep'), '#!/usr/bin/env bash\nexit 0\n');
+    makeExecutable(path.join(bin, 'pnpm'), '#!/usr/bin/env bash\nexit 0\n');
+    makeExecutable(
+      path.join(bin, 'curl'),
+      `#!/usr/bin/env bash\necho "$@" >> '${curlLog}'\nprintf '{"workflow_runs":[{"display_title":"Recovery incident-1 attempt 1","status":"waiting","conclusion":null}]}'\n`,
+    );
+
+    const statePath = path.join(queue, 'centro_estetico_BL.json');
+    fs.writeFileSync(statePath, JSON.stringify({
+      version: 1,
+      cell: 'centro_estetico_BL',
+      incident_id: 'incident-1',
+      envelope: { output_csv: path.join(out, 'centro_estetico_BL_raw.csv') },
+      command: ['/bin/sh', '-c', 'exit 0'],
+      attempts: 1,
+      status: 'pending',
+      dispatch_status: 'dispatching',
+      dispatch_requested_at: '2020-01-01T00:00:00.000Z', // grace window long expired
+    }));
+
+    spawnSync(
+      'bash',
+      ['scripts/recovery_coordinator.sh', 'wait-and-resume', '--out', out, '--cell', 'centro_estetico_BL'],
+      {
+        cwd: process.cwd(),
+        encoding: 'utf8',
+        env: {
+          ...process.env,
+          PATH: `${bin}:${process.env.PATH}`,
+          GH_RECOVERY_TOKEN: 'test-token',
+          GH_REPOSITORY: 'owner/repo',
+          RECOVERY_WAIT_SECONDS: '1',
+        },
+      },
+    );
+
+    const calls = fs.existsSync(curlLog) ? fs.readFileSync(curlLog, 'utf8') : '';
+    expect(calls).toContain('/runs');
+    expect(calls).not.toContain('/dispatches');
+  });
+
   it('dispatches a new incident instead of blocking a different recovery fingerprint', () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pg4-recovery-next-'));
     dirs.push(dir);

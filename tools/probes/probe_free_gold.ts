@@ -8,16 +8,16 @@
  * tallies hit-rates. Prints a table; writes nothing.
  *
  * Usage:
- *   pnpm exec tsx src/scripts/probe_free_gold.ts [--input <enriched.jsonl>] [--n 200]
+ *   pnpm exec tsx tools/probes/probe_free_gold.ts [--input <enriched.jsonl>] [--n 200]
  * Default input: output/r12_maps_pd_province_full_enriched_free.jsonl
  *
  * Thesis PASS bar (on website-having leads): email ≥40% · any-social ≥50% ·
  * VAT-from-body ≥30%. (Reported honestly — never adjusted to clear the bar.)
  */
 import fs from 'fs';
-import { parseArgs, optString } from '../cli/_args';
-import { DirectFetchProvider } from '../providers/http/direct_fetch';
-import { extractFromBody } from '../enrichment/extract/extract_from_body';
+import { parseArgs, optString } from '../../src/cli/_args';
+import { DirectFetchProvider } from '../../src/providers/http/direct_fetch';
+import { extractFromBody } from '../../src/enrichment/extract/extract_from_body';
 
 interface ProbeLead {
   company_name?: string;

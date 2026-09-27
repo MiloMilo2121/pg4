@@ -28,8 +28,8 @@ import { onShutdownSignal } from '../runtime/shutdown';
 const execFileAsync = promisify(execFile);
 const PG4_ROOT = path.resolve(__dirname, '..', '..'); // src/server -> pg4/
 const MAX_OUTPUT = 32 * 1024 * 1024;
-/** A CLI run longer than this is killed, so a hung pipeline never hangs the agent forever. */
-const CLI_TIMEOUT_MS = 4 * 60 * 60 * 1000;
+/** A CLI run longer than this is killed, so a hung pipeline never hangs the agent forever (generous: full province + Maps runs take hours). */
+const CLI_TIMEOUT_MS = 12 * 60 * 60 * 1000;
 /** Everything a tool WRITES must land under output/. */
 const OUTPUT_DIR = 'output';
 const READABLE_OUTPUT_EXT = ['.csv', '.jsonl', '.json', '.log', '.txt', '.md'] as const;

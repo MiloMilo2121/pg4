@@ -1,4 +1,4 @@
-import { parseArgs, optString } from '../../cli/_args';
+import { parseArgs, optString } from '../../src/cli/_args';
 import { loadState, saveState, runIfMain } from './_shared';
 
 /**
@@ -6,7 +6,7 @@ import { loadState, saveState, runIfMain } from './_shared';
  * never copied writable). Assigns a stable `_e3_id` (row index) that lives
  * only in the JSONL chain, for join reporting and row-parity checks.
  *
- *   pnpm tsx src/scripts/enrich3/init_state.ts \
+ *   pnpm tsx tools/enrich3/init_state.ts \
  *     --input ~/pg4-deliverables/veneto_immobiliari_v2_2026-07-20.csv \
  *     --out output/enrich3/state0
  */

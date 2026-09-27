@@ -25,6 +25,7 @@ jobs:
       - run: pnpm run typecheck
       - run: pnpm test
       - run: pnpm run lint
+      - run: pnpm run build
       # pnpm 10's audit client still calls npm endpoints retired in 2026. This
       # checks the exact installed production graph against npm's bulk API.
       - run: node scripts/audit_prod_dependencies.mjs .

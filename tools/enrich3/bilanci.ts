@@ -1,10 +1,12 @@
-import { parseArgs, optString } from '../../cli/_args';
-import { ApifyBilanciStage } from '../../enrichment/stages/apify_bilanci_stage';
-import { normalizeLead } from '../../discovery/input_normalizer';
-import { createPerLeadContext } from '../../runtime/run_context';
-import { validateItalianVatChecksum } from '../../enrichment/financial/vat';
-import { rankByLeadScore } from '../../enrichment/lead_score';
-import { loadState, saveState, buildE3Run, pool, has, closeLedger, runIfMain } from './_shared';
+import { parseArgs, optString } from '../../src/cli/_args';
+import { ApifyBilanciStage } from '../../src/enrichment/stages/apify_bilanci_stage';
+import { normalizeLead } from '../../src/discovery/input_normalizer';
+import { createPerLeadContext } from '../../src/runtime/run_context';
+import { validateItalianVatChecksum } from '../../src/enrichment/financial/vat';
+import { rankByLeadScore } from '../../src/enrichment/lead_score';
+import { loadState, saveState, buildE3Run, closeLedger, runIfMain } from './_shared';
+import { pool } from '../../src/runtime/pool';
+import { has } from '../../src/util/values';
 
 /**
  * ENRICH-3 R5 — balance-sheet firmographics (real fatturato + PEC +
@@ -15,10 +17,10 @@ import { loadState, saveState, buildE3Run, pool, has, closeLedger, runIfMain } f
  * cumulated budget calls for it (the plan's valve: top-4k if ledger > €65).
  *
  *   # probe 5 VAT (validates the actor's input/output shapes):
- *   APIFY_ENABLED=true APIFY_BILANCI_ENABLED=true pnpm tsx src/scripts/enrich3/bilanci.ts \
+ *   APIFY_ENABLED=true APIFY_BILANCI_ENABLED=true pnpm tsx tools/enrich3/bilanci.ts \
  *     --state output/enrich3/state5.jsonl --probe
  *   # full (~5.8k):
- *   ... pnpm tsx src/scripts/enrich3/bilanci.ts --state output/enrich3/state5.jsonl \
+ *   ... pnpm tsx tools/enrich3/bilanci.ts --state output/enrich3/state5.jsonl \
  *     --out output/enrich3/state6 --run-cost-ceiling-eur 48 [--top 4000]
  */
 async function main(): Promise<void> {

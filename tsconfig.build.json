@@ -1,0 +1,9 @@
+{
+  // Build = the shipped runtime only. `tools/` (operator passes, research
+  // probes) is typechecked via tsconfig.json but never emitted into dist/.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "rootDir": "src"
+  },
+  "include": ["src/**/*"]
+}

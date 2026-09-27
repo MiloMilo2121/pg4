@@ -228,13 +228,6 @@ const CONSTRUCTION_KEYWORDS = [
   'sito in allestimento', 'torneremo presto', 'sito in costruzione',
 ];
 
-const ITALIAN_STOP_WORDS = [
-  ' il ', ' lo ', ' la ', ' i ', ' gli ', ' le ',
-  ' di ', ' a ', ' da ', ' in ', ' con ', ' su ', ' per ', ' tra ', ' fra ',
-  ' è ', ' sono ', ' siamo ', ' azienda ', ' contatti ', ' chi siamo ',
-  ' home ', ' servizi ', ' prodotti ',
-];
-
 function hostname(url: string): string {
   try {
     return new URL(url).hostname.replace(/^www\./, '').toLowerCase();
@@ -270,10 +263,4 @@ export function isParked(htmlLower: string): boolean {
 
 export function isUnderConstruction(htmlLower: string): boolean {
   return CONSTRUCTION_KEYWORDS.some((kw) => htmlLower.includes(kw));
-}
-
-export function isLikelyItalian(htmlLower: string): boolean {
-  if (htmlLower.length < 200) return false;
-  const matches = ITALIAN_STOP_WORDS.reduce((acc, sw) => acc + (htmlLower.includes(sw) ? 1 : 0), 0);
-  return matches >= 4;
 }

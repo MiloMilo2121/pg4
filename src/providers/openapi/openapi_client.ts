@@ -4,6 +4,7 @@ import { ProviderBlockError } from '../../types/providers';
 import { DEFAULTS } from '../../config/defaults';
 import { RateLimiter } from '../../runtime/rate_limiter';
 import { normalizeVatCode, validateItalianVatChecksum } from '../../enrichment/financial/vat';
+import { str } from '../../util/values';
 
 /**
  * Openapi.com — official Italian company registry (InfoCamere reseller, ANCIC).
@@ -202,9 +203,6 @@ export function mapAdvanced(json: unknown): OpenapiCompany | undefined {
   };
 }
 
-function str(v: unknown): string | undefined {
-  return typeof v === 'string' && v.trim() ? v.trim() : typeof v === 'number' ? String(v) : undefined;
-}
 function num(v: unknown): number | undefined {
   return typeof v === 'number' && Number.isFinite(v) ? v : undefined;
 }

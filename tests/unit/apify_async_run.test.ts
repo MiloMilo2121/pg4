@@ -150,6 +150,48 @@ describe('ApifyProvider.runActorAsync — money safety', () => {
     expect(e5.cost_eur).toBeUndefined();
   });
 
+  it('retries a socket drop on the status poll (undici error codes, not just Playwright messages)', async () => {
+    enableApify();
+    let polls = 0;
+    const get: ApifyHttpGet = async (url) => {
+      if (url.includes('/actor-runs/run1')) {
+        polls += 1;
+        if (polls === 1) throw Object.assign(new Error('other side closed'), { code: 'UND_ERR_SOCKET' });
+        return { status: 200, json: { data: { status: 'SUCCEEDED' } } };
+      }
+      if (url.includes('/datasets/ds1/items')) return { status: 200, json: [{ a: 1 }] };
+      return { status: 200, json: { data: { itemCount: 1 } } };
+    };
+    const run = await new ApifyProvider(startOk, get, { retryBaseMs: 0 }).runActorAsync('maps', {}, { pollMs: 0 });
+    expect(run.items).toHaveLength(1);
+    expect(polls).toBe(2);
+  });
+
+  it('a status poll that keeps failing ABORTS the run and throws ApifyRunError with its ids', async () => {
+    enableApify();
+    const posts: string[] = [];
+    const post: ApifyHttpPost = async (url) => {
+      posts.push(url);
+      return url.includes('/abort') ? { status: 200, json: {} } : { status: 201, json: { data: { id: 'run1', defaultDatasetId: 'ds1', status: 'READY' } } };
+    };
+    const get: ApifyHttpGet = async (url) => {
+      if (url.includes('/actor-runs/run1')) throw Object.assign(new Error('connect ECONNREFUSED'), { code: 'ECONNREFUSED' });
+      return { status: 200, json: { data: { itemCount: 3 } } };
+    };
+    const err = (await new ApifyProvider(post, get, { retryBaseMs: 0 }).runActorAsync('maps', {}, { pollMs: 0 }).catch((e: unknown) => e)) as ApifyRunError;
+    expect(err).toBeInstanceOf(ApifyRunError);
+    expect(err.runId).toBe('run1');
+    expect(err.cost_eur).toBeCloseTo(3 * MAPS_UNIT);
+    expect(posts.some((u) => u.includes('/actor-runs/run1/abort'))).toBe(true);
+  });
+
+  it('unknown spend (count unreadable AND download truncated at the limit) leaves cost undefined → router records worst case', async () => {
+    enableApify();
+    const { get } = succeededGet(undefined, [{ status: 200, json: [{ a: 1 }, { a: 2 }] }]);
+    const run = await new ApifyProvider(startOk, get, { retryBaseMs: 0 }).runActorAsync('maps', {}, { maxItems: 2, pollMs: 0 });
+    expect(run.cost_eur).toBeUndefined();
+  });
+
   it('fetchDatasetItems re-downloads a paid dataset without starting a run', async () => {
     enableApify();
     const post: ApifyHttpPost = async () => {

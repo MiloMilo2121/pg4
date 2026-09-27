@@ -76,7 +76,7 @@ export async function runJudgment(lead: Lead, ctx: HarvestContext, deps: Judgmen
   const valutazione_B = await judgeB(segnali_B, footprint, model, { config, llm: deps.llm });
 
   // GAP reasoner (the only bi-axial component)
-  const { verdict, levers } = await gapReason(lead, model, valutazione_A, valutazione_B, segnali_A, segnali_B, deps.categoryProfile, { config, llm: deps.llm });
+  const { verdict, levers } = await gapReason(lead, model, valutazione_A, valutazione_B, segnali_A, deps.categoryProfile, { config, llm: deps.llm });
   const verdictAt = iso();
 
   // L5a agentic validation

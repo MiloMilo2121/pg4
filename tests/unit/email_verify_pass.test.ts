@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { ApifyProvider } from '../../src/providers/apify/apify_provider';
-import { buildEmailVerifyInput, verifyInChunks } from '../../src/scripts/enrich3/email_verify';
+import { buildEmailVerifyInput, verifyInChunks } from '../../tools/enrich3/email_verify';
 import { isPecAddress } from '../../src/enrichment/extract/pec';
 import type { Lead } from '../../src/types/lead';
 

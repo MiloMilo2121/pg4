@@ -1,14 +1,15 @@
 import fs from 'fs';
 import path from 'path';
-import type { Lead } from '../../types/lead';
-import { SCHEMA_VERSION } from '../../types/lead';
-import { readCsvAsLeads } from '../../io/csv_reader';
-import { readJsonlAsLeads, JsonlWriter } from '../../io/jsonl_writer';
-import { CsvWriter } from '../../io/csv_writer';
-import { createRun, type Run } from '../../runtime/run_context';
-import { buildProviderCatalog } from '../../providers/provider_catalog';
-import type { ProviderRouter } from '../../providers/provider_router';
-import { logger } from '../../runtime/logger';
+import type { Lead } from '../../src/types/lead';
+import { SCHEMA_VERSION } from '../../src/types/lead';
+import { readCsvAsLeads } from '../../src/io/csv_reader';
+import { readJsonlAsLeads, JsonlWriter } from '../../src/io/jsonl_writer';
+import { CsvWriter } from '../../src/io/csv_writer';
+import { createRun, type Run } from '../../src/runtime/run_context';
+import { buildProviderCatalog } from '../../src/providers/provider_catalog';
+import type { ProviderRouter } from '../../src/providers/provider_router';
+import { logger } from '../../src/runtime/logger';
+import { has } from '../../src/util/values';
 
 /**
  * ENRICH-3 shared plumbing. The state chain is JSONL-first: the enriched CSV
@@ -71,36 +72,19 @@ export function buildE3Run(opts: E3RunOptions): { run: Run; router: ProviderRout
   return { run, router };
 }
 
-/** Bounded-concurrency executor (same in-flight pattern as enrich_command). */
-export async function pool<T>(items: readonly T[], concurrency: number, fn: (item: T, index: number) => Promise<void>): Promise<void> {
-  const inFlight: Promise<void>[] = [];
-  for (let i = 0; i < items.length; i++) {
-    const task = fn(items[i], i).finally(() => {
-      const idx = inFlight.indexOf(task);
-      if (idx >= 0) inFlight.splice(idx, 1);
-    });
-    inFlight.push(task);
-    if (inFlight.length >= concurrency) await Promise.race(inFlight);
-  }
-  await Promise.all(inFlight);
-}
-
-const isEmpty = (v: unknown): boolean => v === undefined || v === null || String(v).trim() === '';
 
 /** Fill-only-empty merge (the repo-wide discipline). Returns the filled keys. */
 export function fillOnlyEmpty(lead: Lead, patch: Partial<Record<keyof Lead, unknown>>): string[] {
   const filled: string[] = [];
   for (const [k, v] of Object.entries(patch)) {
-    if (isEmpty(v)) continue;
-    if (isEmpty((lead as Record<string, unknown>)[k])) {
+    if (!has(v)) continue;
+    if (!has((lead as Record<string, unknown>)[k])) {
       (lead as Record<string, unknown>)[k] = v;
       filled.push(k);
     }
   }
   return filled;
 }
-
-export const has = (v: unknown): boolean => !isEmpty(v);
 
 /**
  * Execute `main` only when the process entrypoint IS this script — the

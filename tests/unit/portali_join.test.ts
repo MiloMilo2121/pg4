@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import type { Lead } from '../../src/types/lead';
 import { computePhoneKey, computeNameCityKey, normalizeForKey } from '../../src/discovery/deduper';
-import { pickTarget, attach, emptyJoinStats } from '../../src/scripts/enrich3/portali_join';
+import { pickTarget, attach, emptyJoinStats } from '../../tools/enrich3/portali_join';
 import type { PortalAgencyRecord } from '../../src/providers/apify/portal_parsers';
 
 function indexes(leads: Lead[]): { byPhone: Map<string, Lead[]>; byNameCity: Map<string, Lead[]>; byCity: Map<string, Lead[]> } {

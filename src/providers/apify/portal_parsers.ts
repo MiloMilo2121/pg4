@@ -15,6 +15,8 @@
  */
 
 import { isDirectoryOrSocial } from '../../discovery/website/content_filter';
+import { str } from '../../util/values';
+import { isGoogleMapsUrl } from '../../discovery/sources/maps_url';
 
 export interface PortalAgencyRecord {
   portal: 'immobiliare' | 'immobiliare_ads' | 'wikicasa';
@@ -36,8 +38,6 @@ export interface PortalAgencyRecord {
   portalUrl?: string;
 }
 
-const str = (v: unknown): string | undefined =>
-  typeof v === 'string' && v.trim() ? v.trim() : typeof v === 'number' ? String(v) : undefined;
 
 const firstStr = (...vs: unknown[]): string | undefined => {
   for (const v of vs) {
@@ -119,7 +119,7 @@ const ownWebsite = (...vs: unknown[]): string | undefined => {
   const s = firstStr(...vs);
   if (!s) return undefined;
   const url = /^https?:\/\//i.test(s) ? s : `https://${s}`;
-  return isDirectoryOrSocial(url) ? undefined : url;
+  return isDirectoryOrSocial(url) || isGoogleMapsUrl(url) ? undefined : url;
 };
 
 /** azzouzana~immobiliare-agencies-scraper — email + socials + isPaid/#ads per agency. */

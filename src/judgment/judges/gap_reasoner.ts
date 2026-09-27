@@ -1,5 +1,5 @@
 import type { Lead } from '../../types/lead';
-import type { AxisAssessment, AxisLevel, BusinessModel, CategoryProfile, GapVerdict, GapCause, Lever, Quadrant, SegnaliA, SegnaliB, Trajectory } from '../../types/judgment';
+import type { AxisAssessment, AxisLevel, BusinessModel, CategoryProfile, GapVerdict, GapCause, Lever, Quadrant, SegnaliA, Trajectory } from '../../types/judgment';
 import type { JudgmentConfig } from '../config/types';
 import { type JudgeLLM, parseJsonLoose, clamp01 } from './shared';
 
@@ -51,7 +51,6 @@ export async function gapReason(
   aAssessment: AxisAssessment,
   bAssessment: AxisAssessment,
   segnaliA: SegnaliA,
-  segnaliB: SegnaliB,
   categoryProfile: CategoryProfile | undefined,
   deps: GapDeps,
 ): Promise<GapOutput> {
