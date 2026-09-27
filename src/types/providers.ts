@@ -131,6 +131,17 @@ export class ProviderBlockError extends Error {
   }
 }
 
+/**
+ * What a FAILED paid call actually spent, when the thrown error knows it
+ * (e.g. an Apify run that was started, billed, then could not be downloaded;
+ * or a start rejected before anything ran → 0). `undefined` means "unknown":
+ * the router then records the worst-case reservation, never €0.
+ */
+export function errorCostEur(err: unknown): number | undefined {
+  const c = (err as { cost_eur?: unknown } | null | undefined)?.cost_eur;
+  return typeof c === 'number' && Number.isFinite(c) && c >= 0 ? c : undefined;
+}
+
 /** Classified failure kind used by router → ledger + breaker. */
 export type FailureKind = 'blocked' | 'rate_limit' | 'transport' | 'timeout' | 'other';
 

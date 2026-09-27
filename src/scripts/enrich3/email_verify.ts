@@ -32,6 +32,42 @@ export function buildEmailVerifyInput(emails: string[]): Record<string, unknown>
   return { emails };
 }
 
+export type VerifyChunk = (chunk: string[], index: number) => Promise<unknown[] | null>;
+
+/**
+ * Verify `emails` chunk by chunk, writing each parsed verdict into
+ * `statusByEmail`. A chunk that comes back gated/failed/empty (`null`) is
+ * SKIPPED, never fatal: one transient failure must not abandon every later
+ * chunk. Once the run ceiling is hit the router's latched gate makes the
+ * remaining calls return `null` at no cost, so continuing is free.
+ */
+export async function verifyInChunks(
+  emails: string[],
+  chunkSize: number,
+  verifyChunk: VerifyChunk,
+  statusByEmail: Map<string, Lead['email_status']>,
+  hooks: { onChunk?: (index: number, items: unknown[]) => void } = {},
+): Promise<{ verified: number; failedChunks: number }> {
+  let verified = 0;
+  let failedChunks = 0;
+  for (let i = 0, index = 0; i < emails.length; i += chunkSize, index += 1) {
+    const items = await verifyChunk(emails.slice(i, i + chunkSize), index);
+    if (!items) {
+      failedChunks += 1;
+      continue;
+    }
+    for (const raw of items) {
+      const r = ApifyProvider.parseEmailVerifyItem(raw);
+      if (r.email) {
+        statusByEmail.set(r.email, r.status);
+        verified += 1;
+      }
+    }
+    hooks.onChunk?.(index, items);
+  }
+  return { verified, failedChunks };
+}
+
 function leadEmail(lead: Lead): string | undefined {
   const e = has(lead.email_inferred) ? lead.email_inferred : lead.email;
   return typeof e === 'string' && e.includes('@') ? e.trim().toLowerCase() : undefined;
@@ -43,6 +79,7 @@ async function main(): Promise<void> {
   const out = optString(args, 'out') ?? 'output/enrich3/state4';
   const probe = args.flags.probe === true;
   const chunkSize = Number(optString(args, 'chunk') ?? '500');
+  if (!Number.isInteger(chunkSize) || chunkSize <= 0) throw new Error('--chunk must be a positive integer');
   const ceiling = Number(optString(args, 'run-cost-ceiling-eur') ?? (probe ? '0.2' : ''));
   if (!Number.isFinite(ceiling) || ceiling <= 0) throw new Error('--run-cost-ceiling-eur is required (hard cap for the pass)');
 
@@ -93,38 +130,31 @@ async function main(): Promise<void> {
     runCostCeilingEur: ceiling,
   });
   const batch = probe ? toVerify.slice(0, 10) : toVerify;
-  let verified = 0;
-  for (let i = 0; i < batch.length; i += chunkSize) {
-    const chunk = batch.slice(i, i + chunkSize);
-    const meta = { ...provider.meta('email_verify'), costPerCallEur: chunk.length * unit };
-    const items = await router.invoke<unknown[]>(
-      meta,
+  const verifyChunk: VerifyChunk = async (chunk, index) =>
+    router.invoke<unknown[]>(
+      { ...provider.meta('email_verify'), costPerCallEur: chunk.length * unit },
       async () => {
-        const got = await provider.runActorAsync('email_verify', buildEmailVerifyInput(chunk), {
+        const res = await provider.runActorAsync('email_verify', buildEmailVerifyInput(chunk), {
           maxItems: chunk.length,
           timeoutMs: 900_000,
         });
-        return { ok: got.length > 0, value: got, cost_eur: got.length * unit };
+        return { ok: res.items.length > 0, value: res.items, cost_eur: res.cost_eur };
       },
-      { paidEnabled: true, runCostCeilingEur: ceiling, meta: { stage: 'e3_email_verify', chunk: String(i / chunkSize) } },
+      { paidEnabled: true, runCostCeilingEur: ceiling, meta: { stage: 'e3_email_verify', chunk: String(index) } },
     );
-    if (!items) {
-      logger.warn({ chunk: i / chunkSize }, '[email_verify] chunk gated/failed — remaining emails keep no status');
-      break;
-    }
-    if (probe) {
-      console.log('\n===== PROBE email_verify — first raw item =====');
-      console.log(JSON.stringify(items[0], null, 2).slice(0, 2000));
-    }
-    for (const raw of items) {
-      const r = ApifyProvider.parseEmailVerifyItem(raw);
-      if (r.email) {
-        statusByEmail.set(r.email, r.status);
-        verified += 1;
+  const { verified, failedChunks } = await verifyInChunks(batch, chunkSize, verifyChunk, statusByEmail, {
+    onChunk: (index, items) => {
+      if (probe && index === 0 && items.length > 0) {
+        console.log('\n===== PROBE email_verify — first raw item =====');
+        console.log(JSON.stringify(items[0], null, 2).slice(0, 2000));
       }
-    }
-    logger.info({ done: Math.min(i + chunkSize, batch.length), of: batch.length, ledgerEur: run.ledger.getTotal().toFixed(2) }, '[email_verify] chunk done');
-  }
+      logger.info(
+        { done: Math.min((index + 1) * chunkSize, batch.length), of: batch.length, ledgerEur: run.ledger.getTotal().toFixed(2) },
+        '[email_verify] chunk done',
+      );
+    },
+  });
+  if (failedChunks > 0) logger.warn({ failedChunks }, '[email_verify] some chunks gated/failed — their emails keep no status');
 
   // ---- fan-out to leads (email_status is a run-style field: always written when known) ----
   const dist: Record<string, number> = {};

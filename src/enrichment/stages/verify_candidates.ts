@@ -81,16 +81,24 @@ export interface VerifyCandidatesOpts {
    * budgets via `routeFromLeadContext(ctx)`; the router's default-deny
    * is preserved when absent.
    */
-  route?: Pick<RouteOptions, 'paidEnabled' | 'remainingLeadBudgetEur' | 'runCostCeilingEur'>;
+  route?: Pick<RouteOptions, 'paidEnabled' | 'remainingLeadBudgetEur' | 'leadCostCeilingEur' | 'runCostCeilingEur'>;
 }
 
-/** Single source for the paid-route passthrough derived from a per-lead context. */
+/**
+ * Single source for the paid-route passthrough derived from a per-lead context.
+ * The route is built ONCE per stage but reused for every candidate and retry,
+ * so the per-lead cap is passed as `leadCostCeilingEur` (re-read from the
+ * ledger by the router before each paid attempt via `meta.lead_id`); the
+ * `remainingLeadBudgetEur` snapshot only bounds the first attempt.
+ */
 export function routeFromLeadContext(
   ctx: Pick<PerLeadContext, 'paidEnabled' | 'costCeilingEur' | 'costEur' | 'runCostCeilingEur'>
 ): VerifyCandidatesOpts['route'] {
+  const leadCap = ctx.costCeilingEur ?? 0;
   return {
     paidEnabled: ctx.paidEnabled === true,
-    remainingLeadBudgetEur: Math.max(0, (ctx.costCeilingEur ?? 0) - ctx.costEur),
+    remainingLeadBudgetEur: Math.max(0, leadCap - ctx.costEur),
+    leadCostCeilingEur: leadCap,
     runCostCeilingEur: ctx.runCostCeilingEur,
   };
 }

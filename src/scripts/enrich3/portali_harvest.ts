@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { parseArgs, optString } from '../../cli/_args';
-import { ApifyProvider, type ApifyActor } from '../../providers/apify/apify_provider';
+import { ApifyProvider, ApifyRunError, type ApifyActor } from '../../providers/apify/apify_provider';
 import { buildE3Run, closeLedger, runIfMain } from './_shared';
 import { logger } from '../../runtime/logger';
 
@@ -12,10 +12,14 @@ import { logger } from '../../runtime/logger';
  *
  * Money safety: every actor call goes through `router.invoke` with a
  * worst-case reservation (`maxItems × unit cost`) so the run ceiling holds
- * atomically, while the ledger records the REAL cost (items × unit).
+ * atomically, while the ledger records the REAL cost (items the actor pushed
+ * × unit — not the items `maxItems` let us download).
  *
  * Resume: a non-empty raw file skips its call — re-running after a crash or
- * ceiling stop only pays for what is missing.
+ * ceiling stop only pays for what is missing. A run that SUCCEEDED (already
+ * billed) but whose dataset download failed leaves a `<raw>.pending.json`
+ * with its dataset id; the next run re-downloads it for free instead of
+ * paying for a new run.
  *
  *   # probe (validates actor input/output shapes BEFORE scaling, ~€0.10):
  *   APIFY_ENABLED=true APIFY_PORTAL_IMMOBILIARE_ENABLED=true ... \
@@ -102,22 +106,16 @@ async function main(): Promise<void> {
       logger.info({ rawPath }, '[portali] raw exists — skip (resume)');
       continue;
     }
-    const meta = { ...provider.meta(unit.actor), costPerCallEur: unit.maxItems * provider.meta(unit.actor).costPerCallEur };
-    const unitCost = provider.meta(unit.actor).costPerCallEur;
-    logger.info({ actor: unit.actor, slug: unit.slug, maxItems: unit.maxItems, worstCaseEur: meta.costPerCallEur }, '[portali] harvesting');
-    const items = await router.invoke<unknown[]>(
-      meta,
-      async () => {
-        const got = await provider.runActorAsync(unit.actor, unit.input, { maxItems: unit.maxItems, timeoutMs: 1_800_000 });
-        return { ok: got.length > 0, value: got, cost_eur: got.length * unitCost };
-      },
-      { paidEnabled: true, runCostCeilingEur: ceiling, meta: { stage: 'e3_portali', actor: unit.actor, provincia: unit.slug } },
-    );
+    const pendingPath = `${rawPath}.pending.json`;
+    const items = fs.existsSync(pendingPath)
+      ? await recoverPaidDataset(provider, pendingPath, unit.maxItems)
+      : await harvestUnit(provider, router, unit, ceiling, pendingPath);
     if (!items) {
       logger.warn({ actor: unit.actor, slug: unit.slug }, '[portali] no items (gated, failed, or empty) — raw not written');
       continue;
     }
     fs.writeFileSync(rawPath, items.map((it) => JSON.stringify(it)).join('\n') + '\n');
+    fs.rmSync(pendingPath, { force: true });
     done += 1;
     logger.info({ rawPath, items: items.length, ledgerEur: run.ledger.getTotal().toFixed(3) }, '[portali] unit done');
     if (probe) {
@@ -128,6 +126,47 @@ async function main(): Promise<void> {
 
   closeLedger(run, 'portali_harvest');
   console.log(`portali_harvest: ${done} unit scaricate (probe=${probe}); raw in ${rawDir}`);
+}
+
+/** One paid actor run through the router's gates; the ledger gets the run's real cost. */
+async function harvestUnit(
+  provider: ApifyProvider,
+  router: ReturnType<typeof buildE3Run>['router'],
+  unit: HarvestUnit,
+  ceiling: number,
+  pendingPath: string,
+): Promise<unknown[] | null> {
+  const meta = { ...provider.meta(unit.actor), costPerCallEur: unit.maxItems * provider.meta(unit.actor).costPerCallEur };
+  logger.info({ actor: unit.actor, slug: unit.slug, maxItems: unit.maxItems, worstCaseEur: meta.costPerCallEur }, '[portali] harvesting');
+  return router.invoke<unknown[]>(
+    meta,
+    async () => {
+      try {
+        const run = await provider.runActorAsync(unit.actor, unit.input, { maxItems: unit.maxItems, timeoutMs: 1_800_000 });
+        return { ok: run.items.length > 0, value: run.items, cost_eur: run.cost_eur };
+      } catch (err) {
+        if (err instanceof ApifyRunError && err.succeeded && err.datasetId) {
+          fs.writeFileSync(pendingPath, JSON.stringify({ runId: err.runId, datasetId: err.datasetId }) + '\n');
+          logger.warn({ pendingPath, runId: err.runId }, '[portali] run paid but download failed — dataset id saved for a free re-download');
+        }
+        throw err;
+      }
+    },
+    { paidEnabled: true, runCostCeilingEur: ceiling, meta: { stage: 'e3_portali', actor: unit.actor, provincia: unit.slug } },
+  );
+}
+
+/** Resume path for an already-paid run: download its dataset (a read, no new run). */
+async function recoverPaidDataset(provider: ApifyProvider, pendingPath: string, maxItems: number): Promise<unknown[] | null> {
+  const { datasetId } = JSON.parse(fs.readFileSync(pendingPath, 'utf8')) as { datasetId: string };
+  try {
+    const items = await provider.fetchDatasetItems(datasetId, maxItems);
+    logger.info({ datasetId, items: items.length }, '[portali] recovered paid dataset (no new run)');
+    return items.length > 0 ? items : null;
+  } catch (err) {
+    logger.warn({ datasetId, err: (err as Error).message }, '[portali] dataset re-download failed — pending kept for the next resume');
+    return null;
+  }
 }
 
 runIfMain('portali_harvest.ts', main);

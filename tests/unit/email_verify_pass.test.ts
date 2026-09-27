@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { ApifyProvider } from '../../src/providers/apify/apify_provider';
-import { PEC_DOMAINS, buildEmailVerifyInput } from '../../src/scripts/enrich3/email_verify';
+import { PEC_DOMAINS, buildEmailVerifyInput, verifyInChunks } from '../../src/scripts/enrich3/email_verify';
+import type { Lead } from '../../src/types/lead';
 
 describe('parseEmailVerifyItem', () => {
   const parse = ApifyProvider.parseEmailVerifyItem;
@@ -37,5 +38,23 @@ describe('email_verify free shortcuts', () => {
 
   it('the actor input builder is the single overridable place', () => {
     expect(buildEmailVerifyInput(['a@b.it', 'c@d.it'])).toEqual({ emails: ['a@b.it', 'c@d.it'] });
+  });
+});
+
+describe('verifyInChunks', () => {
+  it('a failed chunk is skipped, NOT fatal: later chunks still run', async () => {
+    const emails = ['a@x.it', 'b@x.it', 'c@x.it', 'd@x.it'];
+    const seen: number[] = [];
+    const statusByEmail = new Map<string, Lead['email_status']>();
+    const res = await verifyInChunks(emails, 1, async (chunk, index) => {
+      seen.push(index);
+      if (index === 1) return null; // gated / transient failure / empty
+      return chunk.map((email) => ({ email, status: 'valid' }));
+    }, statusByEmail);
+    expect(seen).toEqual([0, 1, 2, 3]);
+    expect(res).toEqual({ verified: 3, failedChunks: 1 });
+    expect(statusByEmail.get('c@x.it')).toBe('deliverable');
+    expect(statusByEmail.get('d@x.it')).toBe('deliverable');
+    expect(statusByEmail.has('b@x.it')).toBe(false);
   });
 });

@@ -50,6 +50,9 @@ export interface CostLedgerOptions {
  */
 export class CostLedger {
   private entries: LedgerEntry[] = [];
+  /** Running totals — the router reads these before EVERY paid attempt, so they must be O(1). */
+  private total = 0;
+  private readonly byLead = new Map<string, number>();
   private readonly jsonlPath?: string;
   private readonly runId: string;
   private summaryFlushed = false;
@@ -88,13 +91,14 @@ export class CostLedger {
       meta: extra.meta,
     };
     this.entries.push(entry);
+    this.total += costEur;
+    const leadId = extra.meta?.lead_id;
+    if (leadId !== undefined) this.byLead.set(String(leadId), (this.byLead.get(String(leadId)) ?? 0) + costEur);
     this.appendJsonl({ ...entry, run_id: this.runId });
   }
 
   getTotal(): number {
-    let sum = 0;
-    for (const e of this.entries) sum += e.cost_eur;
-    return sum;
+    return this.total;
   }
 
   getByProvider(): Record<string, { calls: number; cost_eur: number; success_rate: number; by_kind: Record<string, number> }> {
@@ -144,13 +148,9 @@ export class CostLedger {
     };
   }
 
-  /** Compute cost so far, optionally filtered by `meta.lead_id`. */
+  /** Cost so far for one `meta.lead_id`. */
   costForLead(leadId: string): number {
-    let s = 0;
-    for (const e of this.entries) {
-      if (e.meta && e.meta.lead_id === leadId) s += e.cost_eur;
-    }
-    return s;
+    return this.byLead.get(leadId) ?? 0;
   }
 
   /**

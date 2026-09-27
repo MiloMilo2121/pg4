@@ -44,9 +44,11 @@ async function main(): Promise<void> {
     runCostCeilingEur: ceiling,
   });
 
+  type Outcome = 'dead' | 'parked' | 'free_email' | 'render_email' | 'still_missing';
   const counts = { dead: 0, parked: 0, free_email: 0, rendered: 0, render_email: 0, still_missing: 0 };
-  let processed = 0;
-  await pool(subset, 4, async (lead) => {
+
+  /** Mine ONE lead; returns where it ended up. `rendered` counts leads where firecrawl actually returned a page. */
+  const mineLead = async (lead: (typeof subset)[number]): Promise<Outcome> => {
     const site = String(lead.official_website);
     const ctx = createPerLeadContext(run);
     const meta = { lead_id: ctx.leadId, stage: 'e3_firecrawl' };
@@ -76,55 +78,54 @@ async function main(): Promise<void> {
       if (process.env.E3_DEBUG === '1') console.log(`[dbg] ${site} THREW ${(err as Error).message}`);
       homepage = undefined;
     }
-    if (!homepage && !tlsBlocked) {
-      counts.dead += 1;
-      return; // dead site — never render a corpse
-    }
+    if (!homepage && !tlsBlocked) return 'dead'; // never render a corpse
     if (homepage) {
       const lower = homepage.toLowerCase();
-      if (isParked(lower) || isUnderConstruction(lower)) {
-        counts.parked += 1;
-        return;
-      }
+      if (isParked(lower) || isUnderConstruction(lower)) return 'parked';
       try {
         const deep = await deepExtractFromSite(site, freeFetcher, { maxContactPages: 2, homepageHtml: homepage });
         applyBodyExtraction(lead, deep.extraction);
       } catch {
         /* free extraction must never kill the row */
       }
-      if (has(lead.email_inferred)) {
-        counts.free_email += 1;
-        return;
-      }
+      if (has(lead.email_inferred)) return 'free_email';
     }
 
     // ---- step 2: forced render, firecrawl only, budget-fenced ----
+    // The per-lead cap is LIVE (`leadCostCeilingEur` + meta.lead_id): the
+    // router re-reads this lead's spend before each render.
+    let renderedPage = false;
     const fcFetcher: PageFetcher = async (url) => {
       try {
         const res = await router.fetch(url, {
           paidEnabled: true,
           paidOnly: true,
           includeProviderIds: ['firecrawl'],
-          remainingLeadBudgetEur: Math.max(0, perLeadCap - run.ledger.costForLead(ctx.leadId)),
+          leadCostCeilingEur: perLeadCap,
           runCostCeilingEur: ceiling,
           timeoutMs: 25_000,
           meta,
         });
-        return res.status >= 200 && res.status < 400 ? res.html : undefined;
+        const html = res.status >= 200 && res.status < 400 ? res.html : undefined;
+        if (html) renderedPage = true;
+        return html;
       } catch {
         return undefined;
       }
     };
     try {
-      counts.rendered += 1;
       const deep = await deepExtractFromSite(site, fcFetcher, { maxContactPages: 1 });
       applyBodyExtraction(lead, deep.extraction);
     } catch {
       /* render failure degrades to nothing, never throws the pass */
     }
-    if (has(lead.email_inferred)) counts.render_email += 1;
-    else counts.still_missing += 1;
+    if (renderedPage) counts.rendered += 1;
+    return has(lead.email_inferred) ? 'render_email' : 'still_missing';
+  };
 
+  let processed = 0;
+  await pool(subset, 4, async (lead) => {
+    counts[await mineLead(lead)] += 1;
     processed += 1;
     if (processed % 200 === 0) {
       console.log(`firecrawl: ${processed}/${subset.length} · ledger €${run.ledger.getTotal().toFixed(2)}`);

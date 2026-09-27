@@ -2,6 +2,7 @@ import { request } from 'undici';
 import type { CostedMeta, ProviderRole } from '../../types/providers';
 import { ProviderBlockError } from '../../types/providers';
 import { getEnv } from '../../config/env';
+import { withRetry, isRetriableNavError } from '../../runtime/retry';
 
 /**
  * Apify — external actor marketplace (Google Maps, contact/social scrapers).
@@ -138,6 +139,46 @@ export function buildBilanciInput(vat: string): Record<string, unknown> {
   return { query: vat, searchQuery: vat, maxResults: 1 };
 }
 
+const APIFY_API = 'https://api.apify.com/v2';
+const TERMINAL_RUN_STATUSES: ReadonlySet<string> = new Set(['SUCCEEDED', 'FAILED', 'ABORTED', 'TIMED-OUT']);
+
+/** A finished async run: items (bounded by `maxItems`) + what it really cost. */
+export interface ApifyRunResult {
+  items: unknown[];
+  runId: string;
+  datasetId: string;
+  /** Items the actor pushed — the pay-per-result billing basis (≥ items.length). */
+  billedItems: number;
+  cost_eur: number;
+}
+
+/**
+ * Failure of an async run. Carries `cost_eur` (see `errorCostEur`) so the
+ * router's ledger records the real spend, and — when the run SUCCEEDED but its
+ * dataset could not be downloaded — the ids needed to fetch it later for free.
+ */
+export class ApifyRunError extends Error {
+  readonly runId?: string;
+  readonly datasetId?: string;
+  readonly succeeded: boolean;
+  readonly cost_eur?: number;
+  constructor(message: string, info: { runId?: string; datasetId?: string; succeeded?: boolean; cost_eur?: number } = {}) {
+    super(message);
+    this.name = 'ApifyRunError';
+    this.runId = info.runId;
+    this.datasetId = info.datasetId;
+    this.succeeded = info.succeeded === true;
+    this.cost_eur = info.cost_eur;
+  }
+}
+
+class TransientApifyError extends Error {
+  constructor(readonly status: number) {
+    super(`apify transient HTTP ${status}`);
+    this.name = 'TransientApifyError';
+  }
+}
+
 export type ApifyHttpPost = (url: string, body: unknown, timeoutMs: number) => Promise<{ status: number; json: unknown }>;
 export type ApifyHttpGet = (url: string, timeoutMs: number) => Promise<{ status: number; json: unknown }>;
 
@@ -187,7 +228,16 @@ export class ApifyProvider {
   readonly family = 'apify' as const;
   readonly roles = ROLES;
 
-  constructor(private post: ApifyHttpPost = defaultPost, private get: ApifyHttpGet = defaultGet) {}
+  /** Backoff base for transient GET retries (tests pass 0). */
+  private readonly retryBaseMs: number;
+
+  constructor(
+    private post: ApifyHttpPost = defaultPost,
+    private get: ApifyHttpGet = defaultGet,
+    opts: { retryBaseMs?: number } = {},
+  ) {
+    this.retryBaseMs = opts.retryBaseMs ?? 2_000;
+  }
 
   /** Master availability — the key + the global Apify flag. */
   available(): boolean {
@@ -257,14 +307,11 @@ export class ApifyProvider {
    * those cap their output via an input field (`maxResults`) instead.
    */
   async runActorSync(actor: ApifyActor, input: unknown, opts: { maxItems?: number | null; timeoutMs?: number } = {}): Promise<unknown[]> {
-    const e = getEnv();
-    const token = e.APIFY_API_KEY;
-    if (!token) throw new ProviderBlockError(this.id, 'apify key missing');
     const timeoutMs = opts.timeoutMs ?? 240_000;
     const maxItemsQs = opts.maxItems === null ? '' : `&maxItems=${opts.maxItems ?? 1}`;
     const url =
-      `https://api.apify.com/v2/acts/${this.actorId(actor)}/run-sync-get-dataset-items` +
-      `?token=${encodeURIComponent(token)}${maxItemsQs}&timeout=${Math.round(timeoutMs / 1000)}`;
+      `${APIFY_API}/acts/${this.actorId(actor)}/run-sync-get-dataset-items` +
+      `?${this.tokenQs()}${maxItemsQs}&timeout=${Math.round(timeoutMs / 1000)}`;
     const { json } = await this.post(url, input, timeoutMs);
     return Array.isArray(json) ? json : [];
   }
@@ -272,44 +319,131 @@ export class ApifyProvider {
   /**
    * ENRICH-3 — asynchronous actor run for BULK jobs that exceed the ~300s
    * run-sync window (per-province portal scrapes, chunked register lookups).
-   * Start run → poll status → download dataset items. Terminal non-success
-   * (FAILED / ABORTED / TIMED-OUT) THROWS so the router's breaker/ledger see
-   * a real failure — unlike runActorSync, silence would hide a burned budget.
+   * Start run → poll status → download dataset items.
+   *
+   * Money safety — every failure THROWS an `ApifyRunError` (never a silent
+   * `[]`, which would read as "€0, nothing to save" and make a resume pay the
+   * same run twice):
+   *   - start rejected (4xx)          → cost_eur 0 (nothing ran)
+   *   - terminal FAILED/ABORTED/...   → cost_eur from the items the run pushed
+   *   - deadline                       → the run is ABORTED first (it would
+   *                                      keep billing), then cost as above
+   *   - items download failed          → `succeeded: true` + runId/datasetId so
+   *                                      the caller can re-download for free
+   * `cost_eur` stays undefined when the spend is unknowable; the router then
+   * records the worst-case reservation. Status/items GETs retry transient
+   * failures (5xx, socket errors) with backoff.
    */
-  async runActorAsync(
-    actor: ApifyActor,
-    input: unknown,
-    opts: { maxItems?: number; timeoutMs?: number; pollMs?: number } = {},
-  ): Promise<unknown[]> {
-    const e = getEnv();
-    const token = e.APIFY_API_KEY;
-    if (!token) throw new ProviderBlockError(this.id, 'apify key missing');
+  async runActorAsync(actor: ApifyActor, input: unknown, opts: { maxItems?: number; timeoutMs?: number; pollMs?: number } = {}): Promise<ApifyRunResult> {
+    const tokenQs = this.tokenQs();
     const timeoutMs = opts.timeoutMs ?? 1_200_000; // bulk province scrapes routinely take >5 min
     const pollMs = opts.pollMs ?? 10_000;
-    const tokenQs = `token=${encodeURIComponent(token)}`;
 
-    const start = await this.post(`https://api.apify.com/v2/acts/${this.actorId(actor)}/runs?${tokenQs}`, input, 60_000);
+    const start = await this.post(`${APIFY_API}/acts/${this.actorId(actor)}/runs?${tokenQs}`, input, 60_000);
     const startData = ((start.json ?? {}) as { data?: Record<string, unknown> }).data ?? {};
     const runId = typeof startData.id === 'string' ? startData.id : undefined;
     const datasetId = typeof startData.defaultDatasetId === 'string' ? startData.defaultDatasetId : undefined;
     if (start.status >= 400 || !runId || !datasetId) {
-      throw new Error(`apify run start failed for ${actor} (status ${start.status})`);
+      // A 4xx start never created a run; a 5xx / malformed reply MIGHT have.
+      const cost = start.status >= 400 && start.status < 500 ? 0 : undefined;
+      throw new ApifyRunError(`apify run start failed for ${actor} (status ${start.status})`, { cost_eur: cost });
     }
 
     const deadline = Date.now() + timeoutMs;
     let runStatus = typeof startData.status === 'string' ? startData.status : 'READY';
-    while (runStatus !== 'SUCCEEDED' && runStatus !== 'FAILED' && runStatus !== 'ABORTED' && runStatus !== 'TIMED-OUT') {
-      if (Date.now() > deadline) throw new Error(`apify run ${runId} (${actor}) still ${runStatus} after ${timeoutMs}ms`);
+    while (!TERMINAL_RUN_STATUSES.has(runStatus)) {
+      if (Date.now() > deadline) {
+        await this.post(`${APIFY_API}/actor-runs/${runId}/abort?${tokenQs}`, {}, 30_000).catch(() => undefined);
+        throw new ApifyRunError(`apify run ${runId} (${actor}) still ${runStatus} after ${timeoutMs}ms — aborted`, {
+          runId,
+          datasetId,
+          cost_eur: await this.pushedCostEur(actor, datasetId),
+        });
+      }
       if (pollMs > 0) await new Promise<void>((r) => setTimeout(r, pollMs));
-      const st = await this.get(`https://api.apify.com/v2/actor-runs/${runId}?${tokenQs}`, 30_000);
+      const st = await this.getWithRetry(`${APIFY_API}/actor-runs/${runId}?${tokenQs}`, 30_000);
       const d = ((st.json ?? {}) as { data?: Record<string, unknown> }).data ?? {};
       if (typeof d.status === 'string') runStatus = d.status;
     }
-    if (runStatus !== 'SUCCEEDED') throw new Error(`apify run ${runId} (${actor}) ended ${runStatus}`);
+    if (runStatus !== 'SUCCEEDED') {
+      throw new ApifyRunError(`apify run ${runId} (${actor}) ended ${runStatus}`, {
+        runId,
+        datasetId,
+        cost_eur: await this.pushedCostEur(actor, datasetId),
+      });
+    }
 
-    const limitQs = opts.maxItems !== undefined ? `&limit=${opts.maxItems}` : '';
-    const items = await this.get(`https://api.apify.com/v2/datasets/${datasetId}/items?${tokenQs}&clean=true${limitQs}`, 120_000);
-    return Array.isArray(items.json) ? items.json : [];
+    let items: unknown[];
+    try {
+      items = await this.fetchDatasetItems(datasetId, opts.maxItems);
+    } catch (err) {
+      throw new ApifyRunError(`apify run ${runId} (${actor}) SUCCEEDED but dataset ${datasetId} download failed: ${(err as Error).message}`, {
+        runId,
+        datasetId,
+        succeeded: true,
+        cost_eur: await this.pushedCostEur(actor, datasetId),
+      });
+    }
+    // Billing basis is what the actor PUSHED, not what `limit` let us download.
+    const billedItems = Math.max(items.length, (await this.datasetItemCount(datasetId)) ?? 0);
+    return { items, runId, datasetId, billedItems, cost_eur: billedItems * ACTOR_COST_EUR[actor] };
+  }
+
+  /**
+   * Download a finished run's dataset (a read — no actor run, no per-item
+   * charge). Used by `runActorAsync` and by resumes that already paid for the
+   * run. Throws on a non-2xx or non-array reply: "download failed" must never
+   * look like "the actor found nothing".
+   */
+  async fetchDatasetItems(datasetId: string, limit?: number): Promise<unknown[]> {
+    const limitQs = limit !== undefined ? `&limit=${limit}` : '';
+    const res = await this.getWithRetry(`${APIFY_API}/datasets/${datasetId}/items?${this.tokenQs()}&clean=true${limitQs}`, 120_000);
+    if (res.status < 200 || res.status >= 300 || !Array.isArray(res.json)) {
+      throw new Error(`dataset ${datasetId} items: status ${res.status}${Array.isArray(res.json) ? '' : ', body is not an array'}`);
+    }
+    return res.json;
+  }
+
+  /** Items the run pushed to its dataset (dataset metadata), or undefined when unreadable. */
+  private async datasetItemCount(datasetId: string): Promise<number | undefined> {
+    try {
+      const res = await this.getWithRetry(`${APIFY_API}/datasets/${datasetId}?${this.tokenQs()}`, 30_000);
+      const n = ((res.json ?? {}) as { data?: { itemCount?: unknown } }).data?.itemCount;
+      return res.status >= 200 && res.status < 300 && typeof n === 'number' && n >= 0 ? n : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  private async pushedCostEur(actor: ApifyActor, datasetId: string): Promise<number | undefined> {
+    const n = await this.datasetItemCount(datasetId);
+    return n === undefined ? undefined : n * ACTOR_COST_EUR[actor];
+  }
+
+  /** GET with backoff on transient failures (5xx, socket/timeout errors). Auth/rate-limit blocks are NOT retried. */
+  private getWithRetry(url: string, timeoutMs: number): Promise<{ status: number; json: unknown }> {
+    return withRetry(
+      async () => {
+        const res = await this.get(url, timeoutMs);
+        if (res.status >= 500) throw new TransientApifyError(res.status);
+        return res;
+      },
+      {
+        retries: 3,
+        baseBackoffMs: this.retryBaseMs,
+        isRetriable: (err) => err instanceof TransientApifyError || (!(err instanceof ProviderBlockError) && isRetriableNavError(err)),
+      },
+    ).catch((err: unknown) => {
+      // Retries exhausted on 5xx: surface the status as a response so callers decide.
+      if (err instanceof TransientApifyError) return { status: err.status, json: undefined };
+      throw err;
+    });
+  }
+
+  private tokenQs(): string {
+    const token = getEnv().APIFY_API_KEY;
+    if (!token) throw new ProviderBlockError(this.id, 'apify key missing');
+    return `token=${encodeURIComponent(token)}`;
   }
 
   /**
