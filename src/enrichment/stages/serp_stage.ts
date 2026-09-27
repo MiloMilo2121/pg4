@@ -9,7 +9,7 @@ import type { ProviderRouter } from '../../providers/provider_router';
 import { resolveFreeSerpRoute } from '../../providers/provider_policy';
 import { getEnv } from '../../config/env';
 import { tierCapForLead } from '../../runtime/run_context';
-import { verifyCandidates } from './verify_candidates';
+import { verifyCandidates, routeFromLeadContext } from './verify_candidates';
 import { evaluateSerperGate } from '../../discovery/website/smart_serper_gate';
 import { evaluatePaidEvidence } from '../../discovery/website/paid_evidence_gate';
 import { logger } from '../../runtime/logger';
@@ -84,6 +84,7 @@ export class SerpStage implements Stage {
           timeoutMs: DEFAULTS.pipeline.requestTimeoutMs,
           meta: { lead_id: ctx.leadId, run_id: ctx.runId, stage: this.name },
           fetchCache: ctx.httpFetchCache,
+          route: routeFromLeadContext(ctx),
         });
         if (verdict.matched) {
           lead.website_discovery_method = DiscoveryMethod.SERP_COMPANY;
@@ -198,6 +199,7 @@ export class SerpStage implements Stage {
       timeoutMs: DEFAULTS.pipeline.requestTimeoutMs,
       meta: { lead_id: ctx.leadId, run_id: ctx.runId, stage: this.name, pass: 'paid' },
       fetchCache: ctx.httpFetchCache,
+      route: routeFromLeadContext(ctx),
     });
     // R7.0 — precision-first: paid SERP must clear the SAME strong-
     // evidence bar as R6.1's PgDetailStage. Reject `method === 'semantic'`.

@@ -54,8 +54,18 @@
     },
     {
       "division": "49",
-      "tokens": ["autotrasporti", "trasporti", "corriere", "spedizioni", "trasporto merci", "ditta di trasporti"],
-      "scrapeKeywords": ["autotrasporti", "ditta di trasporti", "trasporto merci"]
+      "tokens": ["autotrasporti", "trasporti", "trasporto merci", "ditta di trasporti", "trasporti nazionali", "trasporti internazionali"],
+      "scrapeKeywords": ["autotrasporti", "trasporti nazionali e internazionali", "ditta di trasporti", "trasporto merci"]
+    },
+    {
+      "division": "52",
+      "tokens": ["spedizioni", "spedizionieri", "logistica", "magazzini", "magazzino", "deposito", "magazzinaggio", "casa di spedizione"],
+      "scrapeKeywords": ["spedizionieri", "logistica", "magazzini di custodia e deposito"]
+    },
+    {
+      "division": "53",
+      "tokens": ["corriere", "corrieri", "corriere espresso", "recapito", "pony express"],
+      "scrapeKeywords": ["corrieri"]
     },
     {
       "division": "47",

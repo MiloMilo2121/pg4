@@ -6,7 +6,7 @@ import { ReasonCode as RC, DiscoveryMethod } from '../../types/output';
 import { InputWebsiteCandidate, domainMatchesCompanyName } from '../../discovery/website/input_website_candidate';
 import { DEFAULTS } from '../../config/defaults';
 import type { ProviderRouter } from '../../providers/provider_router';
-import { verifyCandidates } from './verify_candidates';
+import { verifyCandidates, routeFromLeadContext } from './verify_candidates';
 import { getEnv } from '../../config/env';
 
 /** Verify the input `website` field via direct_fetch + PreVerifyGate. */
@@ -34,6 +34,7 @@ export class InputWebsiteStage implements Stage {
       timeoutMs: DEFAULTS.pipeline.requestTimeoutMs,
       meta: { lead_id: ctx.leadId, run_id: ctx.runId, stage: this.name },
       fetchCache: ctx.httpFetchCache,
+      route: routeFromLeadContext(ctx),
     });
     if (verdict.matched) {
       lead.website_discovery_method = verdict.method === 'piva' ? DiscoveryMethod.INPUT_PIVA_MATCH : DiscoveryMethod.INPUT_SEMANTIC;

@@ -4,7 +4,7 @@ import type { PerLeadContext, Stage } from '../../types/enrichment';
 import type { StageOutcome } from '../../types/output';
 import { DiscoveryMethod } from '../../types/output';
 import type { ProviderRouter } from '../../providers/provider_router';
-import { verifyCandidates } from './verify_candidates';
+import { verifyCandidates, routeFromLeadContext } from './verify_candidates';
 import { matchSocialUrl, type SocialKey } from '../extract/extract_from_body';
 import { normalizeVatCode, validateItalianVatChecksum } from '../financial/vat';
 import { getEnv } from '../../config/env';
@@ -96,6 +96,7 @@ export class PerplexityResolveStage implements Stage {
           timeoutMs: 8000,
           meta: { lead_id: ctx.leadId, run_id: ctx.runId ?? '', stage: this.name },
           fetchCache: ctx.httpFetchCache,
+          route: routeFromLeadContext(ctx),
         });
         if (verdict.matched) {
           lead.website_discovery_method = DiscoveryMethod.PERPLEXITY_RESOLVED;

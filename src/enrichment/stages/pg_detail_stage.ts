@@ -7,7 +7,7 @@ import { DEFAULTS } from '../../config/defaults';
 import type { ProviderRouter } from '../../providers/provider_router';
 import { PgDetailHarvester } from '../../discovery/sources/pagine_gialle_detail_harvester';
 import type { PgDetailHarvest } from '../../discovery/sources/pagine_gialle_detail_harvester';
-import { verifyCandidates, type VerifyCandidatesOpts } from './verify_candidates';
+import { verifyCandidates, routeFromLeadContext, type VerifyCandidatesOpts } from './verify_candidates';
 
 type PgDetailVerifyOptions = Pick<VerifyCandidatesOpts, 'rdapProbe' | 'corroborateWithRdap'>;
 
@@ -99,6 +99,7 @@ export class PgDetailStage implements Stage {
       timeoutMs: DEFAULTS.pipeline.requestTimeoutMs,
       meta: { lead_id: ctx.leadId, run_id: ctx.runId, stage: this.name },
       fetchCache: ctx.httpFetchCache,
+      route: routeFromLeadContext(ctx),
       ...this.verifyOptions,
     });
     // R6.1 — REJECT semantic-only verdicts for PG-advertised websites.

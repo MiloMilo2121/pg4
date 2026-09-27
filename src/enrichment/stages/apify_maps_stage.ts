@@ -6,6 +6,7 @@ import { DiscoveryMethod } from '../../types/output';
 import type { ProviderRouter } from '../../providers/provider_router';
 import { ApifyProvider } from '../../providers/apify/apify_provider';
 import { companyNameMatches } from '../fields/field_registry';
+import { isMapsPlaceUrl } from '../../discovery/sources/maps_url';
 
 /**
  * Apify Google-Maps enrichment stage. PAID (tier 2), default-OFF. Runs AFTER the
@@ -35,11 +36,16 @@ export class ApifyMapsStage implements Stage {
     const name = (lead.company_name as string | undefined) ?? '';
     const city = (lead.city as string | undefined) ?? (lead.business_city as string | undefined) ?? (lead.query_location as string | undefined);
     const remaining = (ctx.costCeilingEur ?? 0) - ctx.costEur;
+    // ENRICH-3 — when the scraper captured the exact place URL, crawl THAT
+    // listing instead of re-searching by name (namesake-proof + cheaper).
+    // Search URLs (synthesized) don't qualify; entity guard applies either way.
+    const mapsUrl = typeof lead.maps_url === 'string' ? lead.maps_url : undefined;
+    const placeUrl = isMapsPlaceUrl(mapsUrl) ? mapsUrl : undefined;
 
     const place = await this.router.invoke(
       meta,
       async () => {
-        const p = await this.provider.mapsLookup(name, city, { timeoutMs: 60_000 });
+        const p = await this.provider.mapsLookup(name, city, { timeoutMs: 60_000, placeUrl });
         return p ? { ok: true, value: p } : null;
       },
       {

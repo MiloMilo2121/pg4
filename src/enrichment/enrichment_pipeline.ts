@@ -16,6 +16,8 @@ import { FinancialStage } from './stages/financial_stage';
 import { ApifyMapsStage } from './stages/apify_maps_stage';
 import { PerplexityResolveStage } from './stages/perplexity_resolve_stage';
 import { ApifyRegistroStage } from './stages/apify_registro_stage';
+import { ApifyBilanciStage } from './stages/apify_bilanci_stage';
+import { computeLeadScore } from './lead_score';
 import { applyFreeGoldExtraction, applyBodyExtraction } from './extract/apply_free_gold';
 import { deepExtractFromSite } from './extract/deep_pages';
 import type { PageFetcher } from './extract/deep_pages';
@@ -80,6 +82,8 @@ export interface PipelineInput {
   perplexityResolveStage?: PerplexityResolveStage;
   /** Apify Registro-Imprese firmographics stage (paid, default-OFF, by P.IVA). */
   apifyRegistroStage?: ApifyRegistroStage;
+  /** ENRICH-3 — Apify balance-sheet register stage (paid, default-OFF, by P.IVA). */
+  apifyBilanciStage?: ApifyBilanciStage;
   /**
    * GDPR hook — true if an email is on the do-not-contact list. Forwarded to the
    * email-inference seam so a suppressed address is never synthesised/probed.
@@ -246,6 +250,9 @@ export async function runEnrichmentPipeline(input: PipelineInput): Promise<Enric
           const res = await router.fetch(url, {
             timeoutMs: DEFAULTS.pipeline.requestTimeoutMs,
             meta: { lead_id: perLead.leadId, stage: 'deep_pages' },
+            paidEnabled: perLead.paidEnabled === true,
+            remainingLeadBudgetEur: Math.max(0, (perLead.costCeilingEur ?? 0) - perLead.costEur),
+            runCostCeilingEur: perLead.runCostCeilingEur,
           });
           return res.status >= 200 && res.status < 400 ? res.html : undefined;
         } catch {
@@ -348,6 +355,21 @@ export async function runEnrichmentPipeline(input: PipelineInput): Promise<Enric
     logger.warn({ err: (err as Error).message }, '[pipeline] perplexity resolve stage threw');
   }
 
+  // ENRICH-3 — Apify Bilanci (balance sheets): real FATTURATO + PEC + employees
+  // + capitale by P.IVA. Runs BEFORE registro so the flakier regdata actor only
+  // fires for what bilanci left missing.
+  const apifyBilanci = input.apifyBilanciStage ?? new ApifyBilanciStage(router);
+  try {
+    const bilanciOutcome = await apifyBilanci.run(perLead, lead, normalized);
+    if (bilanciOutcome.status !== 'skipped') {
+      stageOutcomes[apifyBilanci.name] = bilanciOutcome;
+      if (bilanciOutcome.provider) perLead.providersUsed.add(bilanciOutcome.provider);
+      perLead.costEur = run.ledger.costForLead(perLead.leadId);
+    }
+  } catch (err) {
+    logger.warn({ err: (err as Error).message }, '[pipeline] apify bilanci stage threw');
+  }
+
   // Apify Registro-Imprese: firmographics + financials (utile/dipendenti/capitale/
   // forma giuridica/ATECO/PEC) by P.IVA, when the lead has a checksum-valid VAT.
   const apifyRegistro = input.apifyRegistroStage ?? new ApifyRegistroStage(router);
@@ -423,6 +445,10 @@ function finalize(
   lead.status = args.status;
   lead.reason_code = args.reason_code;
   lead.duration_ms = Date.now() - args.start;
+  // ENRICH-3 — composite quality score, recomputed on every run like the
+  // other run-style fields (fill-only-empty does NOT apply: new data or an
+  // email-status downgrade must move the score).
+  lead.lead_score = computeLeadScore(lead);
   // Phase 4.2.1: lead.cost_eur is sourced from the canonical CostLedger
   // (filtered by lead_id), NOT from the in-memory perLead.costEur which
   // depended on stages remembering to populate StageOutcome.cost_eur.

@@ -18,7 +18,20 @@ import { getEnv } from '../../config/env';
  * warning — see provider_status.md. Spec: docs/provider_integration_specs.md#Apify.
  */
 
-export type ApifyActor = 'maps' | 'contact' | 'instagram' | 'facebook' | 'tiktok' | 'registro';
+export type ApifyActor =
+  | 'maps'
+  | 'contact'
+  | 'instagram'
+  | 'facebook'
+  | 'tiktok'
+  | 'registro'
+  // ENRICH-3 — real-estate portal bulk scrapers (per-province, joined offline),
+  // balance-sheet register, and a pluggable email verifier.
+  | 'portal_immobiliare'
+  | 'portal_immobiliare_ads'
+  | 'portal_wikicasa'
+  | 'bilanci'
+  | 'email_verify';
 
 /** Actor ids on the Apify marketplace (overridable via env for pinning/forking). */
 const DEFAULT_ACTOR_IDS: Record<ApifyActor, string> = {
@@ -30,6 +43,19 @@ const DEFAULT_ACTOR_IDS: Record<ApifyActor, string> = {
   // Italian business register (ufficiocamerale.it): firmographics + financials
   // by P.IVA — forma giuridica, ATECO, capitale, utile, dipendenti, PEC.
   registro: 'regdata~italy-registro-imprese-scraper',
+  // immobiliare.it agency directory. memo23 (22k+ runs) auto-paginates the
+  // whole directory with agency detail pages; azzouzana was DROPPED after the
+  // probe measured ~5 items/run + a 1-minute free-tier rate limit between runs.
+  portal_immobiliare: 'memo23~immobiliare-scraper',
+  // immobiliare.it agencies with listing counts / isPaid / FIAIP (no emails).
+  portal_immobiliare_ads: 'saregaa~immobiliareit-scraper',
+  // wikicasa.it agency directory (website + phones).
+  portal_wikicasa: 'stealth_mode~wikicasa-agency-search-scraper',
+  // registroimprese balance sheets: PEC + fatturato + dipendenti + capitale.
+  bilanci: 'jungle_synthesizer~italy-registroimprese-bilanci-scraper',
+  // No default: the operator validates a marketplace verifier at probe time
+  // and pins it via APIFY_EMAIL_VERIFY_ACTOR_ID (actorAvailable requires it).
+  email_verify: '',
 };
 
 /** Per-actor cost estimate in EUR (order-of-magnitude; the ledger records actuals). */
@@ -40,6 +66,11 @@ const ACTOR_COST_EUR: Record<ApifyActor, number> = {
   facebook: 0.0055,
   tiktok: 0.0015,
   registro: 0.018, // $0.01 record + $0.01 actor-start per single-company run
+  portal_immobiliare: 0.0007, // per agency item ($0.70/1K, PAY_PER_EVENT)
+  portal_immobiliare_ads: 0.0007, // per agency item
+  portal_wikicasa: 0.002, // per agency item
+  bilanci: 0.008, // per company record
+  email_verify: 0.001, // per verified email
 };
 
 const ROLES: ReadonlyArray<ProviderRole> = ['REVIEWS_REPUTATION', 'SOCIAL_DETECT', 'B2B_CONTACT'];
@@ -69,18 +100,49 @@ export interface RegistroRecord {
   pec?: string;
   rea?: string;
   address?: string;
+  /** ENRICH-3 — amministratore/titolare when the actor exposes it (only source for DM). */
+  decision_maker_name?: string;
+  decision_maker_role?: string;
+}
+
+/**
+ * ENRICH-3 — registroimprese BALANCE-SHEET record (jungle_synthesizer actor).
+ * Unlike regdata's RegistroRecord, this source exposes real FATTURATO
+ * (revenue), which must never be conflated with utile/net_profit.
+ */
+export interface BilanciRecord {
+  vat?: string;
+  name?: string;
+  pec?: string;
+  revenue?: string;
+  revenue_year?: string;
+  employees?: string;
+  share_capital?: string;
+  legal_form?: string;
+  ateco?: string;
+  address?: string;
+}
+
+/** ENRICH-3 — one email's deliverability verdict from the pluggable verifier actor. */
+export interface EmailVerifyResult {
+  email?: string;
+  status: 'deliverable' | 'catch_all' | 'invalid' | 'unknown';
+}
+
+/**
+ * ENRICH-3 — single place encoding the bilanci actor's input shape (a
+ * probe-validated guess: the actor has never run here). If the probe shows a
+ * different schema, fix it HERE only.
+ */
+export function buildBilanciInput(vat: string): Record<string, unknown> {
+  return { query: vat, searchQuery: vat, maxResults: 1 };
 }
 
 export type ApifyHttpPost = (url: string, body: unknown, timeoutMs: number) => Promise<{ status: number; json: unknown }>;
+export type ApifyHttpGet = (url: string, timeoutMs: number) => Promise<{ status: number; json: unknown }>;
 
-const defaultPost: ApifyHttpPost = async (url, body, timeoutMs) => {
-  const res = await request(url, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', accept: 'application/json' },
-    body: JSON.stringify(body),
-    bodyTimeout: timeoutMs,
-    headersTimeout: timeoutMs,
-  });
+/** Shared response handling: map auth/rate-limit to ProviderBlockError, parse JSON defensively. */
+async function readApifyResponse(res: { statusCode: number; body: { dump(): Promise<void>; json(): Promise<unknown> } }): Promise<{ status: number; json: unknown }> {
   const status = res.statusCode;
   if (status === 401 || status === 403) {
     await res.body.dump();
@@ -97,6 +159,27 @@ const defaultPost: ApifyHttpPost = async (url, body, timeoutMs) => {
     json = [];
   }
   return { status, json };
+}
+
+const defaultPost: ApifyHttpPost = async (url, body, timeoutMs) => {
+  const res = await request(url, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', accept: 'application/json' },
+    body: JSON.stringify(body),
+    bodyTimeout: timeoutMs,
+    headersTimeout: timeoutMs,
+  });
+  return readApifyResponse(res);
+};
+
+const defaultGet: ApifyHttpGet = async (url, timeoutMs) => {
+  const res = await request(url, {
+    method: 'GET',
+    headers: { accept: 'application/json' },
+    bodyTimeout: timeoutMs,
+    headersTimeout: timeoutMs,
+  });
+  return readApifyResponse(res);
 };
 
 export class ApifyProvider {
@@ -104,7 +187,7 @@ export class ApifyProvider {
   readonly family = 'apify' as const;
   readonly roles = ROLES;
 
-  constructor(private post: ApifyHttpPost = defaultPost) {}
+  constructor(private post: ApifyHttpPost = defaultPost, private get: ApifyHttpGet = defaultGet) {}
 
   /** Master availability — the key + the global Apify flag. */
   available(): boolean {
@@ -129,6 +212,17 @@ export class ApifyProvider {
         return e.APIFY_TIKTOK_ENABLED === true;
       case 'registro':
         return e.APIFY_REGISTRO_ENABLED === true;
+      case 'portal_immobiliare':
+        return e.APIFY_PORTAL_IMMOBILIARE_ENABLED === true;
+      case 'portal_immobiliare_ads':
+        return e.APIFY_PORTAL_IMMOBILIARE_ADS_ENABLED === true;
+      case 'portal_wikicasa':
+        return e.APIFY_PORTAL_WIKICASA_ENABLED === true;
+      case 'bilanci':
+        return e.APIFY_BILANCI_ENABLED === true;
+      case 'email_verify':
+        // No default actor id — enabling requires the operator to pin one.
+        return e.APIFY_EMAIL_VERIFY_ENABLED === true && !!e.APIFY_EMAIL_VERIFY_ACTOR_ID;
     }
   }
 
@@ -145,7 +239,15 @@ export class ApifyProvider {
   }
 
   private actorId(actor: ApifyActor): string {
-    return DEFAULT_ACTOR_IDS[actor];
+    const e = getEnv();
+    const override: Partial<Record<ApifyActor, string | undefined>> = {
+      portal_immobiliare: e.APIFY_PORTAL_IMMOBILIARE_ACTOR_ID,
+      portal_immobiliare_ads: e.APIFY_PORTAL_IMMOBILIARE_ADS_ACTOR_ID,
+      portal_wikicasa: e.APIFY_PORTAL_WIKICASA_ACTOR_ID,
+      bilanci: e.APIFY_BILANCI_ACTOR_ID,
+      email_verify: e.APIFY_EMAIL_VERIFY_ACTOR_ID,
+    };
+    return override[actor] || DEFAULT_ACTOR_IDS[actor];
   }
 
   /**
@@ -167,15 +269,66 @@ export class ApifyProvider {
     return Array.isArray(json) ? json : [];
   }
 
-  /** Google-Maps lookup for ONE company (name + city) → the best place. */
-  async mapsLookup(name: string, city: string | undefined, opts: { timeoutMs?: number } = {}): Promise<MapsPlace | undefined> {
-    const query = [name, city].filter(Boolean).join(' ').trim();
-    if (!query) return undefined;
-    const items = await this.runActorSync(
-      'maps',
-      { searchStringsArray: [query], maxCrawledPlacesPerSearch: 1, language: 'it', skipClosedPlaces: true },
-      { maxItems: 1, timeoutMs: opts.timeoutMs },
-    );
+  /**
+   * ENRICH-3 — asynchronous actor run for BULK jobs that exceed the ~300s
+   * run-sync window (per-province portal scrapes, chunked register lookups).
+   * Start run → poll status → download dataset items. Terminal non-success
+   * (FAILED / ABORTED / TIMED-OUT) THROWS so the router's breaker/ledger see
+   * a real failure — unlike runActorSync, silence would hide a burned budget.
+   */
+  async runActorAsync(
+    actor: ApifyActor,
+    input: unknown,
+    opts: { maxItems?: number; timeoutMs?: number; pollMs?: number } = {},
+  ): Promise<unknown[]> {
+    const e = getEnv();
+    const token = e.APIFY_API_KEY;
+    if (!token) throw new ProviderBlockError(this.id, 'apify key missing');
+    const timeoutMs = opts.timeoutMs ?? 1_200_000; // bulk province scrapes routinely take >5 min
+    const pollMs = opts.pollMs ?? 10_000;
+    const tokenQs = `token=${encodeURIComponent(token)}`;
+
+    const start = await this.post(`https://api.apify.com/v2/acts/${this.actorId(actor)}/runs?${tokenQs}`, input, 60_000);
+    const startData = ((start.json ?? {}) as { data?: Record<string, unknown> }).data ?? {};
+    const runId = typeof startData.id === 'string' ? startData.id : undefined;
+    const datasetId = typeof startData.defaultDatasetId === 'string' ? startData.defaultDatasetId : undefined;
+    if (start.status >= 400 || !runId || !datasetId) {
+      throw new Error(`apify run start failed for ${actor} (status ${start.status})`);
+    }
+
+    const deadline = Date.now() + timeoutMs;
+    let runStatus = typeof startData.status === 'string' ? startData.status : 'READY';
+    while (runStatus !== 'SUCCEEDED' && runStatus !== 'FAILED' && runStatus !== 'ABORTED' && runStatus !== 'TIMED-OUT') {
+      if (Date.now() > deadline) throw new Error(`apify run ${runId} (${actor}) still ${runStatus} after ${timeoutMs}ms`);
+      if (pollMs > 0) await new Promise<void>((r) => setTimeout(r, pollMs));
+      const st = await this.get(`https://api.apify.com/v2/actor-runs/${runId}?${tokenQs}`, 30_000);
+      const d = ((st.json ?? {}) as { data?: Record<string, unknown> }).data ?? {};
+      if (typeof d.status === 'string') runStatus = d.status;
+    }
+    if (runStatus !== 'SUCCEEDED') throw new Error(`apify run ${runId} (${actor}) ended ${runStatus}`);
+
+    const limitQs = opts.maxItems !== undefined ? `&limit=${opts.maxItems}` : '';
+    const items = await this.get(`https://api.apify.com/v2/datasets/${datasetId}/items?${tokenQs}&clean=true${limitQs}`, 120_000);
+    return Array.isArray(items.json) ? items.json : [];
+  }
+
+  /**
+   * Google-Maps lookup for ONE company → the best place. When the scraper
+   * already captured the place URL (`opts.placeUrl`, a /maps/place/… link),
+   * the actor crawls THAT place directly — more precise and cheaper than a
+   * text search that can land on a namesake. Text search (name + city) is
+   * the fallback for leads without a place URL.
+   */
+  async mapsLookup(name: string, city: string | undefined, opts: { timeoutMs?: number; placeUrl?: string } = {}): Promise<MapsPlace | undefined> {
+    let input: Record<string, unknown>;
+    if (opts.placeUrl) {
+      input = { startUrls: [{ url: opts.placeUrl }], maxCrawledPlacesPerSearch: 1, language: 'it', skipClosedPlaces: true };
+    } else {
+      const query = [name, city].filter(Boolean).join(' ').trim();
+      if (!query) return undefined;
+      input = { searchStringsArray: [query], maxCrawledPlacesPerSearch: 1, language: 'it', skipClosedPlaces: true };
+    }
+    const items = await this.runActorSync('maps', input, { maxItems: 1, timeoutMs: opts.timeoutMs });
     return items.length > 0 ? ApifyProvider.parseMapsItem(items[0]) : undefined;
   }
 
@@ -208,6 +361,19 @@ export class ApifyProvider {
     };
   }
 
+  /**
+   * ENRICH-3 — balance-sheet register lookup for ONE company by P.IVA.
+   * Input shape is a probe-validated guess (`buildBilanciInput` is the single
+   * place to fix if the actor's schema differs); result entity-guarded by the
+   * calling stage. Uses run-sync (single company is fast).
+   */
+  async bilanciLookup(vat: string, opts: { timeoutMs?: number } = {}): Promise<BilanciRecord | undefined> {
+    const q = (vat || '').replace(/\D/g, '');
+    if (q.length !== 11) return undefined;
+    const items = await this.runActorSync('bilanci', buildBilanciInput(q), { maxItems: null, timeoutMs: opts.timeoutMs ?? 180_000 });
+    return items.length > 0 ? ApifyProvider.parseBilanciItem(items[0]) : undefined;
+  }
+
   /** Italian business-register lookup for ONE company by P.IVA → firmographics. */
   async registroLookup(vat: string, opts: { timeoutMs?: number } = {}): Promise<RegistroRecord | undefined> {
     const q = (vat || '').replace(/\D/g, '');
@@ -223,6 +389,16 @@ export class ApifyProvider {
     const it = (raw ?? {}) as Record<string, unknown>;
     const str = (v: unknown): string | undefined => (typeof v === 'string' && v.trim() ? v.trim() : typeof v === 'number' ? String(v) : undefined);
     const ateco = [str(it.atecoCode), str(it.atecoDescription)].filter(Boolean).join(' — ') || undefined;
+    // ENRICH-3 — the amministratore/titolare surfaces under different keys per
+    // company form; also as the first entry of an `esponenti`-style array.
+    let dmName = str(it.amministratore) ?? str(it.titolare) ?? str(it.legaleRappresentante) ?? str(it.rappresentante);
+    let dmRole = dmName ? (str(it.caricaAmministratore) ?? (it.amministratore ? 'amministratore' : it.titolare ? 'titolare' : 'legale rappresentante')) : undefined;
+    const esponenti = it.esponenti ?? it.exponents ?? it.cariche;
+    if (!dmName && Array.isArray(esponenti) && esponenti.length > 0) {
+      const e0 = (esponenti[0] ?? {}) as Record<string, unknown>;
+      dmName = str(e0.nome) ?? str(e0.nominativo) ?? str(e0.name);
+      dmRole = str(e0.carica) ?? str(e0.ruolo) ?? str(e0.role);
+    }
     return {
       name: str(it.denominazione) ?? str(it.name),
       legal_form: str(it.formaGiuridica),
@@ -234,6 +410,51 @@ export class ApifyProvider {
       pec: str(it.pec),
       rea: str(it.rea),
       address: str(it.indirizzo) ?? str(it.address),
+      decision_maker_name: dmName,
+      decision_maker_role: dmRole,
     };
+  }
+
+  /**
+   * PURE parser for a jungle_synthesizer bilanci item (exposed for tests).
+   * The actor has never run in this repo — key names are DEFENSIVE candidates
+   * validated at probe time; unknown shapes degrade to an empty record, never
+   * throw. `revenue` maps only from fatturato/ricavi keys, never from utile.
+   */
+  static parseBilanciItem(raw: unknown): BilanciRecord {
+    const it = (raw ?? {}) as Record<string, unknown>;
+    const str = (v: unknown): string | undefined => (typeof v === 'string' && v.trim() ? v.trim() : typeof v === 'number' ? String(v) : undefined);
+    const ateco = str(it.ateco) ?? ([str(it.atecoCode), str(it.atecoDescription)].filter(Boolean).join(' — ') || undefined);
+    return {
+      vat: (str(it.partitaIva) ?? str(it.piva) ?? str(it.vatNumber) ?? str(it.vat))?.replace(/\D/g, '') || undefined,
+      name: str(it.denominazione) ?? str(it.ragioneSociale) ?? str(it.name) ?? str(it.companyName),
+      pec: str(it.pec),
+      revenue: str(it.fatturato) ?? str(it.ricavi) ?? str(it.revenue) ?? str(it.turnover),
+      revenue_year: str(it.fatturatoAnno) ?? str(it.annoBilancio) ?? str(it.anno) ?? str(it.year),
+      employees: str(it.dipendenti) ?? str(it.employees),
+      share_capital: str(it.capitaleSociale) ?? str(it.shareCapital),
+      legal_form: str(it.formaGiuridica) ?? str(it.legalForm),
+      ateco,
+      address: str(it.indirizzo) ?? str(it.address) ?? str(it.sede),
+    };
+  }
+
+  /**
+   * PURE parser for a pluggable email-verifier item (exposed for tests).
+   * Maps the common marketplace vocabularies onto the four-state verdict;
+   * anything unrecognized is `unknown` (never a false `invalid`).
+   */
+  static parseEmailVerifyItem(raw: unknown): EmailVerifyResult {
+    const it = (raw ?? {}) as Record<string, unknown>;
+    const str = (v: unknown): string | undefined => (typeof v === 'string' && v.trim() ? v.trim().toLowerCase() : undefined);
+    const email = str(it.email) ?? str(it.address) ?? str(it.emailAddress);
+    const verdictRaw = str(it.status) ?? str(it.result) ?? str(it.verdict) ?? str(it.state) ?? str(it.deliverability) ?? '';
+    const catchAll = it.catchAll === true || it.catch_all === true || it.isCatchAll === true || /catch/.test(verdictRaw);
+    let status: EmailVerifyResult['status'] = 'unknown';
+    if (catchAll) status = 'catch_all';
+    else if (/^(deliverable|valid|ok|safe|passed|exists?|good)$/.test(verdictRaw)) status = 'deliverable';
+    else if (/^(undeliverable|invalid|bad|bounce[d]?|rejected|not?[_ ]?exists?|disabled)$/.test(verdictRaw)) status = 'invalid';
+    else if (/^(risky|unknown|accept[_ ]?all|greylisted|timeout)$/.test(verdictRaw)) status = verdictRaw === 'accept_all' || verdictRaw === 'accept all' ? 'catch_all' : 'unknown';
+    return { email, status };
   }
 }

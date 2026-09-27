@@ -145,6 +145,25 @@ export interface Lead {
 
   lead_score?: number; // 0..1 final composite score
 
+  /**
+   * Schema v5 (ENRICH-3) — email deliverability verdict. Set by the
+   * email-verify pass; a run-style field (recomputed, not fill-only) so a
+   * re-verify can change it. `invalid` never deletes `email_inferred`
+   * (non-destructive) — consumers filter on this column instead.
+   */
+  email_status?: 'deliverable' | 'catch_all' | 'invalid' | 'unknown' | 'pec';
+  /**
+   * Schema v5 (ENRICH-3) — real-estate portal signals, joined OFFLINE from
+   * bulk per-province portal scrapes by phone/name key. Portal URLs are
+   * directories and never become official_website; these columns carry the
+   * portal-only facts. `portal_source` lists the portals that contributed
+   * ≥1 field (';'-joined).
+   */
+  portal_source?: string;
+  portal_listings_count?: string;
+  portal_is_paid?: string; // 'true' | 'false' — paid/premium subscription on the portal
+  portal_fiaip?: string; // 'true' | 'false' — FIAIP membership per the portal
+
   // ---- Run metadata ----
   cost_eur?: number;
   duration_ms?: number;
@@ -170,8 +189,11 @@ export interface Lead {
  *       (JSON-LD sameAs/aggregateRating + Open Graph extraction).
  *   4 — adds net_profit, net_profit_year, share_capital, legal_form, ateco,
  *       rea (Apify regdata Italian business-register firmographics by P.IVA).
+ *   5 — adds email_status, portal_source, portal_listings_count,
+ *       portal_is_paid, portal_fiaip (ENRICH-3: email deliverability +
+ *       real-estate portal join).
  */
-export const SCHEMA_VERSION = 4;
+export const SCHEMA_VERSION = 5;
 
 /**
  * The original (pre-versioning) raw column set. Frozen — appending here
@@ -278,6 +300,15 @@ const APPENDED_COLUMNS_V4 = [
   'rea',
 ] as const;
 
+/** Schema v5 — ENRICH-3: email deliverability + portal-join signals. */
+const APPENDED_COLUMNS_V5 = [
+  'email_status',
+  'portal_source',
+  'portal_listings_count',
+  'portal_is_paid',
+  'portal_fiaip',
+] as const;
+
 /**
  * Stable column order for the RAW CSV emitted by the scraper.
  * Phase 3.7 extended with `query_location`, `business_city`, and
@@ -298,6 +329,7 @@ export const ENRICHED_CSV_COLUMNS = [
   ...APPENDED_COLUMNS_V2,
   ...APPENDED_COLUMNS_V3,
   ...APPENDED_COLUMNS_V4,
+  ...APPENDED_COLUMNS_V5,
 ] as const;
 
 export type RawCsvColumn = (typeof RAW_CSV_COLUMNS)[number];

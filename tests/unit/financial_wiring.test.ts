@@ -109,7 +109,8 @@ describe('R13.1 — CSV columns are deterministic and append-only', () => {
   const V2_APPENDIX = ['instagram', 'facebook', 'linkedin'];
   const V3_APPENDIX = ['tiktok', 'youtube', 'rating', 'reviews_count', 'founding_year'];
   const V4_APPENDIX = ['net_profit', 'net_profit_year', 'share_capital', 'legal_form', 'ateco', 'rea'];
-  const ENRICHED_APPENDIX = [...V1_APPENDIX, ...V2_APPENDIX, ...V3_APPENDIX, ...V4_APPENDIX];
+  const V5_APPENDIX = ['email_status', 'portal_source', 'portal_listings_count', 'portal_is_paid', 'portal_fiaip'];
+  const ENRICHED_APPENDIX = [...V1_APPENDIX, ...V2_APPENDIX, ...V3_APPENDIX, ...V4_APPENDIX, ...V5_APPENDIX];
 
   it('keeps the 4 financial columns contiguous, right before the v1+v2 appendix', () => {
     const beforeAppendix = ENRICHED_CSV_COLUMNS.slice(0, -ENRICHED_APPENDIX.length);
@@ -152,7 +153,7 @@ describe('R13.1 — CSV columns are deterministic and append-only', () => {
     expect(
       header
         .trim()
-        .endsWith('financial_source,financial_confidence,financial_evidence_count,financial_notes,phone_raw,permanently_closed,_schema_version,instagram,facebook,linkedin,tiktok,youtube,rating,reviews_count,founding_year,net_profit,net_profit_year,share_capital,legal_form,ateco,rea')
+        .endsWith('financial_source,financial_confidence,financial_evidence_count,financial_notes,phone_raw,permanently_closed,_schema_version,instagram,facebook,linkedin,tiktok,youtube,rating,reviews_count,founding_year,net_profit,net_profit_year,share_capital,legal_form,ateco,rea,email_status,portal_source,portal_listings_count,portal_is_paid,portal_fiaip')
     ).toBe(true);
     expect(row).toContain('input');
     expect(row).toContain('0.6');

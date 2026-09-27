@@ -249,7 +249,7 @@ function pickReviewFields(l: Lead): DedupReviewCandidate['existing'] {
   return { company_name: l.company_name, city: l.city, address: l.address, phone: l.phone, source: l.source, website: l.website };
 }
 
-function normalizeForKey(s: string): string {
+export function normalizeForKey(s: string): string {
   return s
     .toLowerCase()
     .normalize('NFD')
