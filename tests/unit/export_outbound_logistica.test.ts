@@ -23,6 +23,13 @@ describe('isOffTarget (esclusioni brief: poche e sicure)', () => {
     expect(isOffTarget('Traslochi Autotrasporti Fratelli Soldati')).toBe(false); // autotrasporti
   });
 
+  it('SOFT rescue riconosce anche le forme SOLO plurali (corrieri / depositi / trasporti merci)', () => {
+    expect(isOffTarget('Traslochi e Depositi Rossi')).toBe(false);
+    expect(isOffTarget('Traslochi Corrieri Veloci')).toBe(false);
+    expect(isOffTarget('Traslochi e Trasporti Merci Bianchi')).toBe(false);
+    expect(isOffTarget('Traslochi Trasporto Merci Verdi')).toBe(false);
+  });
+
   it('aziende freight normali non toccate', () => {
     expect(isOffTarget('A.T.E.S.')).toBe(false);
     expect(isOffTarget('Bartolini Corriere Espresso')).toBe(false);

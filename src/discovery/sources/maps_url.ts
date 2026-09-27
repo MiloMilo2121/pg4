@@ -19,5 +19,29 @@ export function buildMapsSearchUrl(category: string, location: string): string {
  * as an Apify startUrl) from "we only know what we searched".
  */
 export function isMapsPlaceUrl(url: string | undefined): boolean {
-  return typeof url === 'string' && /^https?:\/\/(www\.)?google\.[a-z.]+\/maps\/place\//i.test(url.trim());
+  const u = parseGoogleUrl(url);
+  return !!u && !u.hostname.startsWith('maps.') && u.pathname.startsWith('/maps/place/');
+}
+
+/** Any Google-Maps URL (listing, search, `maps.google.*`) — never a business's own site. */
+export function isGoogleMapsUrl(url: string | undefined): boolean {
+  const u = parseGoogleUrl(url);
+  return !!u && (u.hostname.startsWith('maps.') || u.pathname === '/maps' || u.pathname.startsWith('/maps/'));
+}
+
+/**
+ * Google's own hosts only: google.<cc>, google.com.<cc>, google.co.<cc>, with
+ * an optional `www.`/`maps.` prefix. Anchored on the full hostname, so
+ * `google.com.evil.io` or `notgoogle.it` never pass.
+ */
+const GOOGLE_HOST_RE = /^(?:www\.|maps\.)?google\.(?:[a-z]{2,3}|com\.[a-z]{2}|co\.[a-z]{2})$/i;
+
+function parseGoogleUrl(url: string | undefined): URL | undefined {
+  if (typeof url !== 'string') return undefined;
+  try {
+    const u = new URL(url.trim());
+    return /^https?:$/.test(u.protocol) && GOOGLE_HOST_RE.test(u.hostname) ? u : undefined;
+  } catch {
+    return undefined;
+  }
 }

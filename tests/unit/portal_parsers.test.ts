@@ -35,6 +35,13 @@ describe('portal parsers', () => {
     expect(wk!.website).toBeUndefined();
   });
 
+  it('keeps real agency sites whose NAME contains a portal name (host match, not substring)', () => {
+    expect(parseWikicasaItem({ name: 'Rossi', website: 'https://www.rossiimmobiliare.it' })!.website).toBe('https://www.rossiimmobiliare.it');
+    expect(parseWikicasaItem({ name: 'Mia Casa', website: 'miacasa.it' })!.website).toBe('https://miacasa.it');
+    expect(parseImmobiliareAgencyItem({ name: 'Acme', website: 'https://maps.google.com/?cid=1' })!.website).toBeUndefined();
+    expect(parseImmobiliareAgencyItem({ name: 'Acme', website: 'https://www.google.it/maps/place/Acme' })!.website).toBeUndefined();
+  });
+
   it('normalizes a bare-host declared website to https', () => {
     const rec = parseWikicasaItem({ name: 'Acme', website: 'acme.it' });
     expect(rec!.website).toBe('https://acme.it');

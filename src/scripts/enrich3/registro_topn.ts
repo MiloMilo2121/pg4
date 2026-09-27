@@ -2,7 +2,7 @@ import { parseArgs, optString } from '../../cli/_args';
 import { ApifyProvider } from '../../providers/apify/apify_provider';
 import { isWrongEntity } from '../../enrichment/fields/field_registry';
 import { validateItalianVatChecksum } from '../../enrichment/financial/vat';
-import { computeLeadScore } from '../../enrichment/lead_score';
+import { rankByLeadScore } from '../../enrichment/lead_score';
 import { loadState, saveState, buildE3Run, pool, has, fillOnlyEmpty, closeLedger, runIfMain } from './_shared';
 
 /**
@@ -19,6 +19,7 @@ async function main(): Promise<void> {
   const statePath = optString(args, 'state') ?? 'output/enrich3/state6.jsonl';
   const out = optString(args, 'out') ?? 'output/enrich3/state7';
   const top = Number(optString(args, 'top') ?? '300');
+  if (!Number.isInteger(top) || top <= 0) throw new Error('--top must be a positive integer (paid pass: never "all" by accident)');
   const probe = args.flags.probe === true;
   const ceiling = Number(optString(args, 'run-cost-ceiling-eur') ?? (probe ? '0.2' : ''));
   if (!Number.isFinite(ceiling) || ceiling <= 0) throw new Error('--run-cost-ceiling-eur is required (hard cap for the pass)');
@@ -28,7 +29,7 @@ async function main(): Promise<void> {
     const vat = String(l.vat_code_final ?? '').replace(/\D/g, '');
     return vat.length === 11 && validateItalianVatChecksum(vat) && !has(l.decision_maker_name);
   });
-  subset = [...subset].sort((a, b) => computeLeadScore(b) - computeLeadScore(a)).slice(0, probe ? 3 : top);
+  subset = rankByLeadScore(subset, probe ? 3 : top);
 
   const provider = new ApifyProvider();
   const { run, router } = buildE3Run({

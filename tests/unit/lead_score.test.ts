@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { computeLeadScore } from '../../src/enrichment/lead_score';
+import { computeLeadScore, parseNum, rankByLeadScore } from '../../src/enrichment/lead_score';
 import type { Lead } from '../../src/types/lead';
 
 const L = (over: Partial<Lead>): Partial<Lead> => over;
@@ -62,6 +62,36 @@ describe('computeLeadScore', () => {
     const many = computeLeadScore(L({ rating: '5', reviews_count: '100' }));
     expect(many).toBeGreaterThan(noReviews);
     expect(computeLeadScore(L({ rating: '4,8', reviews_count: '50' }))).toBeGreaterThan(0);
+  });
+
+  it('parseNum: Italian/English thousands, decimals, placeholders', () => {
+    expect(parseNum('4,7')).toBe(4.7);
+    expect(parseNum('4.7')).toBe(4.7);
+    expect(parseNum('1.234')).toBe(1234);
+    expect(parseNum('1.234.567')).toBe(1234567);
+    expect(parseNum('1.234,5')).toBe(1234.5);
+    expect(parseNum('1,234')).toBe(1234);
+    expect(parseNum('(1.234 recensioni)')).toBe(1234);
+    expect(parseNum(12)).toBe(12);
+    expect(parseNum('N/A')).toBeUndefined();
+    expect(parseNum('—')).toBeUndefined();
+    expect(parseNum('')).toBeUndefined();
+    expect(parseNum(Number.NaN)).toBeUndefined();
+  });
+
+  it('a placeholder rating ("N/A") earns NO reputation credit', () => {
+    expect(computeLeadScore(L({ rating: 'N/A' }))).toBe(computeLeadScore(L({})));
+  });
+
+  it('rankByLeadScore: descending, stable, top-N, score computed once per lead', () => {
+    const a = L({ phone: '1' });
+    const b = L({ phone: '1', email_inferred: 'a@b.it' });
+    const c = L({ phone: '1' });
+    const ranked = rankByLeadScore([a, b, c]);
+    expect(ranked[0]).toBe(b);
+    expect(ranked[1]).toBe(a); // ties keep input order
+    expect(ranked[2]).toBe(c);
+    expect(rankByLeadScore([a, b, c], 1)).toEqual([b]);
   });
 
   it('is deterministic and rounded to 3 decimals', () => {

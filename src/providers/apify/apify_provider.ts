@@ -3,6 +3,7 @@ import type { CostedMeta, ProviderRole } from '../../types/providers';
 import { ProviderBlockError } from '../../types/providers';
 import { getEnv } from '../../config/env';
 import { withRetry, isRetriableNavError } from '../../runtime/retry';
+import { isGoogleMapsUrl } from '../../discovery/sources/maps_url';
 
 /**
  * Apify — external actor marketplace (Google Maps, contact/social scrapers).
@@ -480,7 +481,7 @@ export class ApifyProvider {
     // maps.google link; using it as official_website is a false positive.
     const realSite = (v: unknown): string | undefined => {
       const u = str(v);
-      return u && !/google\.[a-z.]+\/maps|maps\.google\.|\/maps\/search/i.test(u) ? u : undefined;
+      return u && !isGoogleMapsUrl(u) ? u : undefined;
     };
     return {
       name: str(it.title) ?? str(it.name),

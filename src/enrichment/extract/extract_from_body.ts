@@ -18,6 +18,7 @@
  */
 import * as cheerio from 'cheerio';
 import { extractVatCodesFromText } from '../financial/vat';
+import { isPecAddress } from './pec';
 
 /** The social networks pg4 extracts. Single source of truth for the field keys. */
 export type SocialKey = 'instagram' | 'facebook' | 'linkedin' | 'tiktok' | 'youtube';
@@ -48,8 +49,6 @@ export interface BodyExtraction {
 }
 
 const EMAIL_RE = /[a-z0-9._%+\-]+@[a-z0-9.\-]+\.[a-z]{2,}/gi;
-/** Certified-mail domains: @pec.*, @*.pec.it, @legalmail.it, @*.legalmail.it. */
-const PEC_DOMAIN_RE = /@(?:[a-z0-9.\-]*\.)?(?:pec\.[a-z]{2,}|legalmail\.it|pec\.it)$/i;
 /** Italian phone: optional +39, 0xx landline or 3xx mobile, with spacing. */
 const PHONE_RE = /(?:\+39\s?)?(?:0\d{1,4}|3\d{2})[\s\-./]?\d[\d\s\-./]{4,12}\d/g;
 
@@ -148,7 +147,7 @@ export function extractFromBody(html: string | undefined | null, lead: { officia
   if (deob !== bodyText) for (const m of deob.matchAll(EMAIL_RE)) emailCandidates.add(m[0].toLowerCase());
 
   for (const addr of emailCandidates) {
-    if (PEC_DOMAIN_RE.test(addr)) {
+    if (isPecAddress(addr)) {
       if (!out.pec) out.pec = addr;
       continue;
     }
@@ -160,7 +159,7 @@ export function extractFromBody(html: string | undefined | null, lead: { officia
   // If ownDomain is unknown, accept the first non-PEC address as a weak email.
   if (!out.email && !ownDomain) {
     for (const addr of emailCandidates) {
-      if (!PEC_DOMAIN_RE.test(addr)) { out.email = addr; break; }
+      if (!isPecAddress(addr)) { out.email = addr; break; }
     }
   }
 
@@ -180,7 +179,7 @@ export function extractFromBody(html: string | undefined | null, lead: { officia
     }
     const jsonEmail = strOf(node.email)?.replace(/^mailto:/i, '').toLowerCase();
     if (jsonEmail && jsonEmail.includes('@')) {
-      if (PEC_DOMAIN_RE.test(jsonEmail)) { if (!out.pec) out.pec = jsonEmail; }
+      if (isPecAddress(jsonEmail)) { if (!out.pec) out.pec = jsonEmail; }
       else if (!out.email && (!ownDomain || emailDomain(jsonEmail) === ownDomain)) out.email = jsonEmail;
     }
     const tel = strOf(node.telephone);

@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { ApifyProvider, type ApifyHttpPost } from '../../src/providers/apify/apify_provider';
 import { ApifyMapsStage } from '../../src/enrichment/stages/apify_maps_stage';
-import { isMapsPlaceUrl } from '../../src/discovery/sources/maps_url';
+import { isMapsPlaceUrl, isGoogleMapsUrl } from '../../src/discovery/sources/maps_url';
 import { resetEnvCache } from '../../src/config/env';
 import type { ProviderRouter } from '../../src/providers/provider_router';
 import type { PerLeadContext } from '../../src/types/enrichment';
@@ -51,6 +51,25 @@ describe('isMapsPlaceUrl', () => {
     expect(isMapsPlaceUrl('https://acme.it/maps/place/x')).toBe(false);
     expect(isMapsPlaceUrl(undefined)).toBe(false);
     expect(isMapsPlaceUrl('')).toBe(false);
+  });
+
+  it('anchors the Google host (lookalike domains never pass)', () => {
+    expect(isMapsPlaceUrl('https://google.it/maps/place/Acme')).toBe(true);
+    expect(isMapsPlaceUrl('https://www.google.co.uk/maps/place/Acme')).toBe(true);
+    expect(isMapsPlaceUrl('https://www.google.com.br/maps/place/Acme')).toBe(true);
+    expect(isMapsPlaceUrl('https://google.com.evil.io/maps/place/Acme')).toBe(false);
+    expect(isMapsPlaceUrl('https://notgoogle.it/maps/place/Acme')).toBe(false);
+    expect(isMapsPlaceUrl('not a url')).toBe(false);
+  });
+});
+
+describe('isGoogleMapsUrl', () => {
+  it('flags any Maps URL, never a business site with /maps in its path', () => {
+    expect(isGoogleMapsUrl('https://maps.google.com/?cid=123')).toBe(true);
+    expect(isGoogleMapsUrl('https://www.google.it/maps/search/acme')).toBe(true);
+    expect(isGoogleMapsUrl('https://www.google.com/maps')).toBe(true);
+    expect(isGoogleMapsUrl('https://acme.it/maps/dove-siamo')).toBe(false);
+    expect(isGoogleMapsUrl('https://www.google.com/search?q=acme')).toBe(false);
   });
 });
 
