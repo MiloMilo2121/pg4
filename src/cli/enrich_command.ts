@@ -157,7 +157,9 @@ export async function runEnrichCommand(o: EnrichCommandOptions): Promise<EnrichC
     let budgetExhaustedLeads = 0;
     let firstBudgetNotified = false;
     let interrupted = false;
-    const inFlight: Promise<void>[] = [];
+    // Streaming input (the CSV may be huge), so this is a bounded in-flight
+    // set rather than `pool()` over a pre-read array.
+    const inFlight = new Set<Promise<void>>();
     const concurrency = run.cfg.pipeline.concurrency;
 
     for await (const item of readCsvAsLeads(o.input)) {
@@ -226,11 +228,10 @@ export async function runEnrichCommand(o: EnrichCommandOptions): Promise<EnrichC
           }
         }
       })().finally(() => {
-        const idx = inFlight.indexOf(task);
-        if (idx >= 0) inFlight.splice(idx, 1);
+        inFlight.delete(task);
       });
-      inFlight.push(task);
-      if (inFlight.length >= concurrency) {
+      inFlight.add(task);
+      if (inFlight.size >= concurrency) {
         await Promise.race(inFlight);
       }
     }

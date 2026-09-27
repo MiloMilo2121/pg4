@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import { logger } from './logger';
 
 export class OutputLockError extends Error {
   readonly lockPath: string;
@@ -145,8 +146,9 @@ export function acquireOutputLock(
       if (!existing) {
         const age = mtimeAgeMs(lockPath, now());
         if (age > maxAgeMs) {
-          console.warn(
-            `[output-lock] stale lock reclaimed by age: malformed/unreadable lock ${lockPath} is ${Math.round(age)}ms old (> ${maxAgeMs}ms)`
+          logger.warn(
+            { lockPath, ageMs: Math.round(age), maxAgeMs },
+            '[output-lock] stale lock reclaimed by age (malformed/unreadable lock file)'
           );
           fs.unlinkSync(lockPath);
           continue;
@@ -169,9 +171,9 @@ export function acquireOutputLock(
       // pid was recycled — reclaim it.
       const age = lockAgeMs(existing, lockPath, now());
       if (age > maxAgeMs) {
-        console.warn(
-          `[output-lock] stale lock reclaimed by age: ${lockPath} is ${Math.round(age)}ms old (> ${maxAgeMs}ms); ` +
-            `pid ${existing.pid} appears alive but is assumed recycled (OS pid reuse)`
+        logger.warn(
+          { lockPath, ageMs: Math.round(age), maxAgeMs, pid: existing.pid },
+          '[output-lock] stale lock reclaimed by age — owner pid alive but assumed recycled (OS pid reuse)'
         );
         fs.unlinkSync(lockPath);
         continue;

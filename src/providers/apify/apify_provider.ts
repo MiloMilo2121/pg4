@@ -4,6 +4,7 @@ import { ProviderBlockError } from '../../types/providers';
 import { getEnv } from '../../config/env';
 import { withRetry, isRetriableNavError } from '../../runtime/retry';
 import { isGoogleMapsUrl } from '../../discovery/sources/maps_url';
+import { str } from '../../util/values';
 
 /**
  * Apify — external actor marketplace (Google Maps, contact/social scrapers).
@@ -470,7 +471,6 @@ export class ApifyProvider {
   /** PURE parser for a Google-Maps actor item (exposed for tests). Defensive on shape. */
   static parseMapsItem(raw: unknown): MapsPlace {
     const it = (raw ?? {}) as Record<string, unknown>;
-    const str = (v: unknown): string | undefined => (typeof v === 'string' && v.trim() ? v.trim() : typeof v === 'number' ? String(v) : undefined);
     const firstUrl = (v: unknown, host: RegExp): string | undefined => {
       const arr = Array.isArray(v) ? v : v ? [v] : [];
       for (const u of arr) if (typeof u === 'string' && host.test(u)) return u.split('?')[0];
@@ -522,7 +522,6 @@ export class ApifyProvider {
   /** PURE parser for a regdata registro-imprese item (exposed for tests). */
   static parseRegistroItem(raw: unknown): RegistroRecord {
     const it = (raw ?? {}) as Record<string, unknown>;
-    const str = (v: unknown): string | undefined => (typeof v === 'string' && v.trim() ? v.trim() : typeof v === 'number' ? String(v) : undefined);
     const ateco = [str(it.atecoCode), str(it.atecoDescription)].filter(Boolean).join(' — ') || undefined;
     // ENRICH-3 — the amministratore/titolare surfaces under different keys per
     // company form; also as the first entry of an `esponenti`-style array.
@@ -558,7 +557,6 @@ export class ApifyProvider {
    */
   static parseBilanciItem(raw: unknown): BilanciRecord {
     const it = (raw ?? {}) as Record<string, unknown>;
-    const str = (v: unknown): string | undefined => (typeof v === 'string' && v.trim() ? v.trim() : typeof v === 'number' ? String(v) : undefined);
     const ateco = str(it.ateco) ?? ([str(it.atecoCode), str(it.atecoDescription)].filter(Boolean).join(' — ') || undefined);
     return {
       vat: (str(it.partitaIva) ?? str(it.piva) ?? str(it.vatNumber) ?? str(it.vat))?.replace(/\D/g, '') || undefined,
@@ -581,9 +579,9 @@ export class ApifyProvider {
    */
   static parseEmailVerifyItem(raw: unknown): EmailVerifyResult {
     const it = (raw ?? {}) as Record<string, unknown>;
-    const str = (v: unknown): string | undefined => (typeof v === 'string' && v.trim() ? v.trim().toLowerCase() : undefined);
-    const email = str(it.email) ?? str(it.address) ?? str(it.emailAddress);
-    const verdictRaw = str(it.status) ?? str(it.result) ?? str(it.verdict) ?? str(it.state) ?? str(it.deliverability) ?? '';
+    const lower = (v: unknown): string | undefined => (typeof v === 'string' ? str(v)?.toLowerCase() : undefined);
+    const email = lower(it.email) ?? lower(it.address) ?? lower(it.emailAddress);
+    const verdictRaw = lower(it.status) ?? lower(it.result) ?? lower(it.verdict) ?? lower(it.state) ?? lower(it.deliverability) ?? '';
     const catchAll = it.catchAll === true || it.catch_all === true || it.isCatchAll === true || /catch/.test(verdictRaw);
     let status: EmailVerifyResult['status'] = 'unknown';
     if (catchAll) status = 'catch_all';

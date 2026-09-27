@@ -1,9 +1,9 @@
 import fs from 'fs';
 import path from 'path';
-import { parseArgs, optString } from '../../cli/_args';
-import { ApifyProvider, ApifyRunError, type ApifyActor } from '../../providers/apify/apify_provider';
+import { parseArgs, optString } from '../../src/cli/_args';
+import { ApifyProvider, ApifyRunError, type ApifyActor } from '../../src/providers/apify/apify_provider';
 import { buildE3Run, closeLedger, runIfMain } from './_shared';
-import { logger } from '../../runtime/logger';
+import { logger } from '../../src/runtime/logger';
 
 /**
  * ENRICH-3 R1a — BULK harvest of the Veneto real-estate portals via Apify
@@ -23,9 +23,9 @@ import { logger } from '../../runtime/logger';
  *
  *   # probe (validates actor input/output shapes BEFORE scaling, ~€0.10):
  *   APIFY_ENABLED=true APIFY_PORTAL_IMMOBILIARE_ENABLED=true ... \
- *     pnpm tsx src/scripts/enrich3/portali_harvest.ts --probe --run-cost-ceiling-eur 1
+ *     pnpm tsx tools/enrich3/portali_harvest.ts --probe --run-cost-ceiling-eur 1
  *   # full harvest:
- *   ... pnpm tsx src/scripts/enrich3/portali_harvest.ts --run-cost-ceiling-eur 45
+ *   ... pnpm tsx tools/enrich3/portali_harvest.ts --run-cost-ceiling-eur 45
  */
 
 const PROVINCES = ['padova', 'verona', 'vicenza', 'treviso', 'venezia', 'rovigo', 'belluno'] as const;

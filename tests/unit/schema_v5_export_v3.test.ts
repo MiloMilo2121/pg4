@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { ENRICHED_CSV_COLUMNS, SCHEMA_VERSION } from '../../src/types/lead';
 import type { Lead } from '../../src/types/lead';
-import { V2_COLUMNS, CANDIDATE_COLUMNS, chooseColumns } from '../../src/scripts/enrich3/export_v3';
+import { V2_COLUMNS, CANDIDATE_COLUMNS, chooseColumns } from '../../tools/enrich3/export_v3';
 
 describe('schema v5', () => {
   it('SCHEMA_VERSION is 5 and the V5 columns trail the enriched CSV in order', () => {

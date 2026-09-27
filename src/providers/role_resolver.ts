@@ -83,8 +83,3 @@ export function resolveRole(role: ProviderRole, ctx: RoleResolveContext = {}): R
   };
   return { role, verb, providerIds, steps, routeOptions };
 }
-
-/** Diagnostic: max € a role could cost in this context (sum of eligible paid steps' worst case). */
-export function maxRoleCostEur(role: ProviderRole, ctx: RoleResolveContext = {}): number {
-  return resolveRole(role, ctx).steps.reduce((sum, s) => sum + s.costEur, 0);
-}

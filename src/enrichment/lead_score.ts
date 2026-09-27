@@ -1,4 +1,5 @@
 import type { Lead } from '../types/lead';
+import { has } from '../util/values';
 
 /**
  * ENRICH-3 — composite lead quality score (0..1). The `lead_score` column
@@ -26,7 +27,6 @@ const EMAIL_STATUS_FACTOR: Record<NonNullable<Lead['email_status']>, number> = {
   invalid: 0.05,
 };
 
-const has = (v: unknown): boolean => v !== undefined && v !== null && String(v).trim() !== '';
 
 /**
  * Parse the first number in an Italian- or English-formatted string:

@@ -6,14 +6,14 @@
  * Reports, honestly, how often each link resolves. The numbers that justify the
  * moat — reported exactly as produced.
  *
- * Usage: pnpm exec tsx src/scripts/probe_official_data.ts [--input <jsonl>] [--n 60]
+ * Usage: pnpm exec tsx tools/probes/probe_official_data.ts [--input <jsonl>] [--n 60]
  */
 import fs from 'fs';
 import path from 'path';
-import { parseArgs, optString } from '../cli/_args';
-import { DirectFetchProvider } from '../providers/http/direct_fetch';
-import { extractFromBody } from '../enrichment/extract/extract_from_body';
-import { fetchFatturatoItalia } from '../enrichment/financial/fatturato_italia_fetch';
+import { parseArgs, optString } from '../../src/cli/_args';
+import { DirectFetchProvider } from '../../src/providers/http/direct_fetch';
+import { extractFromBody } from '../../src/enrichment/extract/extract_from_body';
+import { fetchFatturatoItalia } from '../../src/enrichment/financial/fatturato_italia_fetch';
 
 interface Row { official_website?: string; vat_code?: string }
 

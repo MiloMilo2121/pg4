@@ -1,10 +1,12 @@
-import { parseArgs, optString } from '../../cli/_args';
-import { deepExtractFromSite, type PageFetcher } from '../../enrichment/extract/deep_pages';
-import { applyBodyExtraction } from '../../enrichment/extract/apply_free_gold';
-import { isParked, isUnderConstruction } from '../../discovery/website/content_filter';
-import { createPerLeadContext } from '../../runtime/run_context';
-import { loadState, saveState, buildE3Run, pool, has, closeLedger, runIfMain } from './_shared';
-import { DEFAULTS } from '../../config/defaults';
+import { parseArgs, optString } from '../../src/cli/_args';
+import { deepExtractFromSite, type PageFetcher } from '../../src/enrichment/extract/deep_pages';
+import { applyBodyExtraction } from '../../src/enrichment/extract/apply_free_gold';
+import { isParked, isUnderConstruction } from '../../src/discovery/website/content_filter';
+import { createPerLeadContext } from '../../src/runtime/run_context';
+import { loadState, saveState, buildE3Run, closeLedger, runIfMain } from './_shared';
+import { pool } from '../../src/runtime/pool';
+import { has } from '../../src/util/values';
+import { DEFAULTS } from '../../src/config/defaults';
 
 /**
  * ENRICH-3 R4 — mine the "has a site but no email" leads. Two steps per lead:
@@ -20,7 +22,7 @@ import { DEFAULTS } from '../../config/defaults';
  * Same-domain email precision is preserved by extractFromBody itself; the
  * site was already entity-verified when it became official_website.
  *
- *   FIRECRAWL_ENABLED=true pnpm tsx src/scripts/enrich3/firecrawl_pass.ts \
+ *   FIRECRAWL_ENABLED=true pnpm tsx tools/enrich3/firecrawl_pass.ts \
  *     --state output/enrich3/state4.jsonl --out output/enrich3/state5 \
  *     --per-lead-cap-eur 0.01 --run-cost-ceiling-eur 15 [--limit 25]
  */

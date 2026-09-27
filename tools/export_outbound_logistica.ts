@@ -1,9 +1,9 @@
 import fs from 'fs';
 import path from 'path';
 import { stringify } from 'csv-stringify/sync';
-import { parseArgs, optString } from '../cli/_args';
-import type { Lead } from '../types/lead';
-import { readJsonlAsLeads } from '../io/jsonl_writer';
+import { parseArgs, optString } from '../src/cli/_args';
+import type { Lead } from '../src/types/lead';
+import { readJsonlAsLeads } from '../src/io/jsonl_writer';
 import { runIfMain } from './enrich3/_shared';
 
 /**
@@ -25,7 +25,7 @@ import { runIfMain } from './enrich3/_shared';
  * parser tiene il primo per contratto); il campo è nel layout per stabilità
  * dello schema a valle.
  *
- *   pnpm tsx src/scripts/export_outbound_logistica.ts \
+ *   pnpm tsx tools/export_outbound_logistica.ts \
  *     --raw-dir output/recall --out output/outbound_logistica_nord.csv
  */
 

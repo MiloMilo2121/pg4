@@ -1,8 +1,10 @@
-import { parseArgs, optString } from '../../cli/_args';
-import { ApifyMapsStage } from '../../enrichment/stages/apify_maps_stage';
-import { normalizeLead } from '../../discovery/input_normalizer';
-import { createPerLeadContext } from '../../runtime/run_context';
-import { loadState, saveState, buildE3Run, pool, has, closeLedger, runIfMain } from './_shared';
+import { parseArgs, optString } from '../../src/cli/_args';
+import { ApifyMapsStage } from '../../src/enrichment/stages/apify_maps_stage';
+import { normalizeLead } from '../../src/discovery/input_normalizer';
+import { createPerLeadContext } from '../../src/runtime/run_context';
+import { loadState, saveState, buildE3Run, closeLedger, runIfMain } from './_shared';
+import { pool } from '../../src/runtime/pool';
+import { has } from '../../src/util/values';
 
 /**
  * ENRICH-3 R2 — Google Places detail via the EXISTING ApifyMapsStage (rating
@@ -14,7 +16,7 @@ import { loadState, saveState, buildE3Run, pool, has, closeLedger, runIfMain } f
  * Leads without a verified website come FIRST: if the ceiling cuts the tail,
  * the website-recall value lands before the rating-only value.
  *
- *   APIFY_ENABLED=true APIFY_MAPS_ENABLED=true pnpm tsx src/scripts/enrich3/places.ts \
+ *   APIFY_ENABLED=true APIFY_MAPS_ENABLED=true pnpm tsx tools/enrich3/places.ts \
  *     --state output/enrich3/state2.jsonl --out output/enrich3/state3 \
  *     --per-lead-cap-eur 0.01 --run-cost-ceiling-eur 14 [--limit N]
  */

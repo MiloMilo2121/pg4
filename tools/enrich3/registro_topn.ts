@@ -1,9 +1,11 @@
-import { parseArgs, optString } from '../../cli/_args';
-import { ApifyProvider } from '../../providers/apify/apify_provider';
-import { isWrongEntity } from '../../enrichment/fields/field_registry';
-import { validateItalianVatChecksum } from '../../enrichment/financial/vat';
-import { rankByLeadScore } from '../../enrichment/lead_score';
-import { loadState, saveState, buildE3Run, pool, has, fillOnlyEmpty, closeLedger, runIfMain } from './_shared';
+import { parseArgs, optString } from '../../src/cli/_args';
+import { ApifyProvider } from '../../src/providers/apify/apify_provider';
+import { isWrongEntity } from '../../src/enrichment/fields/field_registry';
+import { validateItalianVatChecksum } from '../../src/enrichment/financial/vat';
+import { rankByLeadScore } from '../../src/enrichment/lead_score';
+import { loadState, saveState, buildE3Run, fillOnlyEmpty, closeLedger, runIfMain } from './_shared';
+import { pool } from '../../src/runtime/pool';
+import { has } from '../../src/util/values';
 
 /**
  * ENRICH-3 R6 — decision-maker (amministratore/titolare) for the TOP-N leads
@@ -11,7 +13,7 @@ import { loadState, saveState, buildE3Run, pool, has, fillOnlyEmpty, closeLedger
  * name; known flaky ~42% → expected ~N×0.58 fills, one transient retry).
  * Bonus fills (fill-only-empty): net_profit / rea / legal_form when returned.
  *
- *   APIFY_ENABLED=true APIFY_REGISTRO_ENABLED=true pnpm tsx src/scripts/enrich3/registro_topn.ts \
+ *   APIFY_ENABLED=true APIFY_REGISTRO_ENABLED=true pnpm tsx tools/enrich3/registro_topn.ts \
  *     --state output/enrich3/state6.jsonl --out output/enrich3/state7 --top 300 --run-cost-ceiling-eur 6
  */
 async function main(): Promise<void> {

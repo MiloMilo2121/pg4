@@ -1,8 +1,10 @@
-import { parseArgs, optString } from '../../cli/_args';
-import { InputWebsiteStage } from '../../enrichment/stages/input_website_stage';
-import { normalizeLead } from '../../discovery/input_normalizer';
-import { createPerLeadContext } from '../../runtime/run_context';
-import { loadState, saveState, buildE3Run, pool, has, closeLedger, runIfMain } from './_shared';
+import { parseArgs, optString } from '../../src/cli/_args';
+import { InputWebsiteStage } from '../../src/enrichment/stages/input_website_stage';
+import { normalizeLead } from '../../src/discovery/input_normalizer';
+import { createPerLeadContext } from '../../src/runtime/run_context';
+import { loadState, saveState, buildE3Run, closeLedger, runIfMain } from './_shared';
+import { pool } from '../../src/runtime/pool';
+import { has } from '../../src/util/values';
 
 /**
  * ENRICH-3 R1c — FREE re-verify of declared-but-unverified websites (portal
@@ -10,7 +12,7 @@ import { loadState, saveState, buildE3Run, pool, has, closeLedger, runIfMain } f
  * the EXISTING gate: PreVerifyGate piva/phone/semantic+RDAP, plus the
  * flag-gated domain-name-match recovery). Run with:
  *
- *   INPUT_WEBSITE_NAME_MATCH_ENABLED=1 pnpm tsx src/scripts/enrich3/reverify_websites.ts \
+ *   INPUT_WEBSITE_NAME_MATCH_ENABLED=1 pnpm tsx tools/enrich3/reverify_websites.ts \
  *     --state output/enrich3/state1.jsonl --out output/enrich3/state2
  *
  * €0: paid gate off, direct_fetch only.

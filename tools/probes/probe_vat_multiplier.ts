@@ -10,14 +10,14 @@
  * The honest hit-rate is HAS_DATA / (HAS_DATA + NO_DATA) — i.e. among REACHABLE
  * pages, ignoring blocks. Spacing is ~4s (MEASURED reliable) to avoid blocks. €0.
  *
- *   pnpm exec tsx src/scripts/probe_vat_multiplier.ts --n 30 [--step 18]
+ *   pnpm exec tsx tools/probes/probe_vat_multiplier.ts --n 30 [--step 18]
  *   → docs/precision_evidence/probe_vat_multiplier_output.json
  */
 import fs from 'fs';
 import path from 'path';
-import { DirectFetchProvider } from '../providers/http/direct_fetch';
-import { parseFatturatoItaliaPage } from '../enrichment/financial/fatturato_italia_parser';
-import { normalizeVatCode, validateItalianVatChecksum } from '../enrichment/financial/vat';
+import { DirectFetchProvider } from '../../src/providers/http/direct_fetch';
+import { parseFatturatoItaliaPage } from '../../src/enrichment/financial/fatturato_italia_parser';
+import { normalizeVatCode, validateItalianVatChecksum } from '../../src/enrichment/financial/vat';
 
 const SEED = 'output/r12_maps_pd_province_full_enriched_free.jsonl';
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));

@@ -26,6 +26,7 @@ import { buildCoverageReport } from '../coverage/coverage_engine';
 import { buildBacklog } from '../coverage/backlog';
 import { isAllowedDashboardOrigin, resolveApiHost } from './local_api_access';
 import { onShutdownSignal } from '../runtime/shutdown';
+import { pool } from '../runtime/pool';
 
 /**
  * pg4 dev API server — single-tenant, local, zero-cloud. Wraps the REAL engine
@@ -198,17 +199,6 @@ const ENRICH_CONCURRENCY = 5;
 const ENRICH_JOB_TIMEOUT_MS = 180_000;
 export const ENRICH_MAX_SELECTION = 200; // the API rejects larger selections
 
-/** Run `worker` over `items` with at most `limit` in flight. */
-async function pool<T>(items: T[], limit: number, worker: (item: T) => Promise<void>): Promise<void> {
-  let i = 0;
-  const runners = Array.from({ length: Math.min(limit, items.length) }, async () => {
-    while (i < items.length) {
-      const idx = i++;
-      await worker(items[idx]);
-    }
-  });
-  await Promise.all(runners);
-}
 
 let seed: SeedResult;
 

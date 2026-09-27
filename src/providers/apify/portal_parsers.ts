@@ -15,6 +15,7 @@
  */
 
 import { isDirectoryOrSocial } from '../../discovery/website/content_filter';
+import { str } from '../../util/values';
 
 export interface PortalAgencyRecord {
   portal: 'immobiliare' | 'immobiliare_ads' | 'wikicasa';
@@ -36,8 +37,6 @@ export interface PortalAgencyRecord {
   portalUrl?: string;
 }
 
-const str = (v: unknown): string | undefined =>
-  typeof v === 'string' && v.trim() ? v.trim() : typeof v === 'number' ? String(v) : undefined;
 
 const firstStr = (...vs: unknown[]): string | undefined => {
   for (const v of vs) {

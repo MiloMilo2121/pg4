@@ -4,7 +4,7 @@
  * evidence for the 6 bug-checks, and samples against the live source. Read/measure
  * only; touches no extraction logic.
  *
- *   pnpm exec tsx src/scripts/audit_validation.ts --label S1 --comuni "Padova" --n 15
+ *   pnpm exec tsx tools/probes/audit_validation.ts --label S1 --comuni "Padova" --n 15
  *   → docs/precision_evidence/audit_<label>.json
  *
  * The 6 bugs re-checked on fresh data:
@@ -18,13 +18,40 @@
  */
 import fs from 'fs';
 import path from 'path';
-import { DirectFetchProvider } from '../providers/http/direct_fetch';
-import { deepExtractFromSite } from '../enrichment/extract/deep_pages';
-import { runFieldCascade } from '../enrichment/fields/run_field_cascade';
-import { resolveVat } from '../enrichment/fields/field_registry';
-import { fetchFatturatoItalia } from '../enrichment/financial/fatturato_italia_fetch';
-import { parseFatturatoItaliaPage } from '../enrichment/financial/fatturato_italia_parser';
-import type { Lead } from '../types/lead';
+import { DirectFetchProvider } from '../../src/providers/http/direct_fetch';
+import { deepExtractFromSite } from '../../src/enrichment/extract/deep_pages';
+import { runFieldCascade } from '../../src/enrichment/fields/run_field_cascade';
+import { resolveVat } from '../../src/enrichment/fields/field_registry';
+import { fetchFatturatoItalia } from '../../src/enrichment/financial/fatturato_italia_fetch';
+import { parseFatturatoItaliaPage } from '../../src/enrichment/financial/fatturato_italia_parser';
+import type { Lead } from '../../src/types/lead';
+import type { EnrichableField } from '../../src/api/types';
+import type { FIFinancialYear } from '../../src/enrichment/financial/fatturato_italia_parser';
+
+interface AuditCell {
+  value: unknown;
+  source?: string;
+  confidence?: number;
+  steps: Array<{ id: string; ran: boolean; reason?: string }>;
+}
+interface AuditFatturato {
+  vat: string;
+  revenue?: string;
+  revenue_year?: string;
+  employees?: string;
+  history?: FIFinancialYear[];
+  name?: string;
+}
+interface AuditCompany {
+  company_name: unknown;
+  comune: unknown;
+  website: unknown;
+  input_vat?: string;
+  pages_fetched: number;
+  cells: Record<string, AuditCell>;
+  fatturato?: AuditFatturato;
+  rate_limit_class?: string;
+}
 
 const SEED = 'output/r12_maps_pd_province_full_enriched_free.jsonl';
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
@@ -48,20 +75,20 @@ async function main(): Promise<void> {
     .filter((r) => r.official_website)
     .filter((r) => comuni.length === 0 || comuni.includes(String(r.business_city || r.city || r.query_location || '').trim().toLowerCase()));
 
-  const companies: any[] = [];
+  const companies: AuditCompany[] = [];
   for (let i = 0; i < rows.length && companies.length < n; i++) {
     const r = rows[i];
     const lead = { ...r } as Lead;
     const deep = await deepExtractFromSite(String(r.official_website), fetch);
     const extraction = deep.extraction;
-    const cells: Record<string, any> = {};
+    const cells: Record<string, AuditCell> = {};
     for (const f of ENRICH_FIELDS) {
-      const out = await runFieldCascade({ ...lead }, f as any, { extraction });
+      const out = await runFieldCascade({ ...lead }, f as EnrichableField, { extraction });
       cells[f] = { value: out.resolved ? out.value : undefined, source: out.source, confidence: out.confidence, steps: out.steps.map((s) => ({ id: s.id, ran: s.ran, reason: s.reason })) };
     }
     // bug #1/#2 evidence: the fatturatoitalia parse the pipeline used (memo hit, free)
     const rv = resolveVat({ lead, extraction, paidEnabled: false });
-    let fatturato: any = undefined;
+    let fatturato: AuditFatturato | undefined;
     if (rv) {
       const fi = await fetchFatturatoItalia(rv.vat); // memoised from the cascade above
       if (fi) fatturato = { vat: rv.vat, revenue: fi.revenue, revenue_year: fi.revenue_year, employees: fi.employees, history: fi.history, name: fi.company_name };
@@ -88,11 +115,11 @@ async function main(): Promise<void> {
   // ---- aggregate + bug-checks ----
   const fill: Record<string, number> = {};
   for (const f of ENRICH_FIELDS) fill[f] = companies.filter((c) => c.cells[f].value).length;
-  const withFatt = companies.filter((c) => c.fatturato?.revenue);
-  const bug1 = withFatt.map((c) => {
-    const years = (c.fatturato.history || []).filter((h: any) => h.fatturato !== undefined).map((h: any) => h.year);
+  const withFatt = companies.flatMap((c) => (c.fatturato?.revenue ? [{ company: c, fatturato: c.fatturato }] : []));
+  const bug1 = withFatt.map(({ company, fatturato }) => {
+    const years = (fatturato.history ?? []).filter((h) => h.fatturato !== undefined).map((h) => h.year);
     const maxY = years.length ? Math.max(...years) : undefined;
-    return { co: c.company_name, picked: c.fatturato.revenue_year, maxYear: maxY, ok: String(maxY) === String(c.fatturato.revenue_year) };
+    return { co: company.company_name, picked: fatturato.revenue_year, maxYear: maxY, ok: String(maxY) === String(fatturato.revenue_year) };
   });
   const bug2 = companies.filter((c) => c.cells.employees.value).map((c) => ({ co: c.company_name, emp: c.cells.employees.value, ok: /^(<?\d+|\d+\-\d+|\d+\+|oltre|fino)/i.test(String(c.cells.employees.value)) && !/^\d{4,}$/.test(String(c.cells.employees.value).replace(/[^\d]/g, '')) }));
   const bug3 = companies.filter((c) => c.cells.vat.value || c.cells.vat.source?.includes('foreign')).map((c) => ({ co: c.company_name, src: c.cells.vat.source, conf: c.cells.vat.confidence }));
