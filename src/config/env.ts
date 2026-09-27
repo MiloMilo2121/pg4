@@ -215,9 +215,21 @@ export type Env = z.infer<typeof EnvSchema>;
 
 let cached: Env | null = null;
 
+/** Thrown when `process.env` fails validation; the message lists every bad variable. */
+export class EnvConfigError extends Error {
+  constructor(readonly issues: ReadonlyArray<{ variable: string; problem: string }>) {
+    super(`Invalid environment configuration (check .env):\n${issues.map((i) => `  - ${i.variable}: ${i.problem}`).join('\n')}`);
+    this.name = 'EnvConfigError';
+  }
+}
+
 export function getEnv(): Env {
   if (!cached) {
-    cached = EnvSchema.parse(process.env);
+    const parsed = EnvSchema.safeParse(process.env);
+    if (!parsed.success) {
+      throw new EnvConfigError(parsed.error.issues.map((i) => ({ variable: i.path.join('.') || '(root)', problem: i.message })));
+    }
+    cached = parsed.data;
   }
   return cached;
 }

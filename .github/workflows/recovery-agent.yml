@@ -26,8 +26,11 @@ permissions:
   contents: read
 
 jobs:
-  diagnose-fix-review-merge:
+  diagnose-fix-review:
     runs-on: ubuntu-latest
+    outputs:
+      pr_url: ${{ steps.pr.outputs.pr_url }}
+      head_sha: ${{ steps.pr.outputs.head_sha }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -91,7 +94,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.RECOVERY_GH_TOKEN }}
         run: |
-          test -n "$GH_TOKEN" || { echo 'RECOVERY_GH_TOKEN is required for autonomous PR and merge'; exit 1; }
+          test -n "$GH_TOKEN" || { echo 'RECOVERY_GH_TOKEN is required to open the recovery PR'; exit 1; }
       - name: Create recovery branch
         run: git checkout -b "recovery/$RECOVERY_INCIDENT_ID"
       - name: Generate constrained patch
@@ -112,7 +115,8 @@ jobs:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           OPENROUTER_MODEL: anthropic/claude-opus-4-8
         run: pnpm exec tsx src/scripts/recovery_agent.ts review .recovery/incident.json
-      - name: Commit, create PR, auto-merge
+      - name: Commit and create PR
+        id: pr
         env:
           GH_TOKEN: ${{ secrets.RECOVERY_GH_TOKEN }}
         run: |
@@ -126,5 +130,29 @@ jobs:
           git commit -m "fix(recovery): remediate $RECOVERY_INCIDENT_ID"
           git push --set-upstream origin HEAD
           PR_URL="$(gh pr create --base main --head "$(git branch --show-current)" --title "fix(recovery): $RECOVERY_INCIDENT_ID" --body "Automated recovery patch. CI, regression tests and independent pre-review passed.")"
+          echo "pr_url=$PR_URL" >> "$GITHUB_OUTPUT"
+          echo "head_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+  # The patch is LLM-generated from an envelope that carries scraped text
+  # (page titles, error reasons) — a prompt-injection surface. Merging to main
+  # therefore runs in the protected `recovery-merge` environment: configure
+  # "Required reviewers" on it (Settings → Environments) so a human approves
+  # every merge. The VPS coordinator waits for this run to conclude, so the
+  # campaign resumes only once the reviewed fix is on main (no approval within
+  # RECOVERY_WAIT_SECONDS → the cell is marked blocked for a human).
+  merge:
+    needs: diagnose-fix-review
+    runs-on: ubuntu-latest
+    environment: recovery-merge
+    steps:
+      - name: Wait for PR checks, then merge the reviewed commit
+        env:
+          GH_TOKEN: ${{ secrets.RECOVERY_GH_TOKEN }}
+          PR_URL: ${{ needs.diagnose-fix-review.outputs.pr_url }}
+          HEAD_SHA: ${{ needs.diagnose-fix-review.outputs.head_sha }}
+        run: |
+          test -n "$GH_TOKEN"
+          test -n "$PR_URL"
+          test -n "$HEAD_SHA"
           gh pr checks "$PR_URL" --watch --fail-fast
-          gh pr merge "$PR_URL" --merge --delete-branch --match-head-commit "$(git rev-parse HEAD)"
+          gh pr merge "$PR_URL" --merge --delete-branch --match-head-commit "$HEAD_SHA"

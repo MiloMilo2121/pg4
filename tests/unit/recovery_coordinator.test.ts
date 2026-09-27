@@ -13,7 +13,9 @@ function makeExecutable(filePath: string, body: string): void {
   fs.chmodSync(filePath, 0o755);
 }
 
-describe('recovery coordinator', () => {
+// Each case spawns the real bash coordinator (+ node helpers): ~2s apiece, and
+// past vitest's 5s default under a loaded full-suite run.
+describe('recovery coordinator', { timeout: 30_000 }, () => {
   it('closes the queue entry after a successful workflow and successful resumed cell', () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pg4-recovery-coordinator-'));
     dirs.push(dir);
