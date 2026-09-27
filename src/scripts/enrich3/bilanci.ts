@@ -3,7 +3,7 @@ import { ApifyBilanciStage } from '../../enrichment/stages/apify_bilanci_stage';
 import { normalizeLead } from '../../discovery/input_normalizer';
 import { createPerLeadContext } from '../../runtime/run_context';
 import { validateItalianVatChecksum } from '../../enrichment/financial/vat';
-import { computeLeadScore } from '../../enrichment/lead_score';
+import { rankByLeadScore } from '../../enrichment/lead_score';
 import { loadState, saveState, buildE3Run, pool, has, closeLedger, runIfMain } from './_shared';
 
 /**
@@ -37,7 +37,7 @@ async function main(): Promise<void> {
     return !(has(l.revenue) && has(l.employees) && has(l.pec));
   });
   if (top > 0) {
-    subset = [...subset].sort((a, b) => computeLeadScore(b) - computeLeadScore(a)).slice(0, top);
+    subset = rankByLeadScore(subset, top);
   }
   if (probe) subset = subset.slice(0, 5);
 

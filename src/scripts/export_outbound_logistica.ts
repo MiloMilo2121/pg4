@@ -59,7 +59,7 @@ export const HARD_OFF_TARGET_RE =
   /(?:^|[\s.,'"()-])(taxi|n\.?\s?c\.?\s?c\.?(?:[\s.,)]|$)|noleggio\s+con\s+conducente|autoscuol\w*)/i;
 export const SOFT_OFF_TARGET_RE = /(traslochi|trasloco|trasporto\s+person[ei])/i;
 export const FREIGHT_SIGNAL_RE =
-  /(autotrasport|trasporto\s+merci|conto\s+terzi|trasporti\s+(?:nazional|internazional)|spedizion|logistic|corriere|magazzin|deposito|movimento\s+terra|groupage|intermodal)/i;
+  /(autotrasport|trasport[oi]\s+merci|conto\s+terzi|trasporti\s+(?:nazional|internazional)|spedizion|logistic|corrier[ei]|magazzin|deposit[oi]|movimento\s+terra|groupage|intermodal)/i;
 
 export function isOffTarget(name: string): boolean {
   if (HARD_OFF_TARGET_RE.test(name)) return true;

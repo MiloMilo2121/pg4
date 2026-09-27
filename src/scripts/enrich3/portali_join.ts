@@ -7,6 +7,7 @@ import { companyNameMatches, isWrongEntity } from '../../enrichment/fields/field
 import { parsePortalItem, type PortalAgencyRecord } from '../../providers/apify/portal_parsers';
 import { CsvWriter } from '../../io/csv_writer';
 import { loadState, saveState, fillOnlyEmpty, has, runIfMain } from './_shared';
+import { isPecAddress } from '../../enrichment/extract/pec';
 
 /**
  * ENRICH-3 R1b — OFFLINE join (€0) of the harvested portal records onto the
@@ -28,12 +29,6 @@ import { loadState, saveState, fillOnlyEmpty, has, runIfMain } from './_shared';
  */
 
 const FREEMAIL = /@(gmail|libero|yahoo|hotmail|outlook|tiscali|virgilio|alice|tim|live|icloud|msn|aol|email|inwind|iol)\./i;
-/**
- * PEC-looking addresses (measured in the probe: portals often list ONLY the
- * PEC, e.g. @lamiapec.it). Per the user's decision PEC is not an outreach
- * channel → routed to the `pec` field, never to `email_inferred`.
- */
-const PECISH = /@(?:[a-z0-9.-]*pec[a-z0-9.-]*\.|legalmail\.|postecert\.|postacert\.|cert\.|legpec\.|sicurezzapostale\.|twtcert\.)/i;
 
 export interface JoinStats {
   records: number;
@@ -120,9 +115,9 @@ export function attach(rec: PortalAgencyRecord, lead: Lead, stats: JoinStats): b
     portal_is_paid: rec.isPaid !== undefined ? String(rec.isPaid) : undefined,
     portal_fiaip: rec.fiaip !== undefined ? String(rec.fiaip) : undefined,
   };
-  // email → email_inferred (+type) — but a PEC-looking address goes to the
-  // `pec` field (legal channel, excluded from outreach by user decision).
-  if (rec.email && PECISH.test(rec.email)) {
+  // email → email_inferred (+type) — but a PEC address goes to the `pec` field
+  // (legal channel, excluded from outreach; portals often list ONLY the PEC).
+  if (rec.email && isPecAddress(rec.email)) {
     patch.pec = rec.email;
   } else if (rec.email && !has(lead.email_inferred)) {
     patch.email_inferred = rec.email;

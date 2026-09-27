@@ -14,6 +14,8 @@
  * own declared site goes into `website` for the free re-verify to promote.
  */
 
+import { isDirectoryOrSocial } from '../../discovery/website/content_filter';
+
 export interface PortalAgencyRecord {
   portal: 'immobiliare' | 'immobiliare_ads' | 'wikicasa';
   name?: string;
@@ -107,12 +109,17 @@ const fromLocation = (v: unknown): { city?: string; province?: string } => {
   return { city: str(city), province: str(province) };
 };
 
-/** A real external site — never a portal/listing URL echoed back. */
+/**
+ * A real external site — never a portal/listing/maps URL echoed back. Judged
+ * on the HOSTNAME (exact or parent-domain match against the shared directory
+ * list): a substring test threw away real agency sites whose name merely
+ * contains a portal's, e.g. `rossiimmobiliare.it` or `miacasa.it`.
+ */
 const ownWebsite = (...vs: unknown[]): string | undefined => {
   const s = firstStr(...vs);
   if (!s) return undefined;
-  if (/immobiliare\.it|wikicasa\.it|idealista\.it|casa\.it|google\.[a-z.]+\/maps/i.test(s)) return undefined;
-  return /^https?:\/\//i.test(s) ? s : `https://${s}`;
+  const url = /^https?:\/\//i.test(s) ? s : `https://${s}`;
+  return isDirectoryOrSocial(url) ? undefined : url;
 };
 
 /** azzouzana~immobiliare-agencies-scraper — email + socials + isPaid/#ads per agency. */

@@ -18,7 +18,7 @@ import type { Lead } from '../types/lead';
  *   phone 0.10 · reputation 0.10 · social 0.10 · pec 0.05 · portal 0.05
  */
 
-const EMAIL_STATUS_FACTOR: Record<string, number> = {
+const EMAIL_STATUS_FACTOR: Record<NonNullable<Lead['email_status']>, number> = {
   deliverable: 1.0,
   pec: 0.9,
   unknown: 0.5,
@@ -28,11 +28,22 @@ const EMAIL_STATUS_FACTOR: Record<string, number> = {
 
 const has = (v: unknown): boolean => v !== undefined && v !== null && String(v).trim() !== '';
 
-/** Parse "4,7" / "4.7" / "1.234" → number; undefined when non-numeric. */
-function parseNum(v: unknown): number | undefined {
-  if (typeof v === 'number' && Number.isFinite(v)) return v;
-  if (typeof v !== 'string' || !v.trim()) return undefined;
-  const n = Number(v.trim().replace(/\./g, (m, i, s) => (/,/.test(s) ? '' : m)).replace(',', '.').replace(/[^\d.\-]/g, ''));
+/**
+ * Parse the first number in an Italian- or English-formatted string:
+ * "4,7" / "4.7" → 4.7 · "1.234" / "1.234.567" → thousands · "1.234,5" → 1234.5
+ * · "(1.234 recensioni)" → 1234. No digit at all ("N/A", "—") → undefined, so
+ * a placeholder never earns credit as if it were a real 0.
+ */
+export function parseNum(v: unknown): number | undefined {
+  if (typeof v === 'number') return Number.isFinite(v) ? v : undefined;
+  if (typeof v !== 'string') return undefined;
+  const token = v.match(/-?\d[\d.,]*/)?.[0].replace(/[.,]$/, '');
+  if (!token) return undefined;
+  let normalized: string;
+  if (/^-?\d{1,3}(?:\.\d{3})+(?:,\d+)?$/.test(token)) normalized = token.replace(/\./g, '').replace(',', '.'); // IT thousands
+  else if (/^-?\d{1,3}(?:,\d{3})+(?:\.\d+)?$/.test(token)) normalized = token.replace(/,/g, ''); // EN thousands
+  else normalized = token.replace(',', '.');
+  const n = Number(normalized);
   return Number.isFinite(n) ? n : undefined;
 }
 
@@ -43,8 +54,7 @@ export function computeLeadScore(lead: Partial<Lead>): number {
   const emailVal = has(lead.email_inferred) ? lead.email_inferred : lead.email;
   let email = 0;
   if (has(emailVal)) {
-    const status = typeof lead.email_status === 'string' ? lead.email_status : 'unknown';
-    email = EMAIL_STATUS_FACTOR[status] ?? EMAIL_STATUS_FACTOR.unknown;
+    email = EMAIL_STATUS_FACTOR[lead.email_status ?? 'unknown'] ?? EMAIL_STATUS_FACTOR.unknown;
   }
 
   // ---- website 0.15 — verified site full credit, unverified input 0.4 ----
@@ -87,4 +97,16 @@ export function computeLeadScore(lead: Partial<Lead>): number {
   const score =
     0.3 * email + 0.15 * website + 0.15 * firmo + 0.1 * phone + 0.1 * reputation + 0.1 * social + 0.05 * pec + 0.05 * portal;
   return Math.round(clamp01(score) * 1000) / 1000;
+}
+
+/**
+ * Leads sorted by descending score (stable), optionally truncated to `top`.
+ * Scores are computed ONCE per lead — never inside the sort comparator.
+ */
+export function rankByLeadScore<T extends Partial<Lead>>(leads: readonly T[], top?: number): T[] {
+  const ranked = leads
+    .map((lead, i) => ({ lead, i, score: computeLeadScore(lead) }))
+    .sort((a, b) => b.score - a.score || a.i - b.i)
+    .map((r) => r.lead);
+  return top !== undefined && top > 0 ? ranked.slice(0, top) : ranked;
 }

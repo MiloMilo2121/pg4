@@ -124,4 +124,11 @@ describe('portali_join attach', () => {
     expect(legal.email_inferred).toBeUndefined();
     expect(legal.pec).toBe('acme@legalmail.it');
   });
+
+  it('a business domain that merely CONTAINS "pec" stays an outreach email', () => {
+    const lead = { company_name: 'Pecora Immobiliare' } as Lead;
+    attach(rec({ name: 'Pecora Immobiliare', email: 'info@pecoraimmobiliare.it' }), lead, emptyJoinStats());
+    expect(lead.email_inferred).toBe('info@pecoraimmobiliare.it');
+    expect(lead.pec).toBeUndefined();
+  });
 });

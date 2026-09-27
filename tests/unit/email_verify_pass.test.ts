@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { ApifyProvider } from '../../src/providers/apify/apify_provider';
-import { PEC_DOMAINS, buildEmailVerifyInput, verifyInChunks } from '../../src/scripts/enrich3/email_verify';
+import { buildEmailVerifyInput, verifyInChunks } from '../../src/scripts/enrich3/email_verify';
+import { isPecAddress } from '../../src/enrichment/extract/pec';
 import type { Lead } from '../../src/types/lead';
 
 describe('parseEmailVerifyItem', () => {
@@ -28,12 +29,12 @@ describe('parseEmailVerifyItem', () => {
 
 describe('email_verify free shortcuts', () => {
   it('PEC domains are recognized (with and without subdomain)', () => {
-    expect(PEC_DOMAINS.test('info@pec.it')).toBe(true);
-    expect(PEC_DOMAINS.test('acme@studio.pec.it')).toBe(true);
-    expect(PEC_DOMAINS.test('acme@legalmail.it')).toBe(true);
-    expect(PEC_DOMAINS.test('acme@arubapec.it')).toBe(true);
-    expect(PEC_DOMAINS.test('info@acme.it')).toBe(false);
-    expect(PEC_DOMAINS.test('acme@gmail.com')).toBe(false);
+    expect(isPecAddress('info@pec.it')).toBe(true);
+    expect(isPecAddress('acme@studio.pec.it')).toBe(true);
+    expect(isPecAddress('acme@legalmail.it')).toBe(true);
+    expect(isPecAddress('acme@arubapec.it')).toBe(true);
+    expect(isPecAddress('info@acme.it')).toBe(false);
+    expect(isPecAddress('acme@gmail.com')).toBe(false);
   });
 
   it('the actor input builder is the single overridable place', () => {

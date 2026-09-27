@@ -1,5 +1,6 @@
 import type { Lead } from '../types/lead';
 import type { NormalizedLead } from '../types/discovery';
+import { isPecAddress } from '../enrichment/extract/pec';
 
 /** Italian province codes (sigle automobilistiche). Used by normalizer. */
 export const PROVINCE_CODES = new Set<string>([
@@ -123,8 +124,7 @@ export function normalizeLead(lead: Lead): NormalizedLead {
     const ok = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
     if (ok) {
       const domain = email.split('@')[1] ?? '';
-      const isPec = /pec|legalmail|cert/.test(domain);
-      if (domain && !PUBLIC_EMAIL_PROVIDERS.has(domain) && !isPec) email_domain = domain;
+      if (domain && !PUBLIC_EMAIL_PROVIDERS.has(domain) && !isPecAddress(email)) email_domain = domain;
     } else {
       email = '';
     }

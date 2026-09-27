@@ -4,6 +4,7 @@ import { ApifyProvider } from '../../providers/apify/apify_provider';
 import { resolveMx } from '../../enrichment/email/mx_smtp_verifier';
 import { loadState, saveState, buildE3Run, has, closeLedger, runIfMain } from './_shared';
 import { logger } from '../../runtime/logger';
+import { isPecAddress } from '../../enrichment/extract/pec';
 
 /**
  * ENRICH-3 R3 — email deliverability. Free shortcuts FIRST (nothing paid is
@@ -23,9 +24,6 @@ import { logger } from '../../runtime/logger';
  *   ... pnpm tsx src/scripts/enrich3/email_verify.ts --state output/enrich3/state3.jsonl \
  *     --out output/enrich3/state4 --run-cost-ceiling-eur 6
  */
-
-export const PEC_DOMAINS =
-  /@(?:[a-z0-9.-]+\.)?(pec\.it|legalmail\.it|pec\.aruba\.it|arubapec\.it|postecert\.it|pec\.cloud|mypec\.eu|pecimprese\.it|legpec\.it|sicurezzapostale\.it|pec\.libero\.it|pec\.buffetti\.it|postacert\.[a-z.]+|cert\.[a-z0-9.-]+)$/i;
 
 /** Single place encoding the verifier actor's input shape (probe-validated). */
 export function buildEmailVerifyInput(emails: string[]): Record<string, unknown> {
@@ -97,7 +95,7 @@ async function main(): Promise<void> {
   let noMx = 0;
   const toVerify: string[] = [];
   for (const e of emails) {
-    if (PEC_DOMAINS.test(e)) {
+    if (isPecAddress(e)) {
       statusByEmail.set(e, 'pec');
       pecCount += 1;
       continue;
