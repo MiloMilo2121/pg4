@@ -51,14 +51,14 @@ all_cells_done() {
 # Liveness via PID-file di proprietà di QUESTO watchdog: pgrep sulla command
 # line matcherebbe anche le campagne di ALTRI worktree sulla stessa macchina
 # (misurato: lo scrape di un worktree gemello teneva questo watchdog in attesa
-# per sempre, campagna mai lanciata). kill -0 sul PID del NOSTRO nohup è
-# worktree-specifico per costruzione.
+# per sempre, campagna mai lanciata). Il PID del NOSTRO nohup è
+# worktree-specifico per costruzione; pid + start-time + command line (vedi
+# scripts/lib/pidfile.sh) lo rendono immune al riuso del PID dopo sleep/reboot.
+# shellcheck source=lib/pidfile.sh
+. "$ROOT/scripts/lib/pidfile.sh"
 CAMPAIGN_PIDFILE="$OUT/.watchdog_campaign.pid"
 campaign_running() {
-  local pid
-  [ -f "$CAMPAIGN_PIDFILE" ] || return 1
-  pid="$(cat "$CAMPAIGN_PIDFILE" 2>/dev/null)"
-  [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null
+  pidfile_alive "$CAMPAIGN_PIDFILE" "scripts/campaign.sh"
 }
 
 # Il percorso di recovery via GitHub Actions esiste SOLO con le credenziali
@@ -76,6 +76,7 @@ restarts=0
 while true; do
   if all_cells_done; then
     echo "[watchdog $(date +%H:%M:%S)] tutte le celle presenti — fine"
+    rm -f "$CAMPAIGN_PIDFILE"
     break
   fi
   if [ "$RECOVERY_ENABLED" = "1" ] && bash scripts/recovery_coordinator.sh blocked --out "$OUT" --cells "$RECOVERY_CELLS_CSV"; then
@@ -85,7 +86,7 @@ while true; do
   fi
   if [ "$RECOVERY_ENABLED" = "1" ] && bash scripts/recovery_coordinator.sh pending --out "$OUT" --cells "$RECOVERY_CELLS_CSV"; then
     echo "[watchdog $(date +%H:%M:%S)] recovery pending — waiting for GitHub Actions"
-    # Cells are resumed by the coordinator after a successful auto-merge.
+    # Cells are resumed by the coordinator once the recovery PR is merged.
     for cell in "${RECOVERY_CELLS[@]}"; do
       state="$OUT/.recovery/$cell.json"
       [ -f "$state" ] || continue
@@ -98,7 +99,7 @@ while true; do
     restarts=$((restarts+1))
     echo "[watchdog $(date +%H:%M:%S)] campagna non attiva — (ri)lancio #$restarts"
     nohup bash scripts/campaign.sh "${PROVINCES[@]}" >> "$OUT/_watchdog_driver.out" 2>&1 &
-    echo $! > "$CAMPAIGN_PIDFILE"
+    pidfile_write "$CAMPAIGN_PIDFILE" "$!"
     sleep 15
   fi
   sleep "$CHECK_EVERY"

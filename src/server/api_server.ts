@@ -25,6 +25,7 @@ import { InMemoryEnrichmentCache } from '../persistence/enrichment_cache';
 import { buildCoverageReport } from '../coverage/coverage_engine';
 import { buildBacklog } from '../coverage/backlog';
 import { isAllowedDashboardOrigin, resolveApiHost } from './local_api_access';
+import { onShutdownSignal } from '../runtime/shutdown';
 
 /**
  * pg4 dev API server — single-tenant, local, zero-cloud. Wraps the REAL engine
@@ -500,6 +501,8 @@ interface ScrapeJob {
   outBase: string;
 }
 const scrapeJobs = new Map<string, ScrapeJob>();
+/** Live scrape child processes — killed on shutdown so no orphan keeps scraping. */
+const scrapeChildren = new Set<ReturnType<typeof execFile>>();
 
 const SCRAPE_JOB_TIMEOUT_MS = 10 * 60 * 1000;
 /** Sanitise an operator string into a safe CLI argument (defence-in-depth even
@@ -528,6 +531,8 @@ function runScrapeJob(job: ScrapeJob): void {
       }
     })();
   });
+  scrapeChildren.add(child);
+  child.once('exit', () => scrapeChildren.delete(child));
   child.unref?.();
 }
 
@@ -773,6 +778,11 @@ async function main(): Promise<void> {
   });
   server.listen(PORT, API_HOST, () => {
     process.stderr.write(`[api] pg4 dev API on http://${API_HOST}:${PORT} (tenant ${DEV_TENANT_ID})\n`);
+  });
+  onShutdownSignal('api', async () => {
+    for (const child of scrapeChildren) child.kill('SIGTERM');
+    server.closeIdleConnections();
+    await new Promise<void>((resolve, reject) => server.close((err) => (err ? reject(err) : resolve())));
   });
 }
 

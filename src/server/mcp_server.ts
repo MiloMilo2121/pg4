@@ -22,11 +22,17 @@ import { execFile } from 'child_process';
 import { promisify } from 'util';
 import path from 'path';
 import fs from 'fs';
-import { pushFlag } from './mcp_args';
+import { pushFlag, resolveSandboxedPath, SandboxViolation } from './mcp_args';
+import { onShutdownSignal } from '../runtime/shutdown';
 
 const execFileAsync = promisify(execFile);
 const PG4_ROOT = path.resolve(__dirname, '..', '..'); // src/server -> pg4/
 const MAX_OUTPUT = 32 * 1024 * 1024;
+/** A CLI run longer than this is killed, so a hung pipeline never hangs the agent forever. */
+const CLI_TIMEOUT_MS = 4 * 60 * 60 * 1000;
+/** Everything a tool WRITES must land under output/. */
+const OUTPUT_DIR = 'output';
+const READABLE_OUTPUT_EXT = ['.csv', '.jsonl', '.json', '.log', '.txt', '.md'] as const;
 
 type ToolResult = { content: { type: 'text'; text: string }[]; isError?: boolean };
 type ToolSchema = Record<string, z.ZodTypeAny>;
@@ -40,15 +46,36 @@ interface ErasedMcpToolRegistrar {
 const ok = (text: string): ToolResult => ({ content: [{ type: 'text', text: text || '(no output)' }] });
 const err = (text: string): ToolResult => ({ content: [{ type: 'text', text }], isError: true });
 
+const errorMessage = (e: unknown): string => (e instanceof Error ? e.message : String(e));
+
 async function runCli(cliFile: string, argv: string[]): Promise<ToolResult> {
   try {
     const { stdout, stderr } = await execFileAsync('npx', ['tsx', `src/cli/${cliFile}`, ...argv], {
       cwd: PG4_ROOT,
       maxBuffer: MAX_OUTPUT,
+      timeout: CLI_TIMEOUT_MS,
+      killSignal: 'SIGTERM',
     });
     return ok(stdout || stderr);
-  } catch (e: any) {
-    return err(`ERROR: ${e.message}\nSTDOUT: ${e.stdout || ''}\nSTDERR: ${e.stderr || ''}`);
+  } catch (e: unknown) {
+    const out = e as { stdout?: string; stderr?: string };
+    return err(`ERROR: ${errorMessage(e)}\nSTDOUT: ${out.stdout || ''}\nSTDERR: ${out.stderr || ''}`);
+  }
+}
+
+/**
+ * Validate every agent-supplied path before it reaches a CLI: outputs must
+ * land under output/, inputs anywhere in the repo except hidden paths
+ * (`.env`, `.git`, …). Returns the violation as a tool error, or null.
+ */
+function checkPaths(paths: { outputs?: Array<string | undefined>; inputs?: Array<string | undefined> }): ToolResult | null {
+  try {
+    for (const p of paths.outputs ?? []) if (p !== undefined) resolveSandboxedPath(PG4_ROOT, OUTPUT_DIR, p);
+    for (const p of paths.inputs ?? []) if (p !== undefined) resolveSandboxedPath(PG4_ROOT, '.', p);
+    return null;
+  } catch (e: unknown) {
+    if (e instanceof SandboxViolation) return err(`Path rejected: ${e.message}`);
+    throw e;
   }
 }
 
@@ -146,6 +173,8 @@ registerTool<ScrapeToolArgs>(
     max_pages: z.number().optional().describe('Max result pages per source'),
   },
   async ({ out, category, province, comuni, region, maps, coverage, max_pages }) => {
+    const bad = checkPaths({ outputs: [out] });
+    if (bad) return bad;
     const argv = ['--out', out, '--category', category];
     pushFlag(argv, 'province', province);
     pushFlag(argv, 'comuni', comuni);
@@ -169,6 +198,8 @@ registerTool<EnrichToolArgs>(
     mock_http: z.string().optional().describe('Offline URL->HTML fixture JSON (no real HTTP/SERP/API)'),
   },
   async ({ input, out, enable_paid, cost_ceiling_eur, run_cost_ceiling_eur, mock_http }) => {
+    const bad = checkPaths({ outputs: [out], inputs: [input, mock_http] });
+    if (bad) return bad;
     const argv = ['--input', input, '--out', out];
     pushFlag(argv, 'enable-paid', enable_paid);
     pushFlag(argv, 'cost-ceiling-eur', cost_ceiling_eur);
@@ -193,6 +224,8 @@ registerTool<RunToolArgs>(
     cost_ceiling_eur: z.number().optional().describe('Per-lead paid ceiling'),
   },
   async ({ category, out, province, comuni, region, maps, coverage, enable_paid, cost_ceiling_eur }) => {
+    const bad = checkPaths({ outputs: [out] });
+    if (bad) return bad;
     const argv = ['--category', category, '--out', out];
     pushFlag(argv, 'province', province);
     pushFlag(argv, 'comuni', comuni);
@@ -217,6 +250,8 @@ registerTool<JudgeToolArgs>(
     category: z.string().optional().describe('Override category'),
   },
   async ({ input, out, two_pass, paid, limit, category }) => {
+    const bad = checkPaths({ outputs: [out], inputs: [input] });
+    if (bad) return bad;
     const argv = ['--input', input, '--out', out];
     pushFlag(argv, 'two-pass', two_pass);
     pushFlag(argv, 'paid', paid);
@@ -236,6 +271,8 @@ registerTool<LookupToolArgs>(
   },
   async ({ piva, phone, dir }) => {
     if (!piva && !phone) return err('Provide piva or phone.');
+    const bad = checkPaths({ inputs: [dir] });
+    if (bad) return bad;
     const argv: string[] = [];
     pushFlag(argv, 'piva', piva);
     pushFlag(argv, 'phone', phone);
@@ -264,30 +301,28 @@ registerTool<ListOutputsToolArgs>(
         .slice(0, limit)
         .map((e) => `${e.name}\t${e.size}B`);
       return ok(entries.join('\n'));
-    } catch (e: any) {
-      return err(`List error: ${e.message}`);
+    } catch (e: unknown) {
+      return err(`List error: ${errorMessage(e)}`);
     }
   },
 );
 
 registerTool<ReadOutputToolArgs>(
   'pg4_read_output',
-  'Read the last N lines of a result file under output/ (csv/jsonl/log). Path is sandboxed to pg4/.',
+  'Read the last N lines of a result file under output/ (csv/jsonl/json/log/txt/md). Path is sandboxed to output/.',
   {
-    file_path: z.string().describe("Path relative to pg4/, e.g. 'output/enriched.csv'"),
-    lines: z.number().default(50).describe('Lines to tail from the end'),
+    file_path: z.string().describe("Path relative to the repo root, e.g. 'output/enriched.csv'"),
+    lines: z.number().int().min(1).max(100_000).default(50).describe('Lines to tail from the end'),
   },
   async ({ file_path, lines }) => {
     try {
-      const abs = path.resolve(PG4_ROOT, file_path);
-      if (abs !== PG4_ROOT && !abs.startsWith(PG4_ROOT + path.sep)) {
-        return err('Path traversal is forbidden.');
-      }
-      if (!fs.existsSync(abs)) return err(`File not found: ${file_path}`);
+      const abs = resolveSandboxedPath(PG4_ROOT, OUTPUT_DIR, file_path, { extensions: READABLE_OUTPUT_EXT });
+      if (!fs.existsSync(abs) || !fs.statSync(abs).isFile()) return err(`File not found: ${file_path}`);
       const { stdout } = await execFileAsync('tail', ['-n', String(lines), abs], { maxBuffer: MAX_OUTPUT });
       return ok(stdout);
-    } catch (e: any) {
-      return err(`Read error: ${e.message}`);
+    } catch (e: unknown) {
+      if (e instanceof SandboxViolation) return err(`Path rejected: ${e.message}`);
+      return err(`Read error: ${errorMessage(e)}`);
     }
   },
 );
@@ -295,13 +330,14 @@ registerTool<ReadOutputToolArgs>(
 async function main(): Promise<void> {
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  console.error('pg4 MCP server running on stdio');
+  onShutdownSignal('mcp', () => server.close());
+  process.stderr.write('pg4 MCP server running on stdio\n');
 }
 
 // Only auto-start when run directly, so tests can import pushFlag without a server.
 if (require.main === module) {
-  main().catch((e) => {
-    console.error(e);
+  main().catch((e: unknown) => {
+    process.stderr.write(`[mcp] fatal: ${errorMessage(e)}\n`);
     process.exit(1);
   });
 }

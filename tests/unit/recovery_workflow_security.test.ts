@@ -13,7 +13,7 @@ function stepBlock(name: string): string {
 describe('recovery workflow secret boundary', () => {
   it('does not expose OpenRouter credentials to install, tests, or lint', () => {
     const jobPreamble = workflow.slice(
-      workflow.indexOf('  diagnose-fix-review-merge:'),
+      workflow.indexOf('  diagnose-fix-review:'),
       workflow.indexOf('      - uses: actions/checkout@v4'),
     );
 
@@ -29,15 +29,24 @@ describe('recovery workflow secret boundary', () => {
     }
   });
 
-  it('waits for PR checks and pins the reviewed commit before auto-merging', () => {
-    const mergeStep = stepBlock('Commit, create PR, auto-merge');
-    expect(mergeStep).toContain('gh pr checks "$PR_URL" --watch --fail-fast');
-    expect(mergeStep).toContain('--match-head-commit "$(git rev-parse HEAD)"');
-    expect(mergeStep).not.toContain('--admin');
-    expect(mergeStep).toContain('GH_TOKEN: ${{ secrets.RECOVERY_GH_TOKEN }}');
-    expect(mergeStep).toContain('gh auth setup-git');
+  it('the LLM job only opens the PR — it never merges', () => {
+    const patchJob = workflow.slice(workflow.indexOf('  diagnose-fix-review:'), workflow.indexOf('\n  merge:'));
+    expect(patchJob).not.toContain('gh pr merge');
+    const prStep = stepBlock('Commit and create PR');
+    expect(prStep).toContain('GH_TOKEN: ${{ secrets.RECOVERY_GH_TOKEN }}');
+    expect(prStep).toContain('gh auth setup-git');
     expect(workflow).not.toContain('GH_TOKEN: ${{ github.token }}');
     expect(workflow).toContain('persist-credentials: false');
+  });
+
+  it('merges only from the protected environment, after checks, pinned to the reviewed commit', () => {
+    const mergeJob = workflow.slice(workflow.indexOf('\n  merge:'));
+    expect(workflow.match(/gh pr merge/g)).toHaveLength(1);
+    expect(mergeJob).toContain('environment: recovery-merge');
+    expect(mergeJob).toContain('needs: diagnose-fix-review');
+    expect(mergeJob).toContain('gh pr checks "$PR_URL" --watch --fail-fast');
+    expect(mergeJob).toContain('--match-head-commit "$HEAD_SHA"');
+    expect(mergeJob).not.toContain('--admin');
   });
 
   it('labels each dispatched recovery cycle so the VPS cannot resume against an older run', () => {
