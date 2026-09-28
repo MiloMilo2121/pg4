@@ -89,128 +89,128 @@ are irreversible; all are config- or flag-gated.
 
 ## B.1 — `run` command output layout
 
-- **Default:** `--out <base>` produce `<base>_raw.csv`, `<base>_enriched.csv`
-  (+ jsonl/ledger), `<base>.log.jsonl`. Ogni stage acquisisce il proprio
-  output lock (stessa protezione dei comandi separati).
-- **Alternative:** dirigere tutto in una directory per-campagna (più file
-  da spostare per il delivery — rinviato).
+- **Default:** `--out <base>` produces `<base>_raw.csv`, `<base>_enriched.csv`
+  (+ jsonl/ledger), `<base>.log.jsonl`. Each stage acquires its own
+  output lock (same protection as the separate commands).
+- **Alternative:** route everything into a per-campaign directory (more files
+  to move for delivery — deferred).
 
-## B.2 — Validazione automatica post-run
+## B.2 — Automatic post-run validation
 
-- **Default:** `validateOutputs()` gira a fine scrape (flavor raw) e fine
-  enrich (flavor enriched). WARN-ONLY: un fallimento è loggato + notificato
-  ma non cambia l'exit code — gli output sono già su disco e nasconderli
-  non aiuta l'operatore.
-- **Alternative:** exit code dedicato per validation-failed (rompe la
-  semantica "exit≠0 = run non completato" — rifiutato per ora).
+- **Default:** `validateOutputs()` runs at the end of scrape (raw flavor) and at
+  the end of enrich (enriched flavor). WARN-ONLY: a failure is logged + notified
+  but does not change the exit code — the outputs are already on disk and hiding
+  them does not help the operator.
+- **Alternative:** a dedicated exit code for validation-failed (breaks the
+  "exit≠0 = run not completed" semantics — rejected for now).
 
 ## B.3 — Scheduler
 
-- **OPERATOR DECISION PENDING:** nessuno scheduler installato (launchd,
-  cron o GitHub Actions funzionano tutti). CLI già non-interattivi by design.
+- **OPERATOR DECISION PENDING:** no scheduler installed (launchd,
+  cron or GitHub Actions all work). CLIs are already non-interactive by design.
 
 ## B.4 — Secrets
 
-- **Default:** `.env` resta il meccanismo (conservativo). `assertPaidSecrets()`
-  fallisce fast e nominando la variabile mancante quando `--enable-paid` è
-  passato senza alcun provider paid usabile.
-- **Scan eseguito (2026-06-10):** nessuna chiave key-shaped nel working
-  tree pg4, nella history git dei path pg4, né a HEAD dell'intero repo;
-  `.env` mai committato. Nessun finding CRITICAL.
-- **OPERATOR DECISION PENDING:** upgrade a secrets manager (1Password /
-  SOPS / Doppler) per uso multi-operatore.
+- **Default:** `.env` remains the mechanism (conservative). `assertPaidSecrets()`
+  fails fast, naming the missing variable, when `--enable-paid` is
+  passed without any usable paid provider.
+- **Scan performed (2026-06-10):** no key-shaped secrets in the pg4 working
+  tree, in the git history of pg4 paths, or at HEAD of the entire repo;
+  `.env` never committed. No CRITICAL findings.
+- **OPERATOR DECISION PENDING:** upgrade to a secrets manager (1Password /
+  SOPS / Doppler) for multi-operator use.
 
 ## C.1 — Schema versioning
 
-- **Default:** `_schema_version=1` come ULTIMA colonna di entrambi i flavor
-  + campo JSONL. Le colonne base sono CONGELATE (RAW_BASE / ENRICHED_BASE);
-  ogni aggiunta futura va in un appendix APPENDED_COLUMNS_V*.
-- **Motivo strutturale:** appendere a RAW_CSV_COLUMNS direttamente avrebbe
-  INSERITO colonne a metà dell'enriched CSV (che spread-a raw per primo) —
-  rompendo i reader posizionali. Da qui le basi congelate.
-- Il validator richiede la colonna col valore atteso; file pre-v1 falliscono
-  la validazione in modo esplicito ("pre-v1 output?").
+- **Default:** `_schema_version=1` as the LAST column of both flavors
+  + a JSONL field. The base columns are FROZEN (RAW_BASE / ENRICHED_BASE);
+  every future addition goes into an APPENDED_COLUMNS_V* appendix.
+- **Structural reason:** appending to RAW_CSV_COLUMNS directly would have
+  INSERTED columns in the middle of the enriched CSV (which spreads raw first) —
+  breaking positional readers. Hence the frozen bases.
+- The validator requires the column with the expected value; pre-v1 files fail
+  validation explicitly ("pre-v1 output?").
 
 ## C.2 — E.164
 
-- **Default:** normalizzazione conservativa solo per numeri plausibilmente
-  italiani; l'originale è preservato in `phone_raw`. Numeri non parseabili
-  restano invariati (meglio nessuna normalizzazione che una sbagliata).
+- **Default:** conservative normalization only for plausibly Italian
+  numbers; the original is preserved in `phone_raw`. Unparseable numbers
+  are left unchanged (better no normalization than a wrong one).
 
 ## C.3 — Near-duplicate review
 
-- **Default:** indice token-sorted name+city ausiliario; collisioni
-  FLAGGED in `<out>.dedup-review.jsonl`, MAI auto-merged ("Studio Casa" vs
-  "Casa Studio" possono essere ditte registrate distinte).
+- **Default:** auxiliary token-sorted name+city index; collisions are
+  FLAGGED in `<out>.dedup-review.jsonl`, NEVER auto-merged ("Studio Casa" vs
+  "Casa Studio" can be distinct registered businesses).
 
 ## C.4 — Closed businesses
 
-- **Default:** "Chiuso definitivamente"/"Permanently closed" catturato dal
-  parser Maps; enrich li scrive come SKIPPED/SKIPPED_PERMANENTLY_CLOSED
-  senza bruciare provider call. `--include-closed` per processarli.
-- Solo dati già presenti nelle pagine caricate — nessuna navigazione extra.
+- **Default:** "Chiuso definitivamente"/"Permanently closed" is captured by the
+  Maps parser; enrich writes them as SKIPPED/SKIPPED_PERMANENTLY_CLOSED
+  without burning provider calls. `--include-closed` to process them.
+- Only data already present in the loaded pages — no extra navigation.
 
 ## D.1 — Suppression list
 
-- **Default:** risoluzione flag > env SUPPRESSION_LIST > `suppression.csv`
-  auto-scoperto accanto all'output > disattivata. Lead corrispondenti
-  DROPPATI (non scritti come SKIPPED): un soggetto do-not-contact non deve
-  continuare ad apparire nei file consegnati. Un path ESPLICITO illeggibile
-  è hard error (l'operatore ha chiesto una protezione che non sta avendo).
+- **Default:** resolution order flag > env SUPPRESSION_LIST > `suppression.csv`
+  auto-discovered next to the output > disabled. Matching leads are
+  DROPPED (not written as SKIPPED): a do-not-contact data subject must not
+  keep appearing in delivered files. An unreadable EXPLICIT path
+  is a hard error (the operator asked for a protection they are not getting).
 
 ## D.2 — Retention
 
-- **Default:** OFF (mai cancellare nulla senza opt-in). `--retention-days N`
-  / env RETENTION_DAYS. Protetti sempre: `_runs.jsonl` (registro Art. 30),
+- **Default:** OFF (never delete anything without opt-in). `--retention-days N`
+  / env RETENTION_DAYS. Always protected: `_runs.jsonl` (Art. 30 register),
   `suppression.csv`, `*.lock`.
-- **OPERATOR DECISION PENDING:** il periodo N (decisione GDPR).
+- **OPERATOR DECISION PENDING:** the period N (GDPR decision).
 
 ## D.3 — Lookup (right-to-access/deletion)
 
-- **Default:** `pnpm run lookup` è un READER: riporta file+riga, la
-  cancellazione resta manuale. Riscrivere automaticamente artifact già
-  consegnati li desincronizzerebbe dalle copie presso i clienti.
+- **Default:** `pnpm run lookup` is a READER: it reports file+line, deletion
+  stays manual. Automatically rewriting artifacts already
+  delivered would put them out of sync with the copies held by clients.
 
 ## D.4 — GDPR
 
-- Posture documentata in `docs/gdpr_posture.md`: implementato vs pendente.
-- **OPERATOR DECISIONS PENDING:** base giuridica + balancing test, periodo
-  retention, DPIA sì/no, DPA Serper (query paid trasmettono nomi a
-  processor extra-UE), informativa Art. 14, verifica RPO se telemarketing.
+- Posture documented in `docs/gdpr_posture.md`: implemented vs pending.
+- **OPERATOR DECISIONS PENDING:** legal basis + balancing test, retention
+  period, DPIA yes/no, Serper DPA (paid queries transmit names to a
+  non-EU processor), Art. 14 notice, RPO check if telemarketing.
 
 ## E.1 — Coverage
 
 - **Baseline (2026-06-10):** 70.44% lines · 83.76% branches · 81.79%
-  functions (vitest --coverage, v8 provider; CLI wrapper entrypoint e
-  src/types esclusi). NESSUNA soglia di gate impostata — il numero è la
-  baseline; la soglia è una decisione di team successiva.
+  functions (vitest --coverage, v8 provider; CLI wrapper entrypoint and
+  src/types excluded). NO gate threshold set — the number is the
+  baseline; the threshold is a later team decision.
 
 ## E.3 — ESLint
 
-- **Default:** typescript-eslint recommended, zero regole di formatting.
-  `no-explicit-any` a warn (gli `any` ai boundary error/meta sono
-  deliberati; tsconfig strict previene già gli impliciti). 0 errori,
-  0 warning a fine pass.
+- **Default:** typescript-eslint recommended, zero formatting rules.
+  `no-explicit-any` at warn (the `any`s at error/meta boundaries are
+  deliberate; tsconfig strict already prevents implicit ones). 0 errors,
+  0 warnings at the end of the pass.
 
 ## E.4 — Dependency audit
 
-- **Trovate 3 vulnerabilità, tutte nella catena dev-tooling
+- **3 vulnerabilities found, all in the dev-tooling chain
   vitest→vite→esbuild** (1 critical vitest<3.2.6 UI-server file read;
-  2 moderate vite/esbuild dev-server). Exploit richiede un dev/UI server
-  in ascolto — pg4 usa SOLO `vitest run` one-shot, nessun server mai
-  avviato. Nessuna vulnerabilità nelle dipendenze di produzione.
-- **MAJOR BUMP DEFERRED (operator/next pass):** vitest 2→3 risolve tutte
-  e tre. Non eseguito in questo pass per la regola "patch-level only".
+  2 moderate vite/esbuild dev-server). Exploitation requires a dev/UI server
+  listening — pg4 uses ONLY one-shot `vitest run`, no server is ever
+  started. No vulnerabilities in production dependencies.
+- **MAJOR BUMP DEFERRED (operator/next pass):** vitest 2→3 fixes all
+  three. Not done in this pass because of the "patch-level only" rule.
 
-## F — Bug reali trovati dalla verifica live (e fix)
+## F — Real bugs found by live verification (and fixes)
 
-1. **RateLimiter mai cablato** (dal Phase 1): acquire() senza call site →
-   burst SERP ~3.7 req/s → Bing soft-block 185/185 empty, silenzioso.
-   Fix: pacing per-provider nel router; bing_html/ddg_lite 0.5 req/s
-   capacity 2; non configurati = invariati. Verificato live: 0%→100%
-   success, yield 0→17.8% (baseline R11: 20.9%).
-2. **Playwright handleSIGINT default** pre-emptava il graceful drain
-   (exit(130) suo prima del nostro): handleSIGINT/handleSIGTERM:false al
-   launch + abort check per-PAGINA in pg_live (un comune denso superava
-   il watchdog). Verificato live: drain naturale in 1.7 s con output
-   parziali, lock rilasciato, checkpoint resume-ready.
+1. **RateLimiter never wired** (since Phase 1): acquire() had no call site →
+   SERP burst ~3.7 req/s → Bing soft-block 185/185 empty, silently.
+   Fix: per-provider pacing in the router; bing_html/ddg_lite 0.5 req/s
+   capacity 2; unconfigured providers = unchanged. Verified live: 0%→100%
+   success, yield 0→17.8% (R11 baseline: 20.9%).
+2. **Playwright's default handleSIGINT** pre-empted the graceful drain
+   (its own exit(130) before ours): handleSIGINT/handleSIGTERM:false at
+   launch + per-PAGE abort check in pg_live (a dense comune exceeded
+   the watchdog). Verified live: natural drain in 1.7 s with partial
+   outputs, lock released, checkpoint resume-ready.

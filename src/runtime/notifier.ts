@@ -5,7 +5,8 @@ import { logger } from './logger';
  * Phase A.5 — pluggable operator notifications.
  *
  * Call sites emit structured events; the active notifier decides delivery.
- * Default is `local`: a structured log line at warn level (which also lands
+ * Default is `local`: a structured log line (info for a clean completion,
+ * warn for everything an operator should look at — it also lands
  * in the per-run log file) plus a best-effort macOS notification via
  * osascript. Slack/Telegram/email can be added later by implementing
  * `Notifier` and extending `createNotifier` — no call-site changes.
@@ -40,7 +41,8 @@ export interface Notifier {
 class LocalNotifier implements Notifier {
   notify(event: NotifyEvent): void {
     // Structured event in the log stream → also persisted to the run log file.
-    logger.warn({ notify: event.kind, ...event.meta }, `[notify] ${event.title}: ${event.body}`);
+    const level = event.kind === 'run_complete' ? 'info' : 'warn';
+    logger[level]({ notify: event.kind, ...event.meta }, `[notify] ${event.title}: ${event.body}`);
     if (process.platform === 'darwin') {
       // Best-effort, fire-and-forget. Never blocks or throws.
       const script = `display notification ${JSON.stringify(event.body)} with title ${JSON.stringify(`pg4 — ${event.title}`)}`;

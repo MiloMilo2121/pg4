@@ -9,90 +9,82 @@
 
 ```
 src/
-  cli/             Thin entry points — parse argv, validate, dispatch to a pipeline.
-                   No orchestration logic here. One file per command.
+  cli/          Thin entry points: parse argv, validate, dispatch. One file per
+                command (scrape, enrich, run → `pnpm run pipeline`, judge,
+                lookup, coverage, benchmark). User mistakes surface as one-line
+                `UserError`s; unexpected failures keep their stack in the log.
 
-  config/          Env (zod-validated) + runtime defaults. No magic numbers in modules.
+  config/       Env (Zod-validated; `EnvConfigError` lists every bad variable)
+                + runtime defaults. No magic numbers in modules.
 
-  types/           Canonical shapes. ONE Lead type. Reason-code / discovery-method
-                   taxonomies as TS const objects so the compiler catches typos.
+  types/        Canonical shapes. ONE Lead type. Reason-code / discovery-method
+                taxonomies as TS const objects so the compiler catches typos.
 
-  runtime/         Cross-cutting infrastructure and durable operational safety:
-                     logger        single pino logger
-                     cost_ledger   in-memory + JSONL append per call (canonical
-                                   per-lead cost source)
-                     circuit_breaker per-key state machine (closed/open/half_open)
-                     backpressure  concurrency throttle on error rate
-                     cache         L1 in-memory; Redis adapter slot reserved
-                     run_context   per-run + per-lead containers; tierCapForLead()
-                     rate_limiter  per-key token bucket
-                     checkpoint    file-backed JSON, atomic write
-                     run_coverage  completion marker + recovery envelope contract.
-                                   It carries PG/Maps query labels, but lives here
-                                   because it is the cross-process boundary shared
-                                   by checkpoint, campaign, watchdog and recovery.
-                     errors        thrown-error → reason_code classifier
+  runtime/      Cross-cutting infrastructure and operational safety:
+                  logger            single pino logger (+ per-run JSONL file)
+                  cost_ledger       per-call JSONL ledger, O(1) run/lead totals —
+                                    the canonical cost source
+                  circuit_breaker   per-provider closed/open/half-open
+                  rate_limiter      per-provider token bucket
+                  backpressure      concurrency throttle on error rate
+                  retry             backoff for transient network failures
+                  checkpoint        file-backed JSON, atomic write
+                  run_context       per-run + per-lead containers
+                  run_coverage      completion marker + recovery envelope
+                  output_lock       one writer per output target
+                  pool, shutdown    bounded concurrency, graceful SIGINT/SIGTERM
+                  notifier, errors  operator notifications, error classes
 
-  browser/         Playwright integration ONLY. No parsing, no domain logic.
-                     factory          single-page IT-locale session, proactive restart
-                     consent_handler  per-domain (pg/maps/generic) trial-and-click
-                                      with in-process counters (no log spam)
+  browser/      Playwright integration ONLY (factory, consent handling).
+                No parsing, no domain logic.
 
-  discovery/       Lead-discovery domain logic. Pure where possible.
-                     input_normalizer        Italian-aware normalization
-                     deduper                 multi-key (phone / name+city /
-                                             name+address / pg_url / maps_url / host)
-                     resume_prior_run        rehydrate from JSONL on resume;
-                                             hard-stops if checkpoint says done
-                                             but JSONL is missing
-                     scrape_pipeline         fixture mode + live mode orchestration
-                                             (lazy-loaded Playwright import)
-                     text_cleanup            conservative mojibake strip
-                     sources/                pure parsers + URL builders + live
-                                             navigators + italy_geo + category_match
-                     website/                URL classification, PreVerifyGate,
-                                             SerpDeduplicator, HyperGuesser,
-                                             RDAPValidator, content_filter
+  discovery/    Lead discovery. Pure where possible.
+                  sources/          pure PG/Maps parsers, URL builders, live
+                                    navigators, Italian geography
+                  website/          URL classification and evidence gates:
+                                    PreVerifyGate, semantic evidence, paid
+                                    evidence gate, SERP dedupe, HyperGuesser,
+                                    RDAP validator, content filter
+                  deduper, input_normalizer, scrape_pipeline, resume_prior_run
 
-  enrichment/      Per-lead enrichment pipeline.
-                     enrichment_pipeline.ts  small orchestrator: ingest gate,
-                                             stage ordering, cost sync, finalize.
-                     stages/                 one Stage per file:
-                                               input_website_stage
-                                               hyper_guesser_stage
-                                               serp_stage
-                                               rdap_stage
-                                               verify_candidates  (shared helper)
+  enrichment/   Per-lead pipeline.
+                  enrichment_pipeline.ts   orchestrator: ingest gate, stage
+                                           ordering, cost sync, finalize
+                  stages/                  one stage per file: input website,
+                                           PG detail, hyper-guesser, SERP, RDAP,
+                                           financial, Perplexity resolve, Apify
+                                           Maps / Registro / Bilanci
+                  extract/, fields/,       on-page extraction (email, PEC, phone,
+                  email/, financial/       socials, VAT), field cascades, email
+                                           inference + MX/SMTP, official data
+                  lead_score.ts            composite quality score
 
-  providers/       Cost-tiered router + adapters.
-                     provider_router.ts      family-aware (serp/http/llm),
-                                             empty SERP is NOT a failure,
-                                             ProviderBlockError → kind:'blocked'
-                     provider_catalog.ts     boot-time registry build with
-                                             feature-flag gating
-                     serp/                   dns_mx, crtsh, ddg_lite, bing_html
-                     http/                   direct_fetch
-                     llm/                    (none yet — Phase 5+)
+  providers/    ProviderRouter + adapters, one file each:
+                  serp/   bing_html, ddg_lite (free) · serper, exa, tavily (paid)
+                  http/   direct_fetch (free, SSRF-guarded) · firecrawl,
+                          brightdata (paid render/unblock)
+                  llm/    anthropic, openai-compatible, openrouter
+                  apify/, openapi/, email/   actor runs, registry API, Hunter
 
-  io/              CSV reader, CSV writer, JSONL reader/writer, output_manager.
-                   Schemas (RAW_CSV_COLUMNS, ENRICHED_CSV_COLUMNS) live in types/lead.
+  judgment/     Two-axis judgment layer (collectors, judges, critic, config).
+  coverage/     Coverage gap map: industry × territory vs ISTAT universe.
+  compliance/   GDPR suppression list and retention.
+  persistence/  Tenant-scoped storage (in-memory + Postgres adapter).
+  server/       Local dashboard API (loopback-only, no auth by design) and the
+                MCP stdio server (path-sandboxed).
+  api/          Framework-neutral, tenant-scoped control-plane contracts — the
+                boundary a future authenticated API would implement.
+  scripts/      Scripts wired into CI/ops: output validation, completion check,
+                judgment eval, recovery agent.
 
-  server/          Local dashboard adapter and MCP stdio bridge. `api_server.ts`
-                   is intentionally single-tenant and loopback-only; it is not a
-                   production HTTP service.
-
-  api/             Framework-neutral, tenant-scoped control-plane contracts.
-                   They are the future authenticated adapter boundary, not the
-                   runtime used by the local dashboard today.
-
-web/               Independent Next.js dashboard project with its own lockfile,
-                   TypeScript, Next-aware lint and production-build gates. It
-                   speaks only to the local API adapter through `web/lib/api.ts`.
+tools/          Operator passes and research probes (typechecked, never shipped).
+web/            Setaccio dashboard: independent Next.js project with its own
+                lockfile and CI gate; talks only to the local API.
 
 tests/
-  fixtures/        Synthetic + real HTML, sample CSVs, RDAP JSON, baseline files.
-  unit/            ZERO network. Mocks/fixtures only. Run on every typecheck.
-  smoke/           Network-touching, gated by RUN_SMOKE=1. Skipped in CI default.
+  unit/         ZERO network. Mocks/fixtures only.
+  smoke/        Real network/browser, gated by RUN_SMOKE=1.
+  fixtures/     Synthetic + anonymised real HTML, sample CSVs, RDAP JSON.
 ```
 
 ## Command flow
@@ -121,18 +113,22 @@ CLI argv → cli/enrich.ts
        normalize
        discovery ladder (stages run in order; first success breaks):
          input_website_stage
+         pg_detail_stage       (the PG detail page's declared site)
          hyper_guesser_stage   (NER + DNS sweep + verify)
-         serp_stage            (free providers + SerpDeduplicator + verify)
+         serp_stage            (free providers, then gated paid pass)
          rdap_stage            (WHOIS rescue)
+       free-gold extraction from the verified site (+ contact pages)
+       official data + paid last-resort stages (opt-in, cost-capped)
        finalize: lead.cost_eur from CostLedger.costForLead(leadId)
   → io/output_manager: enriched CSV + JSONL
   → CostLedger.flushSummary(): structured summary line in <out>.cost-ledger.jsonl
 ```
 
-### run / benchmark (Phase 5+)
-- `cli/run.ts` — composes scrape → enrich end-to-end. It refuses to start
-  enrichment until the scrape coverage manifest is complete.
-- `cli/benchmark.ts` — pg4 vs pg3 on the same fixture set. Stub today.
+### pipeline / benchmark
+- `cli/run.ts` (`pnpm run pipeline`) — composes scrape → enrich end-to-end.
+  It refuses to start enrichment until the scrape coverage manifest is complete.
+- `cli/benchmark.ts` — fill-rate report over an enriched file (measured facts
+  only; accuracy is never inferred from found-counts).
 
 ## Invariants
 

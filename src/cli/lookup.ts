@@ -1,7 +1,8 @@
 import fs from 'fs';
 import path from 'path';
 import readline from 'readline';
-import { parseArgs, optString, hasHelp } from './_args';
+import { parseArgs, optString, hasHelp, reportFatal } from './_args';
+import { UserError } from '../runtime/errors';
 
 /**
  * Phase D.3 — data-subject lookup (GDPR right-to-access / right-to-deletion
@@ -96,18 +97,22 @@ async function scanFile(file: string, phoneKey?: string, vatKey?: string): Promi
 
 async function main(): Promise<number> {
   const args = parseArgs();
-  if (hasHelp(args) || (!optString(args, 'piva') && !optString(args, 'phone'))) {
+  if (hasHelp(args)) {
     printUsage();
-    return optString(args, 'piva') || optString(args, 'phone') ? 0 : 2;
+    return 0;
+  }
+  if (!optString(args, 'piva') && !optString(args, 'phone')) {
+    printUsage();
+    return 2; // invoked without a subject: usage error
   }
   const dir = optString(args, 'dir') ?? 'output';
   const pivaArg = optString(args, 'piva');
   const phoneArg = optString(args, 'phone');
 
   const vatKey = pivaArg ? normVat(pivaArg) : undefined;
-  if (pivaArg && !vatKey) throw new Error(`--piva must contain an 11-digit P.IVA, got "${pivaArg}"`);
+  if (pivaArg && !vatKey) throw new UserError(`--piva must contain an 11-digit P.IVA, got "${pivaArg}"`);
   const phoneKey = phoneArg ? normPhone(phoneArg) : undefined;
-  if (phoneArg && !phoneKey) throw new Error(`--phone must contain at least 6 digits, got "${phoneArg}"`);
+  if (phoneArg && !phoneKey) throw new UserError(`--phone must contain at least 6 digits, got "${phoneArg}"`);
 
   const allHits: Hit[] = [];
   let filesScanned = 0;
@@ -140,6 +145,6 @@ which files to edit or re-issue. Deletion itself stays manual by design.
 main()
   .then((code) => process.exit(code))
   .catch((err) => {
-    process.stderr.write(`[lookup] ${err.message}\n`);
+    reportFatal('lookup', err);
     process.exit(2);
   });

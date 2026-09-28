@@ -753,7 +753,7 @@ async function autoLoadCampaignData(): Promise<number> {
 }
 
 async function main(): Promise<void> {
-  process.stderr.write('[api] seeding from real free-gold output…\n');
+  process.stderr.write('[api] loading seed dataset…\n');
   seed = await loadSeed(REPO_ROOT, process.env.PG4_SEED_FILE);
   process.stderr.write(`[api] seeded ${seed.loaded} companies (${seed.rejected} rejected) from ${seed.sourceFile}\n`);
   if (!process.env.PG4_SEED_FILE && seed.loaded === 0) {

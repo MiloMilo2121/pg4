@@ -1,3 +1,7 @@
+import { UserError } from '../runtime/errors';
+import { EnvConfigError } from '../config/env';
+import { logger } from '../runtime/logger';
+
 /**
  * Minimal arg parser. Supports `--name=value`, `--name value`, and `--flag`.
  * Avoids pulling a dependency for the few CLI entries pg4 has.
@@ -44,7 +48,7 @@ export function hasHelp(args: ParsedArgs): boolean {
 export function reqString(args: ParsedArgs, key: string, hint = ''): string {
   const v = args.flags[key];
   if (typeof v !== 'string' || v.length === 0) {
-    throw new Error(`Missing required --${key}${hint ? ` (${hint})` : ''}`);
+    throw new UserError(`Missing required --${key}${hint ? ` (${hint})` : ''}`);
   }
   return v;
 }
@@ -52,4 +56,22 @@ export function reqString(args: ParsedArgs, key: string, hint = ''): string {
 export function optString(args: ParsedArgs, key: string): string | undefined {
   const v = args.flags[key];
   return typeof v === 'string' ? v : undefined;
+}
+
+/**
+ * Last-resort handler for CLI entry points. A user error (bad invocation,
+ * missing input, invalid .env) prints one clear line plus a usage hint; an
+ * unexpected failure is logged with its stack for debugging.
+ */
+export function reportFatal(command: string, err: unknown): void {
+  if (err instanceof UserError) {
+    process.stderr.write(`[${command}] ${err.message}\nRun \`pnpm ${command} --help\` for usage.\n`);
+    return;
+  }
+  if (err instanceof EnvConfigError) {
+    process.stderr.write(`[${command}] ${err.message}\n`);
+    return;
+  }
+  const e = err instanceof Error ? err : new Error(String(err));
+  logger.error({ err: e.message, stack: e.stack }, `[${command}] fatal`);
 }

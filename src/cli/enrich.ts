@@ -1,6 +1,6 @@
 import crypto from 'crypto';
 import path from 'path';
-import { parseArgs, reqString, optString, hasHelp } from './_args';
+import { parseArgs, reqString, optString, hasHelp, reportFatal } from './_args';
 import { logger, bindRunLogFile } from '../runtime/logger';
 import { RunRecorder, EXIT, installInterruptHandler } from '../runtime/run_record';
 import { getNotifier } from '../runtime/notifier';
@@ -164,6 +164,6 @@ Exit codes: 0 ok | 1 partial (row errors) | 2 fatal | 130 interrupted.
 main()
   .then((code) => process.exit(code))
   .catch((err) => {
-    logger.error({ err: err.message, stack: err.stack }, '[enrich] fatal');
+    reportFatal('enrich', err);
     process.exit(EXIT.FATAL);
   });

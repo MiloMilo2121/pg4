@@ -1,6 +1,7 @@
 import fs from 'fs';
 import { parse } from 'csv-parse';
 import type { Lead } from '../types/lead';
+import { UserError } from '../runtime/errors';
 
 /**
  * Stream CSV rows as Lead objects. Caller iterates with `for await ...`.
@@ -9,7 +10,7 @@ import type { Lead } from '../types/lead';
  */
 export async function* readCsvAsLeads(path: string): AsyncIterable<{ lead: Lead; lineNumber: number; ingestError?: string }> {
   if (!fs.existsSync(path)) {
-    throw new Error(`CSV input not found: ${path}`);
+    throw new UserError(`CSV input not found: ${path}`);
   }
   const stream = fs.createReadStream(path);
   const parser = stream.pipe(

@@ -1,53 +1,53 @@
-# data/reference — denominatore & tassonomie per la Coverage Gap Map
+# data/reference — denominator & taxonomies for the Coverage Gap Map
 
-Questi file alimentano il modulo `src/coverage/`. Sono letti a runtime (non importati),
-così possono essere aggiornati senza ricompilare.
+These files feed the `src/coverage/` module. They are read at runtime (not imported),
+so they can be updated without recompiling.
 
-## File
+## Files
 
 ### `ateco_divisions.json`
-Tassonomia industry canonica: le 88 divisioni ATECO 2007 (codice 2 cifre + sezione + label IT).
-Fonte: ISTAT, classificazione ATECO 2007. Stabile (cambia solo con una nuova classificazione,
-es. ATECO 2025 — quando adottata, sostituire il file e bumpare `_meta`).
+Canonical industry taxonomy: the 88 ATECO 2007 divisions (2-digit code + section + Italian label).
+Source: ISTAT, ATECO 2007 classification. Stable (changes only with a new classification,
+e.g. ATECO 2025 — when adopted, replace the file and bump `_meta`).
 
 ### `category_ateco_map.json`
-Crosswalk **categoria di scraping ↔ divisione ATECO**. È il ponte tra il campo `category`
-free-text dei lead scrapati e le righe dell'universo. Si costruisce incrementalmente,
-prioritizzato dalla gap map (le divisioni a maggiore opportunità ottengono i keyword-set per prime).
+Crosswalk **scraping category ↔ ATECO division**. It is the bridge between the free-text `category`
+field of scraped leads and the rows of the universe. It is built incrementally,
+prioritized by the gap map (the highest-opportunity divisions get their keyword sets first).
 
-### `istat_asia_universe.csv` — IL DENOMINATORE (dati REALI in produzione)
-Numero di **imprese attive** per `(divisione ATECO × provincia)`, Nord Italia.
+### `istat_asia_universe.csv` — THE DENOMINATOR (REAL data in production)
+Number of **active firms** per `(ATECO division × provincia)`, Northern Italy.
 
-Colonne: `ateco_division,province,active_firms,year,provenance`
-- `provenance = istat-asia` → riga da export ufficiale ISTAT (dato reale).
-- `provenance = sample` → riga segnaposto (solo nella fixture `*.sample.csv`).
+Columns: `ateco_division,province,active_firms,year,provenance`
+- `provenance = istat-asia` → row from an official ISTAT export (real data).
+- `provenance = sample` → placeholder row (only in the `*.sample.csv` fixture).
 
-**Stato attuale (giugno 2026): dati REALI caricati.** 3.432 celle, 47 province Nord, 79 divisioni
-ATECO, anno **2024**. Fonte: ISTAT SDMX REST, dataflow `183_277_DF_DICA_ASIAUE1P_5` (ASIA
-`DICA_ASIAUE1P`, misura `AENTN` = imprese attive). ASIA copre per costruzione le sezioni **B–S**
-(industria e servizi di mercato): restano fuori A (agricoltura), O (PA), T, U → 79/88 divisioni; non
-è una lacuna ma il perimetro ufficiale. Celle assenti = province piccole su divisioni rare senza dato
-pubblicato (segreto statistico / zero imprese): NON scritte, mai inventate.
+**Current state (June 2026): REAL data loaded.** 3,432 cells, 47 Northern provinces, 79 ATECO
+divisions, year **2024**. Source: ISTAT SDMX REST, dataflow `183_277_DF_DICA_ASIAUE1P_5` (ASIA
+`DICA_ASIAUE1P`, measure `AENTN` = active firms). By construction ASIA covers sections **B–S**
+(industry and market services): A (agriculture), O (public administration), T, U are left out → 79/88 divisions; this is
+not a gap but the official scope. Missing cells = small provinces on rare divisions with no published
+data (statistical confidentiality / zero firms): NOT written, never invented.
 
-La fixture **`istat_asia_universe.sample.csv`** (righe `provenance=sample`) resta SOLO per i test
-deterministici (`tests/unit/coverage_*`). Il motore segnala comunque `usesSampleUniverse` se una cella
-dovesse usare righe sample, così nessun placeholder passa per verità.
+The **`istat_asia_universe.sample.csv`** fixture (`provenance=sample` rows) is kept ONLY for the
+deterministic tests (`tests/unit/coverage_*`). The engine still flags `usesSampleUniverse` if a cell
+were to use sample rows, so no placeholder ever passes for truth.
 
-#### Come rigenerare il dato REALE (gratis, ~10 min, annuale)
-1. Aprire I.Stat: http://dati.istat.it → tema *"Imprese"* → archivio **ASIA — Imprese attive**
-   (tavola "Imprese attive per attività economica e classe di addetti", dettaglio provinciale).
-   In alternativa: dataset ISTAT `DICA_ASIAUE1P` via API SDMX
-   (`https://esploradati.istat.it`), oppure i CSV provinciali su https://www.istat.it/it/archivio/.
-2. Selezionare: territorio = province del Nord (o tutte, poi filtriamo via `geo_regions.ts`),
-   attività economica = **divisione ATECO** (2 cifre), anno = ultimo disponibile, misura = numero imprese.
-3. Esportare in CSV e rimappare le colonne in: `ateco_division,province,active_firms,year,provenance`
-   con `provenance = istat-asia`. La provincia va in **sigla** (MI, PD, …): se l'export usa il nome o
-   il codice ISTAT, convertire (il loader accetta solo sigle a 2 lettere).
-4. Sostituire le righe `sample` con i dati reali. Tenere o rimuovere le `sample`: il loader preferisce
-   `istat-asia` quando entrambe esistono per la stessa cella.
+#### How to regenerate the REAL data (free, ~10 min, yearly)
+1. Open I.Stat: http://dati.istat.it → topic *"Imprese"* (enterprises) → **ASIA — Imprese attive** archive
+   (table "Imprese attive per attività economica e classe di addetti", provincial detail).
+   Alternatively: the ISTAT dataset `DICA_ASIAUE1P` via the SDMX API
+   (`https://esploradati.istat.it`), or the provincial CSVs at https://www.istat.it/it/archivio/.
+2. Select: territory = Northern provinces (or all, then filter via `geo_regions.ts`),
+   economic activity = **ATECO division** (2 digits), year = latest available, measure = number of firms.
+3. Export to CSV and remap the columns to: `ateco_division,province,active_firms,year,provenance`
+   with `provenance = istat-asia`. The provincia must be the **2-letter code** (MI, PD, …): if the export uses the name or
+   the ISTAT code, convert it (the loader only accepts 2-letter codes).
+4. Replace the `sample` rows with the real data. Keeping or removing the `sample` rows is fine: the loader prefers
+   `istat-asia` when both exist for the same cell.
 
-> Nota sul caveat **ditte individuali**: ASIA conta TUTTE le imprese attive, incluse le ditte
-> individuali, che però NON compaiono nelle directory (PagineGialle/Maps). Per questo il motore
-> distingue universo *totale* da universo *indirizzabile-da-directory* (fattore per sezione ATECO,
-> vedi `src/coverage/config.ts`). Senza questo aggiustamento la copertura su settori dominati da
-> ditte individuali risulterebbe artificialmente bassa.
+> Note on the **sole proprietorship** (ditte individuali) caveat: ASIA counts ALL active firms, including sole
+> proprietorships, which however do NOT appear in the directories (PagineGialle/Maps). For this reason the engine
+> distinguishes the *total* universe from the *directory-addressable* universe (a factor per ATECO section,
+> see `src/coverage/config.ts`). Without this adjustment, coverage in sectors dominated by
+> sole proprietorships would look artificially low.

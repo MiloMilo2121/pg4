@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import { parseArgs, reqString, optString, hasHelp } from './_args';
+import { parseArgs, reqString, optString, hasHelp, reportFatal } from './_args';
 import { readCsvAsLeads } from '../io/csv_reader';
 import type { Lead } from '../types/lead';
 import { runJudgment } from '../judgment/run_judgment';
@@ -31,7 +31,19 @@ function flag(args: ReturnType<typeof parseArgs>, key: string): boolean {
 async function main(): Promise<number> {
   const args = parseArgs();
   if (hasHelp(args)) {
-    process.stdout.write('usage: pnpm run judge -- --input <csv> --out <jsonl> [--two-pass] [--paid] [--limit N] [--category X]\n');
+    process.stdout.write(`Usage:
+  pnpm run judge -- --input <companies.csv> --out <verdicts.jsonl> [options]
+
+Two-axis judgment: A = business potential, B = digital-presence quality.
+A high + B low marks a "silent gem" (target). Free and deterministic by
+default; --paid lets LLM judges refine the verdict when keys are configured.
+
+Options:
+  --two-pass      second pass that benchmarks each company against its category
+  --paid          enable LLM judges + paid sources (needs API keys in .env)
+  --limit N       judge only the first N rows
+  --category X    override the category used for benchmarking
+`);
     return 0;
   }
   const input = reqString(args, 'input', 'path to a CSV of companies');
@@ -116,6 +128,6 @@ function summaryRow(lead: Lead, r: JudgmentRecord) {
 main()
   .then((code) => process.exit(code))
   .catch((err) => {
-    process.stderr.write(`[judge] fatal: ${(err as Error).message}\n`);
+    reportFatal('judge', err);
     process.exit(2);
   });

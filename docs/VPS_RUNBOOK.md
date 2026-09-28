@@ -1,44 +1,44 @@
-# VPS Runbook — campagne pg4 su host stabile
+# VPS Runbook — pg4 campaigns on a stable host
 
-## Perché
-Post-mortem delle campagne Veneto: **il 99% dei fallimenti erano cadute di rete del
-client** (`net::ERR_INTERNET_DISCONNECTED` e affini — 3.626 occorrenze), causate dal
-laptop in movimento (sospensione macOS + wifi che salta). **Non** erano blocchi
-anti-bot (zero 403/429/captcha/Cloudflare nei log). La pipeline è ora indurita (retry
-in-pipeline, checkpoint unico, preflight che degrada) e su macOS il driver si
-auto-avvolge in `caffeinate`, ma il **fix definitivo per run multi-giorno** è spostare
-la campagna su un host cablato e sempre acceso.
+## Why
+Post-mortem of the Veneto campaigns: **99% of failures were client-side network
+drops** (`net::ERR_INTERNET_DISCONNECTED` and similar — 3,626 occurrences), caused by the
+laptop on the move (macOS sleep + flaky wifi). They were **not** anti-bot blocks
+(zero 403/429/captcha/Cloudflare in the logs). The pipeline is now hardened (in-pipeline
+retry, single checkpoint, preflight that degrades) and on macOS the driver
+self-wraps in `caffeinate`, but the **definitive fix for multi-day runs** is to move
+the campaign to a wired, always-on host.
 
-## Host consigliato (economico, EU)
-| opzione | ~costo/mese | note |
+## Recommended host (cheap, EU)
+| option | ~cost/month | notes |
 |---|---|---|
-| **Hetzner CX22** (2 vCPU, 4 GB, wired) | ~€4 | scelta di riferimento, rete 1 Gbit stabile |
-| Contabo VPS S | ~€5 | più RAM, IP datacenter |
-| Netcup RS 1000 | ~€6 | buona rete EU |
+| **Hetzner CX22** (2 vCPU, 4 GB, wired) | ~€4 | reference choice, stable 1 Gbit network |
+| Contabo VPS S | ~€5 | more RAM, datacenter IP |
+| Netcup RS 1000 | ~€6 | good EU network |
 
-**Requisiti minimi:** 2 vCPU / 2–4 GB RAM (Chromium headless), Ubuntu 22.04/24.04, IP EU.
-**Caveat:** l'IP è datacenter (non residenziale). Nei nostri log NON si sono visti
-blocchi, ma va monitorato: se comparissero 403/429 su PG/Maps, valutare un proxy
-residenziale o ridurre la concorrenza.
+**Minimum requirements:** 2 vCPU / 2–4 GB RAM (headless Chromium), Ubuntu 22.04/24.04, EU IP.
+**Caveat:** the IP is a datacenter IP (not residential). Our logs showed NO
+blocks, but it must be monitored: if 403/429 start appearing on PG/Maps, consider a
+residential proxy or reduce concurrency.
 
 ## Provisioning
 ```bash
-# sul VPS
-git clone https://github.com/MiloMilo2121/pg-omega.git
-bash pg-omega/krakow/scripts/vps_setup.sh
+# on the VPS
+git clone https://github.com/MiloMilo2121/pg4.git
+bash pg4/scripts/vps_setup.sh
 ```
-Installa Node 22 + pnpm, dipendenze, Playwright+Chromium con le librerie di sistema, `.env`.
+Installs Node 22 + pnpm, dependencies, Playwright+Chromium with the system libraries, `.env`.
 
-## Esecuzione resiliente
-Opzione A — tmux + watchdog (semplice):
+## Resilient execution
+Option A — tmux + watchdog (simple):
 ```bash
-cd pg-omega/krakow
+cd pg4
 tmux new -s campaign
-bash scripts/watchdog.sh PD VR VI VE TV RO BL   # rilancia da solo se muore
-# Ctrl-b d per staccare; `tmux attach -t campaign` per ricollegarti
+bash scripts/watchdog.sh PD VR VI VE TV RO BL   # relaunches itself if it dies
+# Ctrl-b d to detach; `tmux attach -t campaign` to reattach
 ```
 
-Opzione B — systemd (riparte al reboot):
+Option B — systemd (restarts on reboot):
 ```ini
 # /etc/systemd/system/pg4-campaign.service
 [Unit]
@@ -48,7 +48,7 @@ Wants=network-online.target
 [Service]
 Type=simple
 User=ubuntu
-WorkingDirectory=/home/ubuntu/pg-omega/krakow
+WorkingDirectory=/home/ubuntu/pg4
 ExecStart=/usr/bin/bash scripts/watchdog.sh PD VR VI VE TV RO BL
 Restart=on-failure
 RestartSec=30
@@ -60,13 +60,13 @@ sudo systemctl enable --now pg4-campaign
 journalctl -u pg4-campaign -f
 ```
 
-## Monitoraggio
-- Progresso celle: `tail -f output/recall/_campaign.log`
-- Conteggio aziende: `cat output/recall/*_raw.jsonl | wc -l`
+## Monitoring
+- Cell progress: `tail -f output/recall/_campaign.log`
+- Company count: `cat output/recall/*_raw.jsonl | wc -l`
 - Gap map: `pnpm run coverage -- --input "$(ls output/recall/*_raw.jsonl | paste -sd, -)" --out output/coverage`
 
-## Recupero dati sul locale
+## Pulling the data back locally
 ```bash
-rsync -avz vpsuser@HOST:~/pg-omega/krakow/output/recall/ ./output/recall_vps/
+rsync -avz vpsuser@HOST:~/pg4/output/recall/ ./output/recall_vps/
 ```
-Poi la dashboard li carica da sola (`pnpm run dev`), oppure genera la gap map in locale.
+Then the dashboard loads them automatically (`pnpm run dev`), or generate the gap map locally.
