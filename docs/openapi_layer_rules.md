@@ -4,8 +4,8 @@
 (request client + connection) is built and DISABLED. This file DEFINES the rules the
 ACTIVATION LAYER will enforce. 2026-06-16. Nothing is enabled; €0 until the operator says.*
 
-## The one rule, in Marco's words
-**"Openapi non è da usare a priori — solo TOP aziende, SU RICHIESTA."**
+## The one rule, as set by the operator
+**"Openapi is not to be used by default — only for TOP companies, ON REQUEST."**
 Openapi is never an automatic/default lever. It fires only for a TOP company, only on an
 explicit operator request. It is the deliberate, paid, deep-enrich — not the free pass.
 
@@ -24,7 +24,7 @@ explicit operator request. It is the deliberate, paid, deep-enrich — not the f
 1. **TOP-company eligibility predicate** (`isTopCompany(lead)`) — the gate on WHICH
    companies may be enriched. PROPOSED default (to confirm): a real legal entity worth
    the spend — e.g. società di capitali OR a checksum-valid/VIES-confirmed VAT OR a
-   revenue signal — NOT ditte individuali by default. Marco confirms the exact predicate.
+   revenue signal — NOT ditte individuali by default. The exact predicate is pending operator confirmation.
 2. **On-request only** — Openapi NEVER fires inside the free/automatic enrich. It is a
    SEPARATE, explicit action (a dashboard "deep enrich / + Openapi" button per company,
    or a curated request list). The free cascade must not auto-escalate to it.
@@ -36,7 +36,7 @@ explicit operator request. It is the deliberate, paid, deep-enrich — not the f
    and is the COVERAGE/official-VAT enumerator; it can have a lighter gate than the paid
    by-VAT calls, but stays operator-on-request (not automatic).
 
-## TWO DECISIONS for Marco (the rules to nail before the activation layer)
+## TWO PENDING OPERATOR DECISIONS (the rules to nail before the activation layer)
 - **What is a "top" company?** → the `isTopCompany` predicate (società-di-capitali? a
   revenue/employee threshold? operator-whitelist per request? a manual per-row pick?).
 - **The € ceiling** per request and per session (and whether to wire IT-advanced €0.10 +
@@ -52,10 +52,10 @@ explicit operator request. It is the deliberate, paid, deep-enrich — not the f
 - License gate (unchanged): redistribution-in-a-sold-product is a separate ToS question;
   the ENRICHMENT model (enrich the customer's own leads) is the cleared use.
 
-## Activation checklist (when Marco says go)
+## Activation checklist (on operator go-ahead)
 1. Key in `.env` (`OPENAPI_API_KEY`, `OPENAPI_ENABLED=true`). Sandbox first via `OPENAPI_BASE_URL=https://test.company.openapi.com`.
 2. ONE real `IT-advanced` + `IT-pec` call on a known top company → capture the response →
    finalise `mapAdvanced` field paths → write the REAL-data golden.
 3. Implement `isTopCompany` + the on-request action + the ceiling (the activation layer).
-4. Bounded slice on real AXEND leads → measure precision lift vs the free path → report.
+4. Bounded slice on real client leads → measure precision lift vs the free path → report.
 5. Never at scale without the operator. No push without the source-check.

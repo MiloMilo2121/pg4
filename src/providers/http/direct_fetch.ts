@@ -1,17 +1,33 @@
-import { request } from 'undici';
+import { request, type Dispatcher } from 'undici';
 import type { HttpFetchResult, HttpProvider } from '../../types/providers';
 import { DEFAULTS } from '../../config/defaults';
 import { fingerprintFor } from '../../runtime/fingerprint';
+import { assertPublicLiteralHost, publicInternetAgent } from './ssrf_guard';
+
+/** A page larger than this is never something we want in memory. */
+const MAX_BODY_BYTES = 10_000_000;
 
 /**
  * Tier 0 HTTP fetcher. Uses undici directly. Returns 200..399 with html on
  * success; otherwise sets `error`. Always cost 0.
+ *
+ * URLs come from scraped data, so by default every hop goes through the SSRF
+ * guard (no loopback / private / link-local / metadata destinations) and the
+ * body is capped at 10 MB even when the server sends no content-length.
  */
 export class DirectFetchProvider implements HttpProvider {
   readonly id = 'direct_fetch';
   readonly family = 'http' as const;
   readonly tier = 0;
   readonly costPerCallEur = 0;
+  private readonly dispatcher: Dispatcher | undefined;
+  private readonly allowPrivateNetwork: boolean;
+
+  /** `allowPrivateNetwork` exists for tests against a local server only. */
+  constructor(opts: { dispatcher?: Dispatcher; allowPrivateNetwork?: boolean } = {}) {
+    this.allowPrivateNetwork = opts.allowPrivateNetwork === true;
+    this.dispatcher = opts.dispatcher ?? (this.allowPrivateNetwork ? undefined : publicInternetAgent);
+  }
 
   available(): boolean {
     return true;
@@ -44,7 +60,9 @@ export class DirectFetchProvider implements HttpProvider {
         } catch {
           host = currentUrl;
         }
+        if (!this.allowPrivateNetwork) assertPublicLiteralHost(currentUrl);
         res = await request(currentUrl, {
+          dispatcher: this.dispatcher,
           method: 'GET',
           bodyTimeout: timeoutMs,
           headersTimeout: timeoutMs,
@@ -68,7 +86,7 @@ export class DirectFetchProvider implements HttpProvider {
 
       // A declared multi-hundred-MB "page" is never a page we want in memory.
       const contentLength = Number(res.headers['content-length'] ?? 0);
-      if (contentLength > 10_000_000) {
+      if (contentLength > MAX_BODY_BYTES) {
         await res.body.dump();
         return {
           status: res.statusCode,
@@ -84,7 +102,18 @@ export class DirectFetchProvider implements HttpProvider {
       const ct = `${res.headers['content-type'] ?? ''}`;
       let html: string | undefined;
       if (ct.includes('text/') || ct.includes('html') || ct.includes('xml') || ct === '') {
-        html = await res.body.text();
+        html = await readTextCapped(res.body, MAX_BODY_BYTES);
+        if (html === undefined) {
+          return {
+            status: res.statusCode,
+            html: undefined,
+            finalUrl: currentUrl,
+            duration_ms: Date.now() - start,
+            cost_eur: 0,
+            provider: this.id,
+            error: `body too large (> ${MAX_BODY_BYTES} bytes, no content-length)`,
+          };
+        }
       } else {
         await res.body.dump();
       }
@@ -109,4 +138,20 @@ export class DirectFetchProvider implements HttpProvider {
       };
     }
   }
+}
+
+/** Read a body as UTF-8 text, giving up (undefined) past `maxBytes` — undeclared sizes can be unbounded. */
+async function readTextCapped(body: Dispatcher.ResponseData['body'], maxBytes: number): Promise<string | undefined> {
+  const chunks: Buffer[] = [];
+  let total = 0;
+  for await (const chunk of body) {
+    const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk as Uint8Array);
+    total += buf.length;
+    if (total > maxBytes) {
+      body.destroy();
+      return undefined;
+    }
+    chunks.push(buf);
+  }
+  return Buffer.concat(chunks).toString('utf8');
 }

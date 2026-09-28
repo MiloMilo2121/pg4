@@ -18,6 +18,18 @@ export class Pg4Error extends Error {
   }
 }
 
+/**
+ * A mistake in how a command was invoked — missing flag, bad value, input
+ * file that does not exist. CLIs report it as one clear line (no stack
+ * trace); everything else is an unexpected failure and keeps its stack.
+ */
+export class UserError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'UserError';
+  }
+}
+
 /** Map a thrown error / network exception to a canonical reason_code. */
 export function classifyError(err: unknown): ReasonCode {
   if (err instanceof Pg4Error) return err.reasonCode;

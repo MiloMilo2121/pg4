@@ -12,7 +12,7 @@ Give pg4 a business category and a territory (*"real-estate agencies in the prov
 
 ![Setaccio dashboard: cockpit](docs/assets/dashboard-cockpit.png)
 
-<sub>The *Setaccio* dashboard (Next.js, Italian UI), running on the synthetic demo dataset (`pnpm demo`).</sub>
+<sub>The *Setaccio* dashboard (Next.js, Italian UI), running on the synthetic demo dataset (`pnpm demo`). Cockpit, companies and enrichment read live from the local API; some panels (market trends, national map, credits) still show the design prototype's illustrative figures and are labelled *dati di esempio*.</sub>
 
 ---
 
@@ -44,6 +44,7 @@ Give pg4 a business category and a territory (*"real-estate agencies in the prov
   - retry with backoff, circuit breakers and per-provider rate limits;
   - a PID-reuse-safe watchdog that relaunches dead campaigns;
   - a recovery agent that turns a broken cell into a pull request, with the merge to `main` held behind a protected environment.
+- **Safe on untrusted input.** URLs and mail hosts come from scraped data, so every fetch and SMTP dial is checked at connect time and can never reach `localhost`, private networks or the cloud-metadata endpoint, redirects included. Bodies are size-capped.
 - **Safe to hand to an agent.** The MCP server sandboxes every path an agent sends. Outputs must stay under `output/`, and traversal, symlink escapes and dotfiles are rejected.
 - **Strict gates.**
   - TypeScript `strict`, with `noUnusedLocals`/`noUnusedParameters` on.

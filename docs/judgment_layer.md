@@ -1,51 +1,51 @@
 # Judgment Layer (L2–L5) — runbook & activation
 
-Estende PG4 con discovery refinement (sito+social) e un **giudizio a due assi**:
-**A** = forza intrinseca (fonti TERZE), **B** = qualità auto-espressione (canali OWNED),
-**GAP = A−B**, verdetto target + leva. Target = A alto + B basso; falso positivo = "fuffa" (A basso + B alto).
+Extends PG4 with discovery refinement (website+social) and a **two-axis judgment**:
+**A** = intrinsic strength (THIRD-PARTY sources), **B** = quality of self-expression (OWNED channels),
+**GAP = A−B**, target verdict + lever. Target = high A + low B; false positive = "fuffa" (fluff: low A + high B).
 
-Fonte di verità del giudizio: l'ontologia interna della forza commerciale (v2, non pubblicata).
-La logica vive in `src/judgment/config/` (trascritta da v2, ogni voce con `ref`; un test lo impone).
-Solo i **numeri** (soglie/pesi) sono estensione di sistema — `thresholds` in `config/v0.ts`.
+Source of truth for the judgment: the internal commercial-strength ontology (v2, unpublished).
+The logic lives in `src/judgment/config/` (transcribed from v2, every entry carries a `ref`; a test enforces this).
+Only the **numbers** (thresholds/weights) are a system extension — `thresholds` in `config/v0.ts`.
 
-## Come gira (offline-first, free, €0)
-- **Website adapter**: live, gratis — funziona da solo.
-- **A-collector via SERP free (Bing)**: cerca premi/brevetti/marchi-storici/stampa a €0 (basso-yield).
-- Tutto il resto (Places, registro OpenAPI, social-search a pagamento, **LLM giudici**) è **wired-but-disabled** dietro chiave+flag. Senza chiavi i giudici girano **deterministici** (baseline trasparente); con `--paid`+chiavi si raffinano con Claude.
+## How it runs (offline-first, free, €0)
+- **Website adapter**: live, free — works on its own.
+- **A-collector via free SERP (Bing)**: searches for awards/patents/heritage trademarks/press at €0 (low yield).
+- Everything else (Places, OpenAPI registry, paid social search, **LLM judges**) is **wired-but-disabled** behind key+flag. Without keys the judges run **deterministically** (transparent baseline); with `--paid`+keys they are refined with Claude.
 
-## Eseguire
+## Running
 
 ### Dashboard (dev)
 ```
 pnpm run serve            # http://localhost:8787
-# poi nel front end (web/): seleziona aziende → pulsanti L2 Discovery · L3 Segnali A/B · L4 Giudizio · L5 Validazione
-# la colonna "Verdetto" mostra target + quadrante (A?B? = asse non misurato, NON A basso)
+# then in the front end (web/): select companies → buttons L2 Discovery · L3 Segnali A/B · L4 Giudizio · L5 Validazione
+# the "Verdetto" (verdict) column shows target + quadrant (A?B? = axis not measured, NOT low A)
 ```
 
-### CLI su una lista (CSV)
+### CLI on a list (CSV)
 ```
 pnpm run judge -- --input output/lista.csv --out output/judged.jsonl [--two-pass] [--paid] [--limit N]
 ```
-`--two-pass` (§17): pass-1 raccoglie i segnali → calcola il benchmark di categoria → pass-2 giudica RELATIVO alla mediana. Output: una riga JSONL per azienda (target/quadrante/scoreA/scoreB/leve/validation) + summary a video.
+`--two-pass` (§17): pass 1 collects the signals → computes the category benchmark → pass 2 judges RELATIVE to the median. Output: one JSONL line per company (target/quadrant/scoreA/scoreB/levers/validation) + an on-screen summary.
 
 ### Golden set / eval (§15)
 ```
-cp tests/fixtures/judgment_golden.example.json tests/fixtures/judgment_golden.json   # poi RIEMPI a mano
+cp tests/fixtures/judgment_golden.example.json tests/fixtures/judgment_golden.json   # then FILL IN by hand
 pnpm run judge:eval -- --golden tests/fixtures/judgment_golden.json [--paid]
 ```
-Stampa: precision/recall sul verdetto target + **accordo-A e accordo-B SEPARATI** (sai quale giudice sbaglia) + matrice di confusione sui quadranti.
+Prints: precision/recall on the target verdict + **A-agreement and B-agreement SEPARATELY** (so you know which judge is wrong) + a confusion matrix over the quadrants.
 
-## Attivare le fonti-A forti (chiavi — scelta per vertical)
-In `.env` (poi `--paid` dove richiesto):
-- **Registro camerale** (manifattura): `OPENAPI_ENABLED=true`, `OPENAPI_API_KEY=…` → anzianità/dipendenti/export/oggetto sociale (il vero spine-A B2B). Entity-guard `isWrongEntity` già applicato.
-- **Google Places** (dentale/ristorazione): `GOOGLE_PLACES_ENABLED=true`, `GOOGLE_PLACES_API_KEY=…` → contenuto/rating recensioni (spine-A locale) + GBP/gestione (B, parziale via API).
-- **LLM giudici (Claude)**: `ANTHROPIC_ENABLED=true`, `ANTHROPIC_API_KEY=…` **oppure** `OPENROUTER_ENABLED=true`, `OPENROUTER_API_KEY=…`. Poi `--paid`.
-- Ad-library / social-managed: `ADLIB_*`, `BRIGHTDATA_*`/`FIRECRAWL_*` (opzionali).
+## Activating the strong A sources (keys — choice per vertical)
+In `.env` (then `--paid` where required):
+- **Chamber of Commerce registry** (manufacturing): `OPENAPI_ENABLED=true`, `OPENAPI_API_KEY=…` → company age/employees/export/corporate purpose (the real B2B A-spine). Entity guard `isWrongEntity` already applied.
+- **Google Places** (dental/restaurants): `GOOGLE_PLACES_ENABLED=true`, `GOOGLE_PLACES_API_KEY=…` → review content/rating (local A-spine) + GBP/management (B, partial via API).
+- **LLM judges (Claude)**: `ANTHROPIC_ENABLED=true`, `ANTHROPIC_API_KEY=…` **or** `OPENROUTER_ENABLED=true`, `OPENROUTER_API_KEY=…`. Then `--paid`.
+- Ad library / managed social: `ADLIB_*`, `BRIGHTDATA_*`/`FIRECRAWL_*` (optional).
 
-Tutto è paid-gate OFF di default: nessuna chiamata a pagamento senza flag+chiave.
+Everything is paid-gated OFF by default: no paid call without flag+key.
 
-## Rischio residuo (da non dimenticare)
-La **tesi** — il giudizio a due assi riconosce l'azienda forte-e-silente — è provata a **livello logico** (test `A+B-→target yes`), **NON su dati reali**. Con un asse A spento, ogni azienda esce verso `A?`/fuffa. La validazione vera arriva **solo** col golden set con **A misurato** (una fonte-A forte ON). Sequenza: (1) fix quadrante ✓ → (2) accendi UNA fonte-A per vertical → (3) golden set con A misurato → (4) SOLO ALLORA tara `thresholds`.
+## Residual risk (do not forget)
+The **thesis** — that the two-axis judgment recognizes the strong-but-silent company — is proven at the **logical level** (test `A+B-→target yes`), **NOT on real data**. With the A axis off, every company drifts towards `A?`/fuffa. Real validation comes **only** from the golden set with **measured A** (one strong A source ON). Sequence: (1) quadrant fix ✓ → (2) turn on ONE A source per vertical → (3) golden set with measured A → (4) ONLY THEN tune `thresholds`.
 
 ## Versioning (§20)
-Ogni verdetto è timbrato `{ontology_version, judgment_config_version, judge_prompt_version, model_id}`. Cambiare la logica = nuova versione di `judgment_config` + re-run L4, **mai** una migration. Lo schema (`db/migrations/0002`) tiene solo output + snapshot della config come *dato*.
+Every verdict is stamped `{ontology_version, judgment_config_version, judge_prompt_version, model_id}`. Changing the logic = a new `judgment_config` version + an L4 re-run, **never** a migration. The schema (`db/migrations/0002`) only holds the output + a snapshot of the config as *data*.

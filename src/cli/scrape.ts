@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import { parseArgs, reqString, optString, hasHelp } from './_args';
+import { parseArgs, reqString, optString, hasHelp, reportFatal } from './_args';
 import { logger, bindRunLogFile } from '../runtime/logger';
 import { runFixtureMode, runLiveMode } from '../discovery/scrape_pipeline';
 import { acquireOutputLock } from '../runtime/output_lock';
@@ -261,6 +261,6 @@ function parsePositiveInt(v: string | undefined, flag: string): number | undefin
 main()
   .then((code) => process.exit(code))
   .catch((err) => {
-    logger.error({ err: err.message, stack: err.stack }, '[scrape] failed');
+    reportFatal('scrape', err);
     process.exit(EXIT.FATAL);
   });

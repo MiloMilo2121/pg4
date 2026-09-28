@@ -1,5 +1,5 @@
 import fs from 'fs';
-import { parseArgs, reqString, optString, hasHelp } from './_args';
+import { parseArgs, reqString, optString, hasHelp, reportFatal } from './_args';
 import { readCsvAsLeads } from '../io/csv_reader';
 import type { Lead } from '../types/lead';
 import { logger } from '../runtime/logger';
@@ -145,6 +145,6 @@ Flags:
 }
 
 main().catch((err) => {
-  logger.error({ err: err.message }, '[benchmark] failed');
+  reportFatal('benchmark', err);
   process.exit(1);
 });

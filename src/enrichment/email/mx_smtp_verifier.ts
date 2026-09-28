@@ -1,5 +1,6 @@
 import * as dns from 'dns';
 import * as net from 'net';
+import { BlockedDestinationError, guardedLookup, isNonPublicAddress } from '../../providers/http/ssrf_guard';
 
 /**
  * MX + SMTP-RCPT email verifier — the handshake that makes inference safe.
@@ -175,7 +176,13 @@ function defaultRandomLocalPart(): string {
  */
 export const defaultDialer: SmtpDialer = (host, { port, timeoutMs }) =>
   new Promise<SmtpSession>((resolve, reject) => {
-    const socket = net.connect({ host, port });
+    // MX hosts come from DNS of scraped domains: never dial a non-public
+    // address (IP literals checked here, hostnames at lookup time).
+    if (net.isIP(host) && isNonPublicAddress(host)) {
+      reject(new BlockedDestinationError(host, host));
+      return;
+    }
+    const socket = net.connect({ host, port, lookup: guardedLookup() });
     socket.setTimeout(timeoutMs);
     socket.setEncoding('utf8');
 

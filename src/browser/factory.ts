@@ -165,8 +165,13 @@ export class BrowserFactory {
   }
 }
 
-/** Avoids the require-vs-import friction with playwright/patchright. */
+/**
+ * Lazy-load the browser driver (playwright, or patchright when enabled) so the
+ * offline paths never pay for it. A plain dynamic import: under this repo's
+ * CommonJS output it compiles to `require`, which both drivers support — the
+ * old `new Function('return import(s)')` trick broke under vitest's VM
+ * ("A dynamic import callback was not specified").
+ */
 async function dynamicImport(name: string): Promise<unknown> {
-  const importer = new Function('s', 'return import(s)') as (s: string) => Promise<unknown>;
-  return importer(name);
+  return import(name);
 }

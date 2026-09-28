@@ -14,6 +14,13 @@ const CRUMB_A: Record<Nav, string> = {
   sistema: 'Sistema',
 };
 
+/**
+ * Views whose panels still render the design prototype's illustrative figures
+ * (market trends, national map totals, credits) instead of live API data.
+ * Flagged in the UI so a demo never passes sample numbers off as measured.
+ */
+const PROTOTYPE_DATA_VIEWS: ReadonlySet<Nav> = new Set<Nav>(['analytics', 'italia', 'sistema']);
+
 export default function Topbar({ st, set }: Pick<ViewProps, 'st' | 'set'>) {
   const markets = useMarkets();
   const mkt = markets.find((m) => m.id === st.market) ?? markets[0];
@@ -46,6 +53,21 @@ export default function Topbar({ st, set }: Pick<ViewProps, 'st' | 'set'>) {
         <span style={{ color: 'var(--ink-2)' }}>{label}</span>
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+        {PROTOTYPE_DATA_VIEWS.has(st.nav) && (
+          <span
+            title="Alcuni pannelli di questa vista mostrano cifre illustrative del prototipo di design, non dati misurati."
+            style={{
+              padding: '5px 11px',
+              border: '1px dashed var(--line)',
+              borderRadius: 999,
+              fontSize: '.72rem',
+              letterSpacing: '.04em',
+              color: 'var(--ink-3)',
+            }}
+          >
+            dati di esempio
+          </span>
+        )}
         <div
           onClick={cycleMarket}
           style={{

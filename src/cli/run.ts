@@ -1,6 +1,6 @@
 import crypto from 'crypto';
 import path from 'path';
-import { parseArgs, reqString, optString, hasHelp } from './_args';
+import { parseArgs, reqString, optString, hasHelp, reportFatal } from './_args';
 import { logger, bindRunLogFile } from '../runtime/logger';
 import { runLiveMode } from '../discovery/scrape_pipeline';
 import { acquireOutputLock } from '../runtime/output_lock';
@@ -231,6 +231,6 @@ function parseIntOrUndefined(v: string | undefined): number | undefined {
 main()
   .then((code) => process.exit(code))
   .catch((err) => {
-    logger.error({ err: err.message, stack: err.stack }, '[run] failed');
+    reportFatal('pipeline', err);
     process.exit(EXIT.FATAL);
   });

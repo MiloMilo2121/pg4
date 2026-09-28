@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { stringify } from 'csv-stringify/sync';
-import { parseArgs, reqString, optString, hasHelp } from './_args';
+import { parseArgs, reqString, optString, hasHelp, reportFatal } from './_args';
 import type { Lead } from '../types/lead';
 import { readCsvAsLeads } from '../io/csv_reader';
 import { buildCoverageReport } from '../coverage/coverage_engine';
@@ -160,6 +160,6 @@ Flags:
 main()
   .then((code) => process.exit(code))
   .catch((err) => {
-    process.stderr.write(`[coverage] ${(err as Error).message}\n`);
+    reportFatal('coverage', err);
     process.exit(2);
   });
