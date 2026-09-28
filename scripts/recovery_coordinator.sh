@@ -380,7 +380,11 @@ NODE
     [ "$state_status" = "pending" ] || { echo "recovery for $CELL is $state_status" >&2; exit 1; }
     ensure_dispatch "$STATE" || exit 1
     timeout="${RECOVERY_WAIT_SECONDS:-3600}"; started="$(date +%s)"
-    while [ $(( $(date +%s) - started )) -lt "$timeout" ]; do
+    # Poll at least once before the deadline check: with whole-second
+    # timestamps a short timeout could otherwise expire before the first poll.
+    first_poll=1
+    while [ "$first_poll" = 1 ] || [ $(( $(date +%s) - started )) -lt "$timeout" ]; do
+      first_poll=0
       outcome="$(workflow_outcome "$STATE")" || { sleep 30; continue; }
       case "$outcome" in
         completed:success)
