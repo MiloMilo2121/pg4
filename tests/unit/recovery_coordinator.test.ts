@@ -67,6 +67,57 @@ describe('recovery coordinator', { timeout: 30_000 }, () => {
     });
   });
 
+  it('polls the workflow at least once even when the wait budget is already spent (no zero-poll timeout)', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pg4-recovery-coordinator-'));
+    dirs.push(dir);
+    const bin = path.join(dir, 'bin');
+    const out = path.join(dir, 'out');
+    const queue = path.join(out, '.recovery');
+    fs.mkdirSync(bin, { recursive: true });
+    fs.mkdirSync(queue, { recursive: true });
+
+    makeExecutable(path.join(bin, 'git'), '#!/usr/bin/env bash\nexit 0\n');
+    makeExecutable(path.join(bin, 'sleep'), '#!/usr/bin/env bash\nexit 0\n');
+    makeExecutable(path.join(bin, 'pnpm'), '#!/usr/bin/env bash\nexit 0\n');
+    makeExecutable(
+      path.join(bin, 'curl'),
+      '#!/usr/bin/env bash\nprintf \'{"workflow_runs":[{"display_title":"Recovery incident-1 attempt 1","status":"completed","conclusion":"success"}]}\'\n',
+    );
+
+    const statePath = path.join(queue, 'centro_estetico_BL.json');
+    fs.writeFileSync(statePath, JSON.stringify({
+      version: 1,
+      cell: 'centro_estetico_BL',
+      incident_id: 'incident-1',
+      envelope: { output_csv: path.join(out, 'centro_estetico_BL_raw.csv') },
+      command: ['/bin/sh', '-c', 'exit 0'],
+      attempts: 1,
+      status: 'pending',
+    }));
+
+    const result = spawnSync(
+      'bash',
+      ['scripts/recovery_coordinator.sh', 'wait-and-resume', '--out', out, '--cell', 'centro_estetico_BL'],
+      {
+        cwd: process.cwd(),
+        encoding: 'utf8',
+        env: {
+          ...process.env,
+          PATH: `${bin}:${process.env.PATH}`,
+          GH_RECOVERY_TOKEN: 'test-token',
+          GH_REPOSITORY: 'owner/repo',
+          RECOVERY_WAIT_SECONDS: '0',
+        },
+      },
+    );
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(JSON.parse(fs.readFileSync(statePath, 'utf8'))).toMatchObject({
+      status: 'complete',
+      last_resume_exit: 0,
+    });
+  });
+
   it('never re-dispatches a run held for approval by the recovery-merge environment (status "waiting")', () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pg4-recovery-coordinator-'));
     dirs.push(dir);
