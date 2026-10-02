@@ -2,8 +2,8 @@ import type { Lead } from '../types/lead';
 import { has } from '../util/values';
 
 /**
- * ENRICH-3 — composite lead quality score (0..1). The `lead_score` column
- * existed since schema v1 but was never computed; this is its single source.
+ * Composite lead quality score (0..1). Single source for the `lead_score`
+ * column.
  *
  * Semantics: contactability + qualification signal for outreach. Fixed
  * weights summing to 1.0; a MISSING component contributes 0 (no

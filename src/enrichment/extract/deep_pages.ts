@@ -1,10 +1,10 @@
 /**
- * Phase B.1 (free-gold, deepened) — extend the free extractor BEYOND the
+ * Free-gold, deepened — extend the free extractor BEYOND the
  * homepage to the firm's own contact/about pages, at the cost of a few extra
  * same-site fetches (€0 marginal API cost; just HTTP).
  *
  * Rationale: ~half of Italian SMB sites print the business email only on
- * /contatti or /chi-siamo, not the homepage footer. The Phase-1 `extractFromBody`
+ * /contatti or /chi-siamo, not the homepage footer. The `extractFromBody`
  * is PURE (homepage HTML in → values out). This module adds the IMPURE layer:
  * discover the contact links ON the homepage, fetch a bounded set of them, run
  * the SAME pure extractor on each, and merge — so email/social/VAT all benefit
@@ -18,7 +18,8 @@
  * field_registry `email.pattern_guess`, wired but disabled by default.)
  */
 import * as cheerio from 'cheerio';
-import { extractFromBody, registrableDomain } from './extract_from_body';
+import { registrableDomain } from '../../util/domain';
+import { extractFromBody } from './extract_from_body';
 import type { BodyExtraction } from './extract_from_body';
 import { RateLimiter } from '../../runtime/rate_limiter';
 
@@ -26,7 +27,7 @@ import { RateLimiter } from '../../runtime/rate_limiter';
 const CONTACT_LINK_RE = /contatt|chi[-\s]?siamo|chisiamo|azienda|dove[-\s]?siamo|contact|about|impressum|note[-\s]?legali/i;
 
 /**
- * PER-DOMAIN courtesy rate-limit (generalizes the bug#4 lesson to the website path).
+ * PER-DOMAIN courtesy rate-limit.
  * deepExtractFromSite fetches a site's homepage + up to 2 contact pages in quick
  * succession, and the dev-server pool runs 5 companies at once. Unthrottled that is a
  * burst against each SMB site (WAF/ban risk + the silent-fail class). A per-DOMAIN

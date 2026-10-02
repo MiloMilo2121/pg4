@@ -5,13 +5,13 @@ import { describe, expect, it } from 'vitest';
 import { logger, bindRunLogFile, runLogPath } from '../../src/runtime/logger';
 
 /**
- * Phase A.1 — per-run log file.
+ * Per-run log file.
  *
  * The logger is a module singleton, so this test exercises the REAL
  * instance: bind a temp file, log a line, assert it lands as parseable
  * JSONL. Binding is first-wins, so the suite binds exactly once.
  */
-describe('logger run file — Phase A.1', () => {
+describe('logger run file', () => {
   it('bindRunLogFile flushes buffered lines and mirrors subsequent logs as JSONL', () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pg4-log-'));
     const logPath = path.join(dir, 'run.log.jsonl');

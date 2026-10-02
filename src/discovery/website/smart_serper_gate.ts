@@ -4,12 +4,12 @@ import { isCommonBareStem } from './semantic_evidence';
 import { buildCompanyQueries, type QueryVariant } from './query_variants';
 
 /**
- * R4 — SmartSerperGate.
+ * SmartSerperGate.
  *
  * Decides whether a lead has earned a paid SERP call. The contract is
  * SIGNAL-BASED, not budget-based: budget is enforced separately by
  * `ProviderRouter` (per-lead cap + run-level cap with atomic
- * reservation, both already in place after G.1). This module is the
+ * reservation, both already in place). This module is the
  * EARLIER veto layer — "Serper deve diventare un bisturi, non una rete
  * da pesca".
  *
@@ -24,10 +24,10 @@ import { buildCompanyQueries, type QueryVariant } from './query_variants';
  *   DENY if the lead has NO deterministic signal beyond the name —
  *     no vat_code, no phone (≥8 digits), no email domain, no pg_url,
  *     no address-with-locality. A name-only paid SERP call dominantly
- *     returns global homonyms; pg3 fired these and bled budget on
+ *     returns global homonyms; such calls bleed budget on
  *     "Camelot Sas" / "Fusion S.a.s." style queries.
  *
- *   ALLOW otherwise. The decision returns the subset of R2 query
+ *   ALLOW otherwise. The decision returns the subset of query
  *     variants the lead actually has signal for, ordered by priority.
  *     The caller picks the top-N (default 1, configurable).
  *
@@ -35,7 +35,7 @@ import { buildCompanyQueries, type QueryVariant } from './query_variants';
  * stay 0-network.
  */
 
-export type SerperGateSignal =
+type SerperGateSignal =
   | 'vat'
   | 'phone'
   | 'email_domain'
@@ -49,7 +49,7 @@ export interface SerperGateDecision {
   reasons: string[];
   /** Which positive signals were observed (subset; informational). */
   signals: SerperGateSignal[];
-  /** R2 variants compatible with the signals available. Empty when allow=false. */
+  /** Query variants compatible with the signals available. Empty when allow=false. */
   recommendedQueries: QueryVariant[];
 }
 
@@ -58,7 +58,7 @@ export interface SmartSerperGateOpts {
    * Max number of variants to surface in `recommendedQueries`. The
    * caller decides how many to actually fire — having a small bounded
    * list lets the SerpStage stay simple while leaving the door open
-   * for parallel paid queries later (R6 benchmark may want this).
+   * for parallel paid queries later.
    * Default 3.
    */
   maxQueries?: number;
@@ -118,7 +118,7 @@ export function evaluateSerperGate(
   }
 
   // ---- Veto: empty / stop-word-only name ---------------------------------
-  // R2 returns [] for those — if the variant builder can't produce a
+  // The variant builder returns [] for those — if it can't produce a
   // single variant, the gate has nothing to fire.
   const variants = buildCompanyQueries(normalized);
   if (variants.length === 0) {
@@ -127,7 +127,8 @@ export function evaluateSerperGate(
   }
 
   // ---- Filter variants by signal availability ----------------------------
-  // R2 already skips variants whose required signal is missing (e.g.
+  // The variant builder already skips variants whose required signal is
+  // missing (e.g.
   // no phone → no `phone` variant). We additionally drop the weakest
   // fallbacks (`official`, `fallback_contact`) when stronger vectors
   // exist, on the basis that paid SERP burns money on those generic

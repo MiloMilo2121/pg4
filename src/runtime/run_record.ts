@@ -3,13 +3,13 @@ import path from 'path';
 import { logger } from './logger';
 
 /**
- * Phase A.2 — run history audit trail.
+ * Run history audit trail.
  *
  * One JSONL record per CLI run, appended to `<outdir>/_runs.jsonl`. The file
  * doubles as:
  *   - operational run history ("what ran last week, what did it cost")
  *   - audit log ("which inputs were processed when" — GDPR Art. 30 support)
- *   - baseline store for yield-anomaly detection (Phase A.4)
+ *   - baseline store for yield-anomaly detection (`assessYield`)
  *
  * Records are append-only; the file is never truncated by pg4.
  */
@@ -46,11 +46,11 @@ export interface RunRecord {
   total_cost_eur?: number;
   /** Per-comune pre-dedupe parsed-lead counts (scrape only). */
   comuni_yield?: Record<string, number>;
-  /** Phase A.4 — true when ≥1 comune yielded < 30% of its historical average. */
+  /** True when ≥1 comune yielded < 30% of its historical average. */
   suspect?: boolean;
   suspect_comuni?: string[];
   /**
-   * Gate-0 — provider ids that made ≥N calls this run and succeeded 0 times
+   * Provider ids that made ≥N calls this run and succeeded 0 times
    * (the dns_mx/crtsh silent-failure class). Empty/absent when all healthy.
    */
   provider_dead?: string[];
@@ -158,7 +158,7 @@ export interface YieldAssessment {
 }
 
 /**
- * Phase A.4 — yield anomaly detection.
+ * Yield anomaly detection.
  *
  * Compares this run's per-comune yield against the historical average for the
  * same command+category from prior `ok`/`partial` runs. A comune is suspect
@@ -196,7 +196,7 @@ export function assessYield(
 }
 
 /**
- * Phase B.5 — graceful shutdown.
+ * Graceful shutdown.
  *
  * First SIGINT/SIGTERM triggers `onSignal` (fast: abort controllers, set
  * flags) and arms a watchdog. The NATURAL completion path is expected to

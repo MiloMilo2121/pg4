@@ -4,7 +4,7 @@ import { logger } from '../runtime/logger';
 
 /**
  * Minimal arg parser. Supports `--name=value`, `--name value`, and `--flag`.
- * Avoids pulling a dependency for the few CLI entries pg4 has.
+ * Avoids pulling a dependency for the few CLI entries here.
  */
 export interface ParsedArgs {
   positional: string[];

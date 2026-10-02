@@ -1,4 +1,5 @@
 import type { AssessedWebsite, WebsiteClassification } from '../../types/discovery';
+import { registrableDomain } from '../../util/domain';
 import { isDirectoryOrSocial } from './content_filter';
 
 /**
@@ -59,9 +60,6 @@ const MESSAGING_OR_REDIRECT_HOSTS = new Set([
 /**
  * Classifies a raw input URL and generates URL variants to try
  * (https/http × www/no-www × path/no-path × registrable host).
- *
- * Ported from pg3/foundation/InputWebsiteCandidate.ts with the ContentFilter
- * dependency inverted to a pure function import.
  */
 export class InputWebsiteCandidate {
   static assess(rawUrl?: string): AssessedWebsite {
@@ -142,7 +140,7 @@ export class InputWebsiteCandidate {
   private static buildCandidates(normalized: string): string[] {
     const parsed = new URL(normalized);
     const hostNoWww = parsed.hostname.replace(/^www\./, '');
-    const registrable = this.toRegistrable(hostNoWww);
+    const registrable = registrableDomain(hostNoWww);
     const path = parsed.pathname || '';
     const hasPath = path !== '' && path !== '/';
     const seen = new Set<string>();
@@ -183,15 +181,5 @@ export class InputWebsiteCandidate {
       if (parsed.protocol === 'http:') push('https:', wwwReg, false);
     }
     return out;
-  }
-
-  private static toRegistrable(hostname: string): string | undefined {
-    const labels = hostname.split('.').map((s) => s.trim().toLowerCase()).filter(Boolean);
-    if (labels.length < 3) return hostname;
-    const cc2L = new Set(['ac', 'co', 'com', 'edu', 'gov', 'net', 'org']);
-    const last = labels[labels.length - 1];
-    const penult = labels[labels.length - 2];
-    if (last.length === 2 && cc2L.has(penult) && labels.length >= 3) return labels.slice(-3).join('.');
-    return labels.slice(-2).join('.');
   }
 }

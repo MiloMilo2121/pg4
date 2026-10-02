@@ -3,9 +3,9 @@ import { getActiveJudgmentConfig, collectLogicRefs, cheapDisqualifiers, snapshot
 import { JUDGMENT_SECTIONS } from '../../../src/types/judgment';
 
 /**
- * Plan §0 / §4bis: the judgment LOGIC is TRANSCRIBED from ontology v2, not
- * improvised. This test enforces that every logic entry carries a v2 section ref
- * (the "creta-logica ancorata a v2" contract). Only the numbers are free.
+ * The judgment LOGIC is TRANSCRIBED from ontology v2, not improvised. This
+ * test enforces that every logic entry carries a v2 section ref (the
+ * "creta-logica ancorata a v2" contract). Only the numbers are free.
  */
 describe('judgment_config fidelity to ontology v2', () => {
   const cfg = getActiveJudgmentConfig();
@@ -24,20 +24,20 @@ describe('judgment_config fidelity to ontology v2', () => {
     }
   });
 
-  it('covers Judge A §2.1–2.7 + the §2.8 per-model declension', () => {
+  it('covers Judge A sub-dimensions 2.1–2.7 + the 2.8 per-model declension', () => {
     expect(cfg.judgeA.subdims.map((s) => s.dim).sort()).toEqual(['2.1', '2.2', '2.3', '2.4', '2.5', '2.6', '2.7']);
     expect(cfg.judgeA.modelDeclination.map((m) => m.model)).toContain('B2B_manufacturing');
     expect(cfg.judgeA.modelDeclination.map((m) => m.model)).toContain('professional_local');
   });
 
-  it('covers Judge B surfaces §3.1–3.15 + website rubric + §3.16', () => {
+  it('covers Judge B surfaces 3.1–3.15 + website rubric + 3.16', () => {
     expect(cfg.judgeB.surfaces.length).toBe(15);
     expect(cfg.judgeB.websiteRubric.validityLens.length).toBeGreaterThan(3);
     expect(cfg.judgeB.websiteRubric.qualityLens.length).toBeGreaterThan(6);
     expect(cfg.judgeB.transversalCriteria.length).toBe(6);
   });
 
-  it('covers the GAP machinery: quadrants, causes §4.4, disqualifiers §4.5, archetypes VI, levers VII, traps §5.3', () => {
+  it('covers the GAP machinery: quadrants, causes, disqualifiers, archetypes, levers, traps', () => {
     expect(cfg.gap.quadrants.length).toBe(4);
     expect(cfg.gap.quadrants.filter((q) => q.isTarget).map((q) => q.quadrant)).toEqual(['A+B-']); // only the target quadrant
     expect(cfg.gap.causes.length).toBe(6);
@@ -47,7 +47,7 @@ describe('judgment_config fidelity to ontology v2', () => {
     expect(cfg.gap.cognitiveTraps.length).toBe(11);
   });
 
-  it('exposes a non-empty cheaply-checkable disqualifier subset for the §16 triage', () => {
+  it('exposes a non-empty cheaply-checkable disqualifier subset for triage', () => {
     expect(cheapDisqualifiers(cfg).length).toBeGreaterThan(0);
   });
 

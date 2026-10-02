@@ -55,7 +55,7 @@ maps_flags=""; [ "$MAPS" = "1" ] && maps_flags="--maps --coverage full"
 
 cell_complete() {
   local csv="$1"
-  pnpm exec tsx src/scripts/verify_completion.ts "$csv"
+  pnpm exec tsx src/cli/verify_completion.ts "$csv"
 }
 
 cell_pending_recovery() {

@@ -25,7 +25,7 @@ import { resolveVat } from '../../src/enrichment/fields/field_registry';
 import { fetchFatturatoItalia } from '../../src/enrichment/financial/fatturato_italia_fetch';
 import { parseFatturatoItaliaPage } from '../../src/enrichment/financial/fatturato_italia_parser';
 import type { Lead } from '../../src/types/lead';
-import type { EnrichableField } from '../../src/api/types';
+import type { EnrichableField } from '../../src/types/api';
 import type { FIFinancialYear } from '../../src/enrichment/financial/fatturato_italia_parser';
 
 interface AuditCell {

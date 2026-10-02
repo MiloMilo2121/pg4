@@ -18,10 +18,11 @@ import {
   recoveryEnvelopePath,
   type CoverageManifest,
   writeCoverageArtifacts,
-} from '../runtime/run_coverage';
+} from './scrape_completion';
+import { stripDiacritics } from '../util/text';
 
 /**
- * Scrape pipeline (Phase 4.4 cleanup): all orchestration logic lives here,
+ * Scrape pipeline: all orchestration logic lives here,
  * `cli/scrape.ts` is a thin wrapper that parses args and calls these
  * functions. Two coexisting modes:
  *
@@ -29,15 +30,13 @@ import {
  *                CSV+JSONL. Deterministic, offline, used in CI.
  *   - LIVE     — Playwright-driven; lazy-imports the navigators so
  *                fixture mode never spins up Chromium.
- *
- * Behavior is identical to Phase 4.2.1; only the file boundary moved.
  */
 
 // ============================================================
 // FIXTURE MODE
 // ============================================================
 
-export interface FixtureSource {
+interface FixtureSource {
   path: string;
   source: 'pg' | 'maps';
 }
@@ -47,6 +46,8 @@ export interface FixtureModeInput {
   category?: string;
   fixture: string;
   sourceFlag?: string;
+  /** Do-not-contact list, applied before emit exactly as in live mode. */
+  suppression?: import('../compliance/suppression').SuppressionList;
 }
 
 export async function runFixtureMode(input: FixtureModeInput): Promise<void> {
@@ -85,23 +86,25 @@ export async function runFixtureMode(input: FixtureModeInput): Promise<void> {
       all.push(...r.results);
     }
   }
-  // Phase C.2 — same normalization the live path applies in ingestBatch.
+  // Same normalization the live path applies in ingestBatch.
   for (const lead of all) {
     normalizeLeadPhone(lead);
     fillProvinceFromComune(lead);
   }
-  await emitCsvJsonl(input.out, dedupeLeads(all), {
+  const { kept, suppressed } = input.suppression ? input.suppression.apply(dedupeLeads(all)) : { kept: dedupeLeads(all), suppressed: 0 };
+  await emitCsvJsonl(input.out, kept, {
     fixtures: sources.length,
     total_cards: totalCards,
     dropped_at_parse: dropped,
     raw_pre_dedupe: all.length,
     overflow: overflowDetected,
     cap_likely: capLikelyDetected,
+    suppressed,
     mode: 'fixture',
   });
 }
 
-export function resolveFixtureSources(fixtureFlag: string, sourceFlag?: string): FixtureSource[] {
+function resolveFixtureSources(fixtureFlag: string, sourceFlag?: string): FixtureSource[] {
   if (fixtureFlag.includes('=')) {
     return fixtureFlag.split(',').map((piece) => {
       const [src, p] = piece.split('=', 2);
@@ -130,7 +133,7 @@ export interface LiveModeInput {
   interDelayMs?: number;
   runMaps?: boolean;
   /**
-   * R5 — Maps coverage mode. `'default'` runs ONE query per comune
+   * Maps coverage mode. `'default'` runs ONE query per comune
    * (today's behaviour); `'full'` expands to a curated list of
    * sector-keyword variants per category and fires each as a separate
    * Maps scroll session. The Deduplicator collapses cross-query
@@ -148,19 +151,19 @@ export interface LiveModeInput {
    */
   fresh?: boolean;
   /**
-   * Phase 4.2.1: an existing checkpoint that says pages are `done`
+   * An existing checkpoint that says pages are `done`
    * combined with a missing JSONL is a HARD ERROR by default. Operator
    * passes `--allow-missing-jsonl` to acknowledge the data loss.
    */
   allowMissingJsonl?: boolean;
   /**
-   * Phase A.3 — skip the selector health check. Default: preflight runs
+   * Skip the selector health check. Default: preflight runs
    * before any live scraping and aborts loudly when PG/Maps markup no
    * longer matches the known-good canary query.
    */
   skipPreflight?: boolean;
   /**
-   * Phase B.5 — cooperative cancellation. When the signal aborts, the
+   * Cooperative cancellation. When the signal aborts, the
    * comuni loop stops at the next iteration boundary, partial outputs
    * are still emitted, and the summary reports `interrupted: true`.
    * The checkpoint is already synced after every page/comune, so a
@@ -168,7 +171,7 @@ export interface LiveModeInput {
    */
   abortSignal?: AbortSignal;
   /**
-   * Phase D.1 — do-not-contact suppression. Matching leads are dropped
+   * Do-not-contact suppression. Matching leads are dropped
    * from the outputs entirely (counted in the summary).
    */
   suppression?: import('../compliance/suppression').SuppressionList;
@@ -184,7 +187,7 @@ export interface LiveModeSummary {
   comuni_count: number;
   /** Per-comune pre-dedupe parsed-lead counts (PG + Maps combined). */
   comuni_yield: Record<string, number>;
-  /** Phase D.1 — leads dropped by the suppression list. */
+  /** Leads dropped by the suppression list. */
   suppressed: number;
   interrupted: boolean;
   output_csv: string;
@@ -194,13 +197,15 @@ export interface LiveModeSummary {
 
 export async function runLiveMode(a: LiveModeInput): Promise<LiveModeSummary> {
   // Lazy-load the live navigator + browser modules so fixture mode +
-  // typecheck never have to spin up Playwright.
-  const { BrowserFactory } = await import('../browser/factory');
-  const { scrapePgLocation } = await import('./sources/pg_live');
-  const { scrapeMapsLocation } = await import('./sources/maps_live');
-  const { Checkpoint } = await import('../runtime/checkpoint');
-  const { logConsentSummary } = await import('../browser/consent_handler');
-  const { getComuniForProvince, parseComuniList } = await import('./sources/italy_geo');
+  // typecheck never have to spin up Playwright. Under `module: node16` a
+  // dynamic import() stays a real ESM import, so the specifier carries the
+  // `.js` it resolves to at runtime (tsx and vitest map it back to `.ts`).
+  const { BrowserFactory } = await import('../browser/factory.js');
+  const { scrapePgLocation } = await import('./sources/pagine_gialle_live.js');
+  const { scrapeMapsLocation } = await import('./sources/maps_live.js');
+  const { Checkpoint } = await import('../runtime/checkpoint.js');
+  const { logConsentSummary } = await import('../browser/consent_handler.js');
+  const { getComuniForProvince, parseComuniList } = await import('../geo/italy_geo.js');
 
   if (a.maxPages !== undefined && (!Number.isInteger(a.maxPages) || a.maxPages < 1)) {
     throw new Error('--max-pages must be a positive integer.');
@@ -262,27 +267,24 @@ export async function runLiveMode(a: LiveModeInput): Promise<LiveModeSummary> {
   // Set when the Maps preflight degrades (Maps down but PG healthy) → the Maps
   // stage is skipped and the run proceeds PG-only instead of aborting.
   let mapsDegraded = false;
-  // Phase A.4 — per-comune pre-dedupe yields. Feeds the run record so the
+  // Per-comune pre-dedupe yields. Feeds the run record so the
   // yield-anomaly check can compare against historical averages.
   const comuniYield: Record<string, number> = {};
-  // Phase 4.4 log fix: count parsed leads BEFORE the deduper so the
-  // run summary reports `collapsed_by_dedupe` honestly. The previous
-  // version sourced `raw_pre_dedupe` from `allLeads.length` (already
-  // deduped), which made `collapsed_by_dedupe` always show 0 — masked
-  // by the single-comune canary because there was no cross-query
-  // overlap to collapse. The 3-comuni canary on BL exposed it: 209
-  // parsed cards collapsed to 116 unique leads, but the log said
-  // `collapsed_by_dedupe: 0`. Output files were always correct; only
-  // the metric was wrong.
+  // Count parsed leads BEFORE the deduper so the run summary reports
+  // `collapsed_by_dedupe` honestly — sourcing it from `allLeads.length`
+  // (already deduped) makes the metric always read 0. The 3-comuni canary
+  // on BL shows why that matters: 209 parsed cards collapsed to 116 unique
+  // leads while the log still reported `collapsed_by_dedupe: 0`. Output
+  // files were always correct; only the metric was wrong.
   let parsedLeadsBeforeDedupe = resumed;
   const aborted = () => a.abortSignal?.aborted === true;
 
   try {
-    // Phase A.3 — selector health check before any real scraping. A
+    // Selector health check before any real scraping. A
     // PreflightError propagates out of runLiveMode (the finally below
     // still closes the browser) and maps to exit code 3 in the CLI.
     if (!a.skipPreflight) {
-      const { runScrapePreflight } = await import('./preflight');
+      const { runScrapePreflight } = await import('./preflight.js');
       const pf = await runScrapePreflight(factory, { checkMaps: !!a.runMaps });
       // PG failure still throws inside the preflight (real markup safety net).
       // Maps failure is non-fatal: degrade to PG-only for this run.
@@ -324,10 +326,9 @@ export async function runLiveMode(a: LiveModeInput): Promise<LiveModeSummary> {
           diagnosticsDir,
           interPageDelayMs: a.interDelayMs,
           abortSignal: a.abortSignal,
-          // Novelty vs the run's accumulated deduper: PG serves province-wide
-          // results, so a comune adding 0 new leads is re-scraping firms we
-          // already have → early-stop paginating it.
-          isNew: (lead) => !dedup.find(lead),
+          // PG serves province-wide results, so a comune adding 0 new leads
+          // is re-scraping firms we already have → early-stop paginating it.
+          isNew: pgNoveltyCheck(dedup),
         });
         if (r.interrupted) {
           interrupted = true;
@@ -350,11 +351,11 @@ export async function runLiveMode(a: LiveModeInput): Promise<LiveModeSummary> {
       }
     }
     // Stage 2 (optional): Maps per comune.
-    // R5 — when `mapsCoverage='full'`, expand the category to multiple
+    // When `mapsCoverage='full'`, expand the category to multiple
     // sector-keyword variants and run each as its own scroll session.
     // The Deduplicator collapses cross-variant overlap.
     if (a.runMaps && !interrupted && !mapsDegraded) {
-      const { expandMapsQueryVariants, hasFullCoverageVariants } = await import('./sources/maps_coverage');
+      const { expandMapsQueryVariants, hasFullCoverageVariants } = await import('./sources/maps_coverage.js');
       const coverage = a.mapsCoverage ?? 'default';
       const queryVariants = expandMapsQueryVariants(a.category, coverage);
       if (coverage === 'full' && !hasFullCoverageVariants(a.category)) {
@@ -412,16 +413,13 @@ export async function runLiveMode(a: LiveModeInput): Promise<LiveModeSummary> {
     await factory.close();
   }
 
-  // Phase D.1 — suppression at output time. Matching leads are dropped
-  // entirely (a do-not-contact subject must not appear in delivered files).
+  // Suppression at output time. Matching leads are dropped
+  // entirely (a do-not-contact subject must not appear in delivered files) and
+  // suppressed addresses are stripped from the rest.
   let emitLeads = allLeads;
   let suppressed = 0;
   if (a.suppression?.active) {
-    emitLeads = allLeads.filter((l) => {
-      const hit = a.suppression!.matches(l);
-      if (hit) suppressed += 1;
-      return !hit;
-    });
+    ({ kept: emitLeads, suppressed } = a.suppression.apply(allLeads));
     if (suppressed > 0) {
       logger.warn({ suppressed, list: a.suppression.sourcePath }, '[scrape] leads dropped by suppression list');
     }
@@ -462,7 +460,7 @@ export async function runLiveMode(a: LiveModeInput): Promise<LiveModeSummary> {
     logger.info({ completion_marker: completionMarkerPath(a.out) }, '[scrape] coverage complete');
   }
 
-  // Phase C.3 — near-duplicate candidates for operator review (never
+  // Near-duplicate candidates for operator review (never
   // auto-merged). Written only when the run produced any.
   const reviewCandidates = dedup.getReviewCandidates();
   if (reviewCandidates.length > 0) {
@@ -491,7 +489,7 @@ export async function runLiveMode(a: LiveModeInput): Promise<LiveModeSummary> {
   };
 }
 
-export function resolveComuniList(
+function resolveComuniList(
   a: Pick<LiveModeInput, 'comuniCsv' | 'province'>,
   getComuniForProvince: (code: string) => string[],
   parseComuniList: (csv: string) => string[]
@@ -520,9 +518,25 @@ export function fillProvinceFromComune(lead: Lead): void {
   if (prov) lead.province = prov;
 }
 
+/**
+ * Novelty predicate for one PG comune. `runDedup` holds only the comuni
+ * already ingested: the current comune is ingested after all its pages are
+ * scraped, so a repeat of its own page 1 would still look new. A per-comune
+ * Deduplicator (same keys as the run's) records what this comune has shown
+ * so far. It only answers the question; ingest is unchanged.
+ */
+export function pgNoveltyCheck(runDedup: Deduplicator): (lead: Lead) => boolean {
+  const seenInComune = new Deduplicator();
+  return (lead) => {
+    if (runDedup.find(lead) || seenInComune.find(lead)) return false;
+    seenInComune.add(lead);
+    return true;
+  };
+}
+
 function ingestBatch(allLeads: Lead[], dedup: Deduplicator, batch: Lead[]): void {
   for (const lead of batch) {
-    // Phase C.2 — normalize phones to E.164 BEFORE dedupe so the output is
+    // Normalize phones to E.164 BEFORE dedupe so the output is
     // consistent regardless of which source format arrived first. The
     // deduper's own phone key is format-tolerant either way.
     normalizeLeadPhone(lead);
@@ -541,7 +555,7 @@ function ingestBatch(allLeads: Lead[], dedup: Deduplicator, batch: Lead[]): void
 // SHARED — output emission
 // ============================================================
 
-export async function emitCsvJsonl(
+async function emitCsvJsonl(
   outCsv: string,
   leads: Lead[],
   summary: Record<string, unknown>
@@ -550,7 +564,7 @@ export async function emitCsvJsonl(
   const csv = new CsvWriter(outCsv, 'raw');
   const jsonl = new JsonlWriter(jsonlOut);
   for (const lead of leads) {
-    // Phase C.1 — stamp the schema version on every emitted row.
+    // Stamp the schema version on every emitted row.
     lead._schema_version ??= SCHEMA_VERSION;
     await csv.write(lead);
     await jsonl.write(lead);
@@ -588,11 +602,8 @@ export function browserSessionId(outCsv: string, category: string): string {
   return `scrape-${slug(category) || 'target'}-${targetHash}`;
 }
 
-export function slug(s: string): string {
-  return s
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
+function slug(s: string): string {
+  return stripDiacritics(s.toLowerCase())
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '');
 }

@@ -3,6 +3,7 @@ import type { HttpFetchResult, HttpProvider, ProviderRole } from '../../types/pr
 import { ProviderBlockError } from '../../types/providers';
 import { DEFAULTS } from '../../config/defaults';
 import { getEnv } from '../../config/env';
+import { CALL_COST_EUR } from '../pricing';
 
 /**
  * Firecrawl — WEB_FETCH / WEB_UNBLOCK escalation. Renders JS-heavy / blocked pages
@@ -16,7 +17,7 @@ export class FirecrawlProvider implements HttpProvider {
   readonly id = 'firecrawl';
   readonly family = 'http' as const;
   readonly tier = 2;
-  readonly costPerCallEur = 0.0046;
+  readonly costPerCallEur = CALL_COST_EUR.firecrawl;
   readonly roles: ReadonlyArray<ProviderRole> = ['WEB_FETCH', 'WEB_UNBLOCK'];
 
   available(): boolean {

@@ -8,14 +8,14 @@ type CheerioCard = cheerio.Cheerio<AnyNode>;
 
 /**
  * Threshold above which we assume the Maps feed query has hit its
- * ~120-result cap and the result set is incomplete. Phase 3.7 docs §7.
+ * ~120-result cap and the result set is incomplete.
  */
 const MAPS_CAP_LIKELY_THRESHOLD = 110;
 
 /**
  * Pure parser for Google Maps result-feed HTML.
  *
- * Selectors follow `pg3/src/scraper/providers/maps_grid_provider.ts`:
+ * Selectors:
  *   - `div[role="feed"]`              → feed container
  *   - `div.Nv2PK`                     → result card root
  *   - `.qBF1Pd`, `div.fontHeadlineSmall`, or `a[aria-label]` → name
@@ -124,7 +124,7 @@ function parseCard($card: CheerioCard, opts: { category?: string; cityHint?: str
     const cleaned = raw.replace(BULLET_PREFIX_RE, '').trim();
     if (!cleaned || cleaned === '·' || seenSpanText.has(cleaned)) return;
     seenSpanText.add(cleaned);
-    // Phase C.4 — "Chiuso definitivamente" is the status span Maps renders
+    // "Chiuso definitivamente" is the status span Maps renders
     // on dead businesses (en: "Permanently closed"). Distinct from the
     // daily-hours "Chiuso"/"Chiude alle…" statuses, which stay ignored.
     if (/^(Chiuso definitivamente|Permanently closed)/i.test(cleaned)) {
@@ -198,7 +198,7 @@ function parseCard($card: CheerioCard, opts: { category?: string; cityHint?: str
   if (city && opts.cityHint && city !== opts.cityHint) lead.business_city = city;
   if (opts.category) lead.category_match = classifyCategoryMatch(opts.category, typeTag);
   if (permanentlyClosed) lead.permanently_closed = true;
-  // Phase 4.4: same conservative mojibake strip as PG. Maps' DOM is
+  // Same conservative mojibake strip as PG. Maps' DOM is
   // usually clean UTF-8 but occasional listing pages mirror PG's bad
   // bytes via review imports.
   return cleanMojibakeFields(lead, ['company_name', 'city', 'business_city', 'address']);

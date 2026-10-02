@@ -37,6 +37,15 @@ describe('findContactLinks — same-site contact/about discovery (pure)', () => 
     expect(links.some((l) => l.startsWith('mailto'))).toBe(false);
   });
 
+  it('treats a sibling hosting tenant as another site', () => {
+    const html = `<html><body>
+      <a href="/contatti">Contatti</a>
+      <a href="https://vicino.altervista.org/contatti">Contatti del vicino</a>
+    </body></html>`;
+    const links = findContactLinks(html, 'https://studiofoo.altervista.org');
+    expect(links).toEqual(['https://studiofoo.altervista.org/contatti']);
+  });
+
   it('respects the cap and returns [] without a site or html', () => {
     expect(findContactLinks(home, 'https://www.agenziarossi.it', 1)).toHaveLength(1);
     expect(findContactLinks(undefined, 'https://x.it')).toEqual([]);

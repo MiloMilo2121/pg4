@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { parseGoogleMapsResults } from '../../src/discovery/sources/google_maps_parser';
 
 /**
- * Phase C.4 — "Chiuso definitivamente" status span → permanently_closed.
+ * "Chiuso definitivamente" status span → permanently_closed.
  */
 
 function feedWith(cardsHtml: string): string {
@@ -17,7 +17,7 @@ function card(name: string, spans: string[]): string {
   </div>`;
 }
 
-describe('Maps parser permanently_closed — Phase C.4', () => {
+describe('Maps parser permanently_closed', () => {
   it('captures "Chiuso definitivamente" as permanently_closed=true', () => {
     const html = feedWith(card('Agenzia Defunta', ['Chiuso definitivamente', 'Agenzia immobiliare', 'Via Roma 1, 35100 Padova PD']));
     const r = parseGoogleMapsResults(html, { category: 'agenzie immobiliari', cityHint: 'Padova' });

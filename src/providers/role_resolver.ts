@@ -6,7 +6,7 @@
  * breaker / paid-gate / budget / ceiling on top. Belt and suspenders.
  *
  * Pure + side-effect-free → directly unit-testable (acceptance criteria AC2–AC6).
- * Source: docs/provider_cascade_architecture.md §6 + ADDENDUM v1.1.
+ * Source: docs/provider_cascade_architecture.md + ADDENDUM v1.1.
  */
 import type { ProviderRole } from '../types/providers';
 import type { RouteOptions } from './provider_router';
@@ -54,7 +54,7 @@ function stepEligible(step: RoleStep, ctx: RoleResolveContext): boolean {
   // category routing
   if (step.categoryOnly && (!ctx.categoryProfile || !step.categoryOnly.includes(ctx.categoryProfile))) return false;
   if (step.categoryExclude && ctx.categoryProfile && step.categoryExclude.includes(ctx.categoryProfile)) {
-    if (!ctx.expandedFreeSerp) return false; // R14 escape hatch
+    if (!ctx.expandedFreeSerp) return false; // policy escape hatch
   }
   // openapi paid deep tiers — top company + explicit request only
   if (step.onRequestTopOnly && !(ctx.isTopCompany === true && ctx.onRequest === true)) return false;

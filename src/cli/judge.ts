@@ -6,10 +6,11 @@ import type { Lead } from '../types/lead';
 import { runJudgment } from '../judgment/run_judgment';
 import { getActiveJudgmentConfig } from '../judgment/config';
 import { computeCategoryProfile } from '../judgment/benchmark';
-import { liveFreeHarvestContext, buildJudgeLLM } from '../judgment/runtime_context';
+import { liveFreeHarvestContext, buildJudgeLLM, judgmentRouter } from '../judgment/runtime_context';
 import { InMemoryEnrichmentCache } from '../persistence/enrichment_cache';
 import { emptyBundle } from '../judgment/harvest/source_harvest';
 import type { JudgmentRecord } from '../types/judgment';
+import { suppressionForCommand } from '../compliance/suppression';
 
 /**
  * `pnpm run judge -- --input output/list.csv --out output/judged.jsonl [--two-pass] [--paid] [--limit N]`
@@ -17,7 +18,7 @@ import type { JudgmentRecord } from '../types/judgment';
  * Runs the full L2→L5 judgment over a CSV of companies and writes one JSONL line
  * per company (verdict + axis scores + levers + validation + meta). Free-first:
  * website + free SERP at €0; `--paid` enables the LLM judges + paid sources (if
- * keys are set). `--two-pass` (§17) computes the category benchmark from pass-1
+ * keys are set). `--two-pass` computes the category benchmark from pass-1
  * signals, then re-judges relative to it.
  *
  * NOTE: live network (website fetch + Bing). Verdicts are CANDIDATES to validate
@@ -43,6 +44,8 @@ Options:
   --paid          enable LLM judges + paid sources (needs API keys in .env)
   --limit N       judge only the first N rows
   --category X    override the category used for benchmarking
+  --suppression-list <path>  do-not-contact CSV (else SUPPRESSION_LIST, else
+                  suppression.csv next to --out); suppressed companies are skipped
 `);
     return 0;
   }
@@ -53,15 +56,26 @@ Options:
   const limit = Number(optString(args, 'limit') ?? '0') || 0;
 
   const config = getActiveJudgmentConfig();
-  const { llm, modelId } = buildJudgeLLM(paid);
+  const { ledger, router } = judgmentRouter();
+  const { llm, modelId } = buildJudgeLLM(paid, router);
   const cache = new InMemoryEnrichmentCache(); // shared across companies + passes (cost-first)
-  const ctx = liveFreeHarvestContext({ tenantId: 'cli', cache, paidEnabled: paid });
+  const ctx = liveFreeHarvestContext({ tenantId: 'cli', cache, paidEnabled: paid, router });
 
+  const suppression = suppressionForCommand(args.flags, out);
   const leads: Lead[] = [];
+  let suppressed = 0;
   for await (const item of readCsvAsLeads(input)) {
-    if (!item.ingestError) leads.push(item.lead);
+    if (item.ingestError) continue;
+    // Before the limit, so --limit N still judges N companies we may contact.
+    if (suppression.matches(item.lead)) {
+      suppressed += 1;
+      continue;
+    }
+    suppression.dropSuppressedEmails(item.lead);
+    leads.push(item.lead);
     if (limit && leads.length >= limit) break;
   }
+  if (suppressed > 0) process.stderr.write(`[judge] ${suppressed} companies skipped (suppression list ${suppression.sourcePath})\n`);
   process.stderr.write(`[judge] ${leads.length} companies · paid=${paid} · twoPass=${twoPass} · llm=${modelId ?? 'deterministic'}\n`);
 
   // Pass 1 (always) — judge each company. With two-pass we first compute a
@@ -99,7 +113,7 @@ Options:
     const q = r.verdetto_gap?.quadrant ?? 'n/a';
     quad[q] = (quad[q] ?? 0) + 1;
   }
-  process.stderr.write(`[judge] target: ${JSON.stringify(counts)}\n[judge] quadrant: ${JSON.stringify(quad)}\n[judge] → ${out}\n`);
+  process.stderr.write(`[judge] target: ${JSON.stringify(counts)}\n[judge] quadrant: ${JSON.stringify(quad)}\n[judge] cost: €${ledger.getTotal().toFixed(4)}\n[judge] → ${out}\n`);
   return 0;
 }
 

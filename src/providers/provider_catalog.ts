@@ -19,15 +19,13 @@ import { OpenRouterProvider } from './llm/openrouter';
 import { OpenAIProvider, DeepSeekProvider, ZhipuGlmProvider, KimiProvider, PerplexityLlmProvider } from './llm/openai_family';
 
 /**
- * The provider registry. Adds providers in tier order. Missing API keys are
- * tolerated — the provider is still listed but `available()` returns false
- * and the router skips it.
+ * The provider registry. Adds providers in tier order, cheapest first:
+ * `direct_fetch` (HTTP tier 0), then the free SERP providers
+ * (ddg_lite, bing_html), then the paid providers behind feature flags.
+ * Missing API keys are tolerated — the provider is still listed but
+ * `available()` returns false and the router skips it.
  *
- * Phase 1: only `direct_fetch` (HTTP tier 0).
- * Phase 3: free SERP providers (ddg_lite, bing_html).
- * Phase 3+: paid providers behind feature flags.
- *
- * Gate-0 — `dns_mx` and `crtsh` were REMOVED. Measured: 0 successes in
+ * `dns_mx` and `crtsh` were REMOVED. Measured: 0 successes in
  * 12,728 calls each (dns_mx received name-queries it structurally cannot
  * answer; crt.sh blocked this egress IP). They only added latency. The
  * provider-health detector (`runtime/provider_health.ts`) now makes this
@@ -41,7 +39,7 @@ export function buildProviderCatalog(ledger: CostLedger): ProviderRouter {
   const serps: SerpProvider[] = [
     new DdgLiteProvider(),
     new BingHtmlProvider(),
-    new SerperProvider(), // Phase G — paid tier 2; available() gated by SERPER_ENABLED + SERPER_API_KEY
+    new SerperProvider(), // paid tier 2; available() gated by SERPER_ENABLED + SERPER_API_KEY
     new TavilyProvider(), // judgment-layer discovery fallback — paid tier 2, gated
     new ExaProvider(), // judgment-layer discovery fallback — paid tier 2, gated
   ];
@@ -51,7 +49,7 @@ export function buildProviderCatalog(ledger: CostLedger): ProviderRouter {
     // WEB_FETCH/WEB_UNBLOCK escalation — paid tier 2, default-OFF (available()=false
     // until *_ENABLED + key). Reached only after direct_fetch returns block/empty.
     new FirecrawlProvider(),
-    new BrightDataUnlockerProvider(), // distinct id (addendum R2); brightdata_serp deferred
+    new BrightDataUnlockerProvider(), // distinct id; brightdata_serp deferred
   ];
 
   const llms: LLMProvider[] = [
@@ -70,7 +68,7 @@ export function buildProviderCatalog(ledger: CostLedger): ProviderRouter {
     PerplexityLlmProvider(),
   ];
 
-  // Phase F.2 — per-provider breaker tuning. The default global config
+  // Per-provider breaker tuning. The default global config
   // (5 failures / 60 s / 120 s cooldown) was tripping `direct_fetch`
   // on multi-province free-only runs because:
   //   - direct_fetch is a per-target tool (success rate depends on
@@ -82,9 +80,9 @@ export function buildProviderCatalog(ledger: CostLedger): ProviderRouter {
   //   - direct_fetch is FREE — no cost penalty for retrying — so the
   //     breaker is over-protective for this provider
   //
-  // p82 / p83 PD runs both ended with `direct_fetch` OPEN
+  // Two PD runs both ended with `direct_fetch` OPEN
   // (`consecutiveFailures=5`, `lastFailureKind=transport`) despite
-  // healthy bing_html / D.3 retry. Loosening the per-key config so
+  // healthy bing_html / retry. Loosening the per-key config so
   // direct_fetch tolerates wider bursts of transport flap, with a
   // shorter cooldown so it recovers fast when the network heals.
   // Other providers (paid SERPs, etc.) keep the strict default.
@@ -95,11 +93,11 @@ export function buildProviderCatalog(ledger: CostLedger): ProviderRouter {
     cooldownMs: 30_000,
   });
 
-  // Phase F finding — SERP pacing. The Phase F smoke surfaced that the
+  // SERP pacing. A smoke test surfaced that the
   // RateLimiter was instantiated but never wired: with no input websites
   // to verify, the enrich stage fired ~3.7 Bing requests/s and Bing
   // soft-blocked the whole run (185/185 empty) — silently. Validated
-  // R12 cadence was ~0.27 req/s; 0.5/s keeps a 2x headroom over that
+  // A validated cadence was ~0.27 req/s; 0.5/s keeps a 2x headroom over that
   // while halving worst-case burst exposure. ddg_lite gets the same
   // treatment for when a category profile re-enables it. Unconfigured
   // providers (serper, direct_fetch) stay unlimited — Serper is

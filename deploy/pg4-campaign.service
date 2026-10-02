@@ -1,0 +1,26 @@
+# pg4 campaign run — oneshot, triggered by pg4-campaign.timer (never by hand
+# on the VPS; local runs still use `bash scripts/campaign.sh …` directly).
+#
+# Install:  sudo cp deploy/pg4-campaign.service deploy/pg4-campaign.timer \
+#             /etc/systemd/system/ &&
+#           sudo systemctl daemon-reload && sudo systemctl enable --now pg4-campaign.timer
+# Logs:     journalctl -u pg4-campaign -f
+# Status:   systemctl list-timers pg4-campaign.timer
+#
+# %h is the unit user's home: the checkout must be at %h/pg4. To change the
+# provinces, edit the ExecStart line below (then daemon-reload). The watchdog
+# (scripts/watchdog.sh) is DEPRECATED — kept for one production verification
+# cycle, then removed; do not point units at it.
+[Unit]
+Description=pg4 campaign run (oneshot)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=ubuntu
+WorkingDirectory=%h/pg4
+EnvironmentFile=-%h/pg4/.env
+ExecStart=/usr/bin/bash scripts/campaign.sh PD VR VI VE TV RO BL
+StandardOutput=journal
+StandardError=journal

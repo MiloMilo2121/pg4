@@ -26,7 +26,6 @@ src/
                                     the canonical cost source
                   circuit_breaker   per-provider closed/open/half-open
                   rate_limiter      per-provider token bucket
-                  backpressure      concurrency throttle on error rate
                   retry             backoff for transient network failures
                   checkpoint        file-backed JSON, atomic write
                   run_context       per-run + per-lead containers

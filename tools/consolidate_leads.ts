@@ -20,15 +20,14 @@
  */
 import fs from 'fs';
 import path from 'path';
-import { readCsvAsLeads } from '../src/io/csv_reader';
-import { readJsonlAsLeads } from '../src/io/jsonl_writer';
 import { CsvWriter } from '../src/io/csv_writer';
 import { JsonlWriter } from '../src/io/jsonl_writer';
 import { Deduplicator } from '../src/discovery/deduper';
 import type { Lead } from '../src/types/lead';
+import { loadLeadFiles } from '../src/io/lead_files';
 
 const PG4 = process.cwd();
-const REPO_ROOT = path.resolve(PG4, '..'); // contains pg1/ pg3/ pg4/
+const REPO_ROOT = path.resolve(PG4, '..'); // contains the sibling project directories
 const OUT_DIR = path.join(PG4, 'leads', '_MASTER');
 
 // Dirs we never descend into (regenerable junk / not lead data).
@@ -74,30 +73,13 @@ function classifyClient(relPath: string): string {
 }
 
 async function loadLeads(file: string): Promise<{ leads: Lead[]; ingestErrors: number }> {
-  const leads: Lead[] = [];
-  let ingestErrors = 0;
-  if (/\.jsonl$/i.test(file)) {
-    try {
-      const arr = await readJsonlAsLeads(file);
-      for (const l of arr) if (l && l.company_name) leads.push(l);
-    } catch {
-      ingestErrors++;
-    }
-    return { leads, ingestErrors };
-  }
-  // CSV
   try {
-    for await (const { lead, ingestError } of readCsvAsLeads(file)) {
-      if (ingestError || !lead.company_name || lead.company_name.trim() === '') {
-        ingestErrors++;
-        continue;
-      }
-      leads.push(lead);
-    }
+    const { leads: rows, skipped } = await loadLeadFiles([file]);
+    const leads = rows.filter((l) => l.company_name && l.company_name.trim() !== '');
+    return { leads, ingestErrors: skipped + (rows.length - leads.length) };
   } catch {
-    ingestErrors++;
+    return { leads: [], ingestErrors: 1 };
   }
-  return { leads, ingestErrors };
 }
 
 async function main() {

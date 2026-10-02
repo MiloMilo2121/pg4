@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { assertPaidSecrets, resetEnvCache } from '../../src/config/env';
 
 /**
- * Phase B.4 — paid-secret assertion. A run that asked for --enable-paid
+ * Paid-secret assertion. A run that asked for --enable-paid
  * must fail FAST and LOUD when no paid provider is actually usable,
  * naming the missing variable, instead of silently completing free-only.
  */
@@ -12,6 +12,8 @@ const VARS = [
   'EXA_ENABLED', 'EXA_API_KEY',
   'TAVILY_ENABLED', 'TAVILY_API_KEY',
   'BRIGHTDATA_ENABLED', 'BRIGHTDATA_API_KEY',
+  'SNOV_ENABLED', 'SNOV_CLIENT_SECRET',
+  'TWOCAPTCHA_ENABLED', 'TWOCAPTCHA_API_KEY',
 ] as const;
 
 const saved: Record<string, string | undefined> = {};
@@ -32,7 +34,7 @@ afterEach(() => {
   resetEnvCache();
 });
 
-describe('assertPaidSecrets — Phase B.4', () => {
+describe('assertPaidSecrets', () => {
   it('throws naming the enable flag when NO paid provider is enabled', () => {
     expect(() => assertPaidSecrets()).toThrow(/no paid provider is enabled.*SERPER_ENABLED/s);
   });
@@ -41,6 +43,22 @@ describe('assertPaidSecrets — Phase B.4', () => {
     process.env.SERPER_ENABLED = 'true';
     resetEnvCache();
     expect(() => assertPaidSecrets()).toThrow(/SERPER_API_KEY is empty/);
+  });
+
+  // Snov and 2Captcha have env vars but no provider under src/providers: with only
+  // them configured, --enable-paid would pass and the run would still be free-only.
+  it('does not count Snov (configured but not implemented)', () => {
+    process.env.SNOV_ENABLED = 'true';
+    process.env.SNOV_CLIENT_SECRET = 's-test-not-a-real-secret';
+    resetEnvCache();
+    expect(() => assertPaidSecrets()).toThrow(/no paid provider is enabled/);
+  });
+
+  it('does not count 2Captcha (configured but not implemented)', () => {
+    process.env.TWOCAPTCHA_ENABLED = 'true';
+    process.env.TWOCAPTCHA_API_KEY = 'k-test-not-a-real-key';
+    resetEnvCache();
+    expect(() => assertPaidSecrets()).toThrow(/no paid provider is enabled/);
   });
 
   it('passes when at least one paid provider has flag + key', () => {

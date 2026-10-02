@@ -31,13 +31,17 @@ not *send* to them before the notice + LIA exist.
 
 ## 1. PERSISTENCE — activate the multi-tenant database
 
+*The Postgres layer (tenant adapter, RLS migrations, control plane) was removed on
+2026-09-30 because nothing ran it — see `docs/decision_log.md` G.1. Step 1.0 is to
+restore it from git; the steps below assume it is back.*
+
 | # | Step | How |
 |---|------|-----|
 | 1.1 | Pick the Supabase project/org (region eu-central-1). | Operator decision — NOT done in this pass on purpose. |
 | 1.2 | Apply the schema. | `supabase` MCP `apply_migration` with `db/migrations/0001_multitenant_init.sql`, OR `supabase db push`. |
 | 1.3 | Verify RLS is ON + FORCED on every tenant table. | `select relname, relrowsecurity, relforcerowsecurity from pg_class where relrowsecurity;` — all listed tables true/true. |
 | 1.4 | **Run the cross-tenant leakage test against the LIVE DB** (Gate C). | Seed two tenants + two memberships; assert a tenant-A JWT cannot `select` tenant-B rows on EVERY table. This is the one isolation proof that needs a real DB — the in-memory tests prove the app layer; RLS needs Postgres. |
-| 1.5 | Implement `SqlExecutor` with the Supabase/pg client; construct `PgTenantDb`. | `src/persistence/pg_tenant_db.ts` is ready; the executor is the only missing piece. |
+| 1.5 | Implement `SqlExecutor` with the Supabase/pg client; construct `PgTenantDb`. | Restored `src/persistence/pg_tenant_db.ts`; the executor is the only missing piece. |
 | 1.6 | Migrate existing `_runs.jsonl` / `suppression.csv` / cost-ledger JSONL → rows. | One-shot loader using `readRunHistory()` + the row mappers. |
 
 ---
@@ -58,7 +62,7 @@ not *send* to them before the notice + LIA exist.
 | # | Step | How |
 |---|------|-----|
 | 3.1 | Connect Stripe metered billing keyed to `cost_ledger` aggregates → `usage`. | The `usage` table is ready; populate it from `cost_ledger` per period. |
-| 3.2 | Enforce plan quotas in the API (reject jobs over quota). | Add the check in `ControlPlane.createEnrichJob`. |
+| 3.2 | Enforce plan quotas in the API (reject jobs over quota). | Add the check where enrich jobs are created (the restored control plane, or the API server). |
 
 ---
 

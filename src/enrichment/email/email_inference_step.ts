@@ -1,7 +1,7 @@
 import type { EnrichmentStep, FieldStepContext, StepResult } from '../fields/field_types';
-import { registrableDomain } from '../extract/extract_from_body';
+import { registrableDomain } from '../../util/domain';
 import { generateCandidates } from './pattern_inference';
-import { verifyEmails, type MxClass, type VerifyOptions } from './mx_smtp_verifier';
+import { verifyEmails, type VerifyOptions } from './mx_smtp_verifier';
 
 /**
  * The `email` field's inference step — bridges pattern inference + the MX/SMTP
@@ -86,9 +86,4 @@ export function emailInferenceStep(opts: EmailInferenceOptions): EnrichmentStep 
       return { confidence: 0, source: taggedSource, costEur: 0, skippedReason: 'no_value' };
     },
   };
-}
-
-/** The email_type implied by a successful inference verdict (always a business inbox). */
-export function inferredEmailType(_cls: MxClass): 'business' {
-  return 'business';
 }

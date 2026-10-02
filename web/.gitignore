@@ -4,3 +4,7 @@ out/
 *.log
 next-env.d.ts
 .DS_Store
+
+# Playwright
+/test-results/
+/playwright-report/

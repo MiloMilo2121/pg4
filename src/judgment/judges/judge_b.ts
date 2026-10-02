@@ -4,12 +4,14 @@ import { type JudgeLLM, levelFromScore, parseJsonLoose, clamp01 } from './shared
 
 /**
  * Judge B — quality of digital self-expression (Axis B). Consumes ONLY
- * segnali_B (owned channels). Enforced by signature. Per surface §3.1–3.15,
- * three states (§3.0.1), weighted by model §3.0.2.
+ * segnali_B (owned channels). Enforced by signature. Per surface, three states,
+ * weighted by business model.
  *
- * §5.3.5 firewall (enforced here AND at collection): a surface backed only by
+ * Absence firewall (enforced here AND at collection): a surface backed only by
  * `unknown` signals → state 'unknown', EXCLUDED from the score — never
- * 'absence_abandonment'. Only a `confirmed_absent` signal yields absence.
+ * 'absence_abandonment'. Only a `confirmed_absent` signal yields absence. The
+ * LLM refinement is held to the same rule in both directions: it can re-grade
+ * an observed surface, but it cannot move an unobserved one to any state.
  */
 
 const STATE_NUM: Record<SurfaceState, number | null> = { excellence: 1, mediocrity: 0.45, absence_abandonment: 0.05, unknown: null };
@@ -82,11 +84,13 @@ export async function judgeB(segnaliB: SegnaliB, footprint: Footprint | undefine
     if (parsed?.surfaces?.length) {
       const bySurf = new Map(parsed.surfaces.map((s) => [s.surface, s]));
       surfaces = surfaces.map((base) => {
+        // FIREWALL, both directions: a surface with no observed signal stays
+        // 'unknown'. Absence and excellence alike need evidence, so an LLM
+        // claim on an unobserved surface is dropped whole (state and citations)
+        // instead of being scored and caught by the critic after the fact.
+        if (base.state === 'unknown') return base;
         const llmS = bySurf.get(base.surface);
-        let state = isSurfaceState(llmS?.state) ? (llmS!.state as SurfaceState) : base.state;
-        // FIREWALL: the LLM may NOT turn an unknown into absence. If the
-        // deterministic base is 'unknown' (no observed signal), keep it unknown.
-        if (base.state === 'unknown' && state === 'absence_abandonment') state = 'unknown';
+        const state = isSurfaceState(llmS?.state) ? (llmS!.state as SurfaceState) : base.state;
         return { ...base, state, presentButPoor: llmS?.presentButPoor ?? base.presentButPoor, citations: llmS?.citations?.length ? llmS.citations : base.citations, rationale: llmS?.rationale ?? base.rationale };
       });
       rationale = parsed.rationale ?? 'LLM-refined';
@@ -113,7 +117,7 @@ function isSurfaceState(v: unknown): v is SurfaceState {
   return v === 'excellence' || v === 'mediocrity' || v === 'absence_abandonment' || v === 'unknown';
 }
 
-export function renderJudgeBPrompt(segnaliB: SegnaliB, footprint: Footprint | undefined, model: BusinessModel, config: JudgmentConfig): string {
+function renderJudgeBPrompt(segnaliB: SegnaliB, footprint: Footprint | undefined, model: BusinessModel, config: JudgmentConfig): string {
   const rubrics = config.judgeB.surfaces.map((s) => `- ${s.surface} ${s.name} (${s.ref}): ECC=${s.excellence} | MED=${s.mediocrity} | ASS=${s.absence}${s.axisNote ? ` [${s.axisNote}]` : ''}`).join('\n');
   const weights = config.judgeB.modelWeights.find((w) => w.model === model)?.weights ?? {};
   const fp = footprint ? `\nFOOTPRINT (stati per canale): ${footprint.channels.map((c) => `${c.channel}=${c.state}`).join(', ')}` : '';
@@ -128,7 +132,7 @@ export function renderJudgeBPrompt(segnaliB: SegnaliB, footprint: Footprint | un
   ].join('\n');
 }
 
-export const JUDGE_B_SCHEMA = {
+const JUDGE_B_SCHEMA = {
   type: 'object',
   properties: {
     surfaces: {

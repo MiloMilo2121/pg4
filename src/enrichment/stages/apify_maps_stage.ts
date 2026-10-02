@@ -1,6 +1,6 @@
 import type { Lead } from '../../types/lead';
 import type { NormalizedLead } from '../../types/discovery';
-import type { PerLeadContext, Stage } from '../../types/enrichment';
+import type { PerLeadContext, Stage, StageRunOptions } from '../../types/enrichment';
 import type { StageOutcome } from '../../types/output';
 import { DiscoveryMethod } from '../../types/output';
 import type { ProviderRouter } from '../../providers/provider_router';
@@ -21,10 +21,16 @@ import { isMapsPlaceUrl } from '../../discovery/sources/maps_url';
  */
 export class ApifyMapsStage implements Stage {
   readonly name = 'apify_maps';
+  /**
+   * The Apify run below is capped at 60 s; the stage deadline sits 30 s above
+   * it so it only catches a hung connection and never abandons a run that is
+   * already being paid for.
+   */
+  readonly timeoutMs = 90_000;
 
   constructor(private router: ProviderRouter, private provider: ApifyProvider = new ApifyProvider()) {}
 
-  async run(ctx: PerLeadContext, lead: Lead, _normalized: NormalizedLead): Promise<StageOutcome> {
+  async run(ctx: PerLeadContext, lead: Lead, _normalized: NormalizedLead, opts: StageRunOptions = {}): Promise<StageOutcome> {
     const start = Date.now();
     const meta = this.provider.meta('maps');
     if (!meta.available()) return { stage: this.name, status: 'skipped', duration_ms: 0, detail: 'apify_maps_disabled' };
@@ -36,7 +42,7 @@ export class ApifyMapsStage implements Stage {
     const name = (lead.company_name as string | undefined) ?? '';
     const city = (lead.city as string | undefined) ?? (lead.business_city as string | undefined) ?? (lead.query_location as string | undefined);
     const remaining = (ctx.costCeilingEur ?? 0) - ctx.costEur;
-    // ENRICH-3 — when the scraper captured the exact place URL, crawl THAT
+    // When the scraper captured the exact place URL, crawl THAT
     // listing instead of re-searching by name (namesake-proof + cheaper).
     // Search URLs (synthesized) don't qualify; entity guard applies either way.
     const mapsUrl = typeof lead.maps_url === 'string' ? lead.maps_url : undefined;
@@ -53,6 +59,7 @@ export class ApifyMapsStage implements Stage {
         remainingLeadBudgetEur: remaining,
         runCostCeilingEur: ctx.runCostCeilingEur,
         meta: { lead_id: ctx.leadId, run_id: ctx.runId ?? '', stage: this.name },
+        signal: opts.signal,
       },
     );
 

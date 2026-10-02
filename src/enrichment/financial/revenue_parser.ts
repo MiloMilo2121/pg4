@@ -1,10 +1,10 @@
 /**
- * R13 — Italian revenue / "fatturato" parsing. PURE: no network, no I/O.
+ * Italian revenue / "fatturato" parsing. PURE: no network, no I/O.
  *
- * Ported and consolidated from pg3:
- *   - `FatturatoItaliaProvider.parseEurAmount()` (Mld/Mln/IT-number formats)
- *   - `patterns.ts` REVENUE regexes
- *   - `BilancioHunter.parseFinancialSnippet()` separator heuristic
+ * Three concerns in one place:
+ *   - amount normalization with magnitude suffixes (`normalizeRevenueAmount`)
+ *   - the revenue-amount regex that finds amounts in free text
+ *   - the decimal-separator heuristic (`parseLooseNumber`)
  *
  * Italian financial text is messy: amounts appear as `€ 1.234.567`,
  * `1,5 mln`, `200 mila`, `1.5M`, `1,2 Mld`. The number itself uses `.` for

@@ -12,7 +12,8 @@
 import fs from 'fs';
 import path from 'path';
 import { DirectFetchProvider } from '../../src/providers/http/direct_fetch';
-import { extractFromBody, registrableDomain } from '../../src/enrichment/extract/extract_from_body';
+import { extractFromBody } from '../../src/enrichment/extract/extract_from_body';
+import { registrableDomain } from '../../src/util/domain';
 import { deepExtractFromSite } from '../../src/enrichment/extract/deep_pages';
 
 const SEED = 'output/r12_maps_pd_province_full_enriched_free.jsonl';

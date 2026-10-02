@@ -14,7 +14,7 @@ import {
  * CSV pipeline — the highest-risk persistence bug, so there is one source.
  */
 
-export type DedupKeyType = 'phone' | 'name_city' | 'name_addr' | 'host' | 'pg_url' | 'maps_url';
+type DedupKeyType = 'phone' | 'name_city' | 'name_addr' | 'host' | 'pg_url' | 'maps_url';
 
 export interface DedupAlias {
   alias_key: string;

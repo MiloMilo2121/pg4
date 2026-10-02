@@ -11,7 +11,7 @@ import type { DedupAlias } from './dedup_key';
  * dedup_key) and bookkeeping (cost_eur, schema_version) are handled
  * separately, so they are absent here.
  */
-export const COMPANY_VALUE_COLUMNS = [
+const COMPANY_VALUE_COLUMNS = [
   // raw (scraped)
   'company_name', 'category', 'city', 'province', 'region', 'address', 'phone',
   'phone_raw', 'website', 'source', 'source_url', 'pg_url', 'maps_url', 'vat_code',
@@ -23,18 +23,17 @@ export const COMPANY_VALUE_COLUMNS = [
   'employees', 'employees_is_estimated', 'decision_maker_name', 'decision_maker_role',
   'decision_maker_linkedin', 'lead_score', 'financial_source', 'financial_confidence',
   'financial_notes',
-  // schema v2 (Phase 1 free-gold)
+  // schema v2 (free-gold fields)
   'instagram', 'facebook', 'linkedin',
 ] as const;
 
-export type CompanyValueColumn = (typeof COMPANY_VALUE_COLUMNS)[number];
+type CompanyValueColumn = (typeof COMPANY_VALUE_COLUMNS)[number];
 
 /**
  * The tenant-scoped company repository. Every method takes (or is bound to) a
  * tenant id; an implementation MUST NOT return or mutate another tenant's
- * rows. `InMemoryTenantDb` enforces this structurally (storage keyed by tenant)
- * and is the dev/test double; `PgTenantDb` is the production adapter over a
- * `SqlExecutor`, with Postgres RLS as the second, DB-level guard.
+ * rows. `InMemoryTenantDb` enforces this structurally (storage keyed by tenant);
+ * a database-backed implementation would add Postgres RLS as a second guard.
  */
 
 /** A `companies` row: the mapped lead columns + tenancy + dedup identity. */
@@ -89,5 +88,4 @@ export function leadToCompanyRow(lead: Lead, tenantId: string): CompanyRow {
   return row;
 }
 
-export { computeDedupKey, computeDedupAliases };
-export type { DedupAlias };
+export { computeDedupAliases };

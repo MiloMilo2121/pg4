@@ -1,16 +1,14 @@
 /**
- * Pure functions for classifying URLs and HTML content. Ported from
- * pg3/src/enricher/core/discovery/content_filter.ts but exposed as plain
- * functions instead of a class.
+ * Pure functions for classifying URLs and HTML content.
  */
 
 /**
  * Hosts that must NEVER be stored as `official_website`.
  *
- * Phase 3.7 audit of pg3 outputs (`MASTER_WITH_WEBSITE.csv`, 1700 rows)
- * found ~25% of records with `website` set to one of these. They polluted
+ * An audit of a 1700-row output export (`MASTER_WITH_WEBSITE.csv`) found
+ * ~25% of records with `website` set to one of these. They polluted
  * downstream enrichment, decision-maker discovery, and final outreach
- * lists. See `docs/legacy_failure_taxonomy.md` §2.
+ * lists. See `docs/legacy_failure_taxonomy.md`.
  */
 const DIRECTORIES = new Set([
   // Search engines — never the answer to "what's the company's website?"
@@ -27,16 +25,14 @@ const DIRECTORIES = new Set([
   // Italian aggregators / directory portals
   'virgilio.it', 'aziende.virgilio.it', 'kompass.com', 'europages.com',
   'misterimprese.it', 'prontopro.it', 'prontoimprese.it', 'habitissimo.it',
-  // Phase E.1 (p72 VR audit) — directory portals that bypassed the
-  // SerpDeduplicator and got accepted as official_website. Same family
-  // as inelenco.com from earlier audits. Each manually verified to
-  // serve "<lead>/azienda/..." or "<lead>/informazioni-dettagliate/..."
-  // listing URLs, not the firm's own site.
+  // Directory portals that bypassed the
+  // SerpDeduplicator and got accepted as official_website. Each
+  // manually verified to serve "<lead>/azienda/..." or
+  // "<lead>/informazioni-dettagliate/..." listing URLs, not the firm's own site.
   'coobiz.it', 'italialei.it', 'inelenco.com',
-  // Phase G.1 (p90 PD Serper audit) — paid SERP returned dozens of
-  // listing-aggregator hosts that BL/TV/VR/PD free providers never
-  // surfaced. Each one observed in p90 SERP_PAID matches as a
-  // listing/profile page rather than the firm's own site.
+  // Paid SERP returned dozens of listing-aggregator hosts that the
+  // BL/TV/VR/PD free providers never surfaced. Each one observed in
+  // SERP_PAID matches as a listing/profile page, not the firm's own site.
   'cercacasa.it',                  // agency-listing portal
   'atoka.io',                       // company-data aggregator
   'agentiimmobiliariabilitati.it',  // FIAIP-adjacent listing
@@ -57,8 +53,8 @@ const DIRECTORIES = new Set([
   'realadvisor.it',                // listing aggregator
   'distrettodelbacchiglione.it',   // local territory portal
   'mia-azienda.com', 'visurissima.it', 'reteimprese.it',
-  // Phase G.1 — Italian wrong-sector / public-admin hosts seen as
-  // p90 FPs because they happen to mention the company name in some
+  // Italian wrong-sector / public-admin hosts seen as
+  // FPs because they happen to mention the company name in some
   // page (e.g. employee bio, condo admin list, encyclopedia entry).
   // These are never a real-estate-agency website.
   'treccani.it',                   // encyclopedia
@@ -70,7 +66,7 @@ const DIRECTORIES = new Set([
   'bonaldo.com',                   // furniture brand
   'wordpress.com',                 // generic blog hosting
   'pd.camcom.it', 'vi.camcom.it',  // chambers of commerce
-  // R6.1 (p_recal2 PD audit) — SERP_COMPANY FPs surfaced after the
+  // PD audit — SERP_COMPANY FPs surfaced after the
   // PgDetailStage semantic-veto + cache fixes increased free-pass
   // recall. Each manually verified via WebFetch.
   'luxuryestate.com',              // global luxury-listing aggregator
@@ -78,7 +74,7 @@ const DIRECTORIES = new Set([
   'itpres.com',                    // weak HG candidate (Italy Prime
                                     // Estates "itpres.com" — appears as
                                     // generic Italian-prestige domain)
-  // R7.1 (paid PD audit) — Serper-induced FP class: business-data
+  // Paid PD audit — Serper-induced FP class: business-data
   // aggregators that publish the firm's P.IVA in a directory entry,
   // satisfying piva_match without being the firm's own site. Each
   // manually verified via WebFetch in scripts/extract_gains audit.
@@ -93,51 +89,51 @@ const DIRECTORIES = new Set([
   'bur.regione.veneto.it',         // Bollettino Ufficiale Regione Veneto
   'comunichiamoimpresa.it',        // Italian state-aid disclosure registry
   'amministrazionicomunali.it',    // Italian municipal-tax tools portal
-  // R7.1 (paid PD audit) — wrong-sector cross-publishing: same legal
+  // Paid PD audit — wrong-sector cross-publishing: same legal
   // entity (P.IVA) operates a non-real-estate business. Adding by
   // host because the lead's vat happens to match these pages and
   // there's no cheaper way to distinguish. 1-off but unambiguous.
   'lafemmestore.eu',               // women's clothing store — same vat as a
                                     // Retecasa Vigonza lead (owner has multiple businesses)
   'centrobachelet.org',            // community center / non-profit — wrong sector
-  // R7.1.b (paid PD round-2 audit) — public-administration / transport
+  // Paid PD round-2 audit — public-administration / transport
   // sites that publish business data for their own purposes. Distinct
   // class from aggregators: govt portals + state-owned operators.
   'opencoesione.gov.it',           // Italian govt PNRR / cohesion-funds tracker
   'fsbusitalia.it',                // Gruppo FS Italiane bus operator (public transport)
   'provincia.pd.it',               // Provincia di Padova administrative site
-  // R7.1.c (paid PD round-3 audit) — final residuals: municipal
+  // Paid PD round-3 audit — final residuals: municipal
   // service portals, research institutes, and a reviews aggregator
   // that surfaced in the free pass after the paid blocklist
   // tightened. Each manually verified.
   'servizi.comune.albignasego.pd.it', // Comune di Albignasego service portal
   'ac.infn.it',                     // Istituto Nazionale di Fisica Nucleare (national research)
   'italiarecensioni.com',           // Italian business-reviews aggregator
-  // R8.1.BL audit — generalization run on Belluno province surfaced
+  // Belluno audit — generalization run on Belluno province surfaced
   // 6 paid FPs (precision 67/73 = 91.8 % — above target). Two new
   // host families:
   'telefonforsaljare.nu',           // Swedish phone-spam aggregator (×5 in BL)
   'generali.it',                    // Generali insurance group (covers
                                     // agenzie.generali.it directory listings)
-  // R9 simulator — additional BL hosts surfaced by the offline
+  // Simulator — additional BL hosts surfaced by the offline
   // PaidEvidenceGate simulation that the first BL audit missed.
   // Each verified by inspection.
   'gazzettaufficiale.it',           // Italian Official Gazette
   'cercaaziendepro.it',             // business directory (CercaAziendePro)
   'cenatesotto.halleyweb.it',       // Comune di Cenate Sotto public-tenders portal
   'domus-picta.com',                // Prosecco DOC wine portal (vineyard)
-  // R10 (paid VR rerun with R9 gate) — confirmation surfaced 2 FPs
+  // Paid VR rerun with the evidence gate — confirmation surfaced 2 FPs
   // that bypassed the sector-density rule because the page lists
   // "immobiliare" as an industry-category 6 times (member profile
   // with category nav). Industrial-association class, parent host
   // for all Confindustria provincial branches.
   'confindustria.it',               // Italian industrial confederation (covers
                                     // *.confindustria.it — vicenza/verona/etc.)
-  // R8.1.VR audit — generalization run on Verona province dropped
+  // Verona audit — generalization run on Verona province dropped
   // precision to 75.9 % (44 TP / 14 FP / 58 paid). Triggered the
   // 85 % stop-rule before TV. 12 new host families surfaced —
   // mostly aggregators + wrong-sector cross-publishing.
-  // R10.b TV audit (paid TV rerun with R9 gate) — 2 FPs out of 65
+  // Paid TV rerun with the evidence gate — 2 FPs out of 65
   // SERP_PAID gains slipped past the structural gate. One is a
   // government transparency portal that surfaces vat references in
   // contractor PDFs; the other is a real-estate listing aggregator.
@@ -157,9 +153,9 @@ const DIRECTORIES = new Set([
   'sihappy.it',                     // multi-category marketplace (immobiliare among others)
   'ingebau.it',                     // engineering / construction firm (wrong sector)
   'tipsammartino.it',               // print shop (wrong sector — Sammartino vat collision)
-  // Phase G.2 (p91 PD Serper round-2 audit) — additional Serper-
-  // observed FPs that slipped past G.1 blocklist. Each manually
-  // verified or classified by URL pattern in the p91 SERP_PAID set.
+  // Additional Serper-observed FPs that slipped past the blocklist
+  // above. Each manually verified or classified by URL pattern in the
+  // SERP_PAID set.
   'casavenezia.it',                // agency-listing portal (Venezia)
   'impresaitalia.info',            // company-data aggregator
   'mioaffitto.it',                 // rental listings (variant of ioaffitto)
@@ -198,9 +194,9 @@ const DIRECTORIES = new Set([
   'soloaffitti.it', 'immobiliare.info', 'annuncicase.it', 'cercasicasa.it',
   'attico.it', 'wikicasa.it', 'caasa.it', 'trovacasa.it', 'cheannunci.it',
 
-  // Real-estate FRANCHISE master portals (Phase 3.7 audit: 432/1700 records
-  // were mistakenly tagged as the agency's website, when in fact they were
-  // the franchise's flagship site, e.g. `tecnocasa.it/agenzie/foo`).
+  // Real-estate FRANCHISE master portals — in an audit, 432/1700
+  // records were mistakenly tagged as the agency's website, when in fact they
+  // were the franchise's flagship site, e.g. `tecnocasa.it/agenzie/foo`.
   'tecnocasa.it', 'gabetti.it', 'remax.it', 'professionecasa.it',
   'retecasa.it', 'intercasanet.it', 'myhomegroup.it', 'gruppocasa.com',
   'centrocasa.it', 'primacasa.it', 'stabilia.it', 'agenziagruppocasa.it',

@@ -2,13 +2,13 @@ import { setTimeout as wait } from 'timers/promises';
 import type { BrowserFactory } from '../browser/factory';
 import { acceptConsent } from '../browser/consent_handler';
 import { logger } from '../runtime/logger';
-import { buildPgSearchUrl } from './sources/pg_url';
+import { buildPgSearchUrl } from './sources/pagine_gialle_url';
 import { buildMapsSearchUrl } from './sources/maps_url';
-import { PG_RESULTS_SELECTOR } from './sources/pg_live';
+import { PG_RESULTS_SELECTOR } from './sources/pagine_gialle_live';
 import { FEED_SELECTOR } from './sources/maps_live';
 
 /**
- * Phase A.3 — selector health check, run before any live scrape.
+ * Selector health check, run before any live scrape.
  *
  * Today a PagineGialle / Maps markup change produces an empty run with no
  * alarm: every comune parses 0 cards, the run "completes", and the operator
@@ -19,7 +19,7 @@ import { FEED_SELECTOR } from './sources/maps_live';
  *
  * The known-good query is fixed (densest validated comune): "agenzie
  * immobiliari" in Padova returns 200+ PG cards and a full Maps feed on every
- * validated run since R6. If THAT query yields zero matches, the markup
+ * validated run. If THAT query yields zero matches, the markup
  * changed or the IP is blocked — either way the run must not proceed
  * silently.
  *

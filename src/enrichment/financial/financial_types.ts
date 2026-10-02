@@ -1,9 +1,9 @@
 /**
- * R13 — financial enrichment provenance contract.
+ * Financial enrichment provenance contract.
  *
- * Every financial field pg4 emits must carry WHERE it came from and HOW
- * confident we are. pg3 stored bare strings (`revenue?: string`) with the
- * source buried in a free-text `source` field; pg4 makes provenance a
+ * Every financial field emitted must carry WHERE it came from and HOW
+ * confident we are. Bare strings (`revenue?: string`) with the source buried
+ * in a free-text `source` field would hide provenance; these types make it a
  * first-class, structured concern so the operator can audit any number.
  *
  * These types are PURE — no runtime, no network. They are the shared shape
@@ -11,30 +11,19 @@
  * and the (disabled-by-default) `financial_stage`.
  */
 
-/**
- * Where a financial signal originated. Ordered loosely by trust:
- * an authoritative directory/registry > website self-declaration >
- * SERP snippet > heuristic estimate.
- */
-export type FinancialSource =
-  | 'input' // came in on the source CSV/row
-  | 'website' // scraped from the company's own site
-  | 'fatturatoitalia' // fatturatoitalia.it company page
-  | 'registroimprese' // official business registry
-  | 'serp' // search-result snippet
-  | 'vies' // EU VIES VAT validation
-  | 'estimate' // heuristic / LLM estimate (never authoritative)
-  | 'unknown';
+// The vocabulary lives in the L0 contract in `types/financial.ts`: importing
+// it from `enrichment/` was an upward edge (`types/lead.ts` → `enrichment/`).
+import type { FinancialSource } from '../../types/financial';
 
-/** Trust banding for a source, mirroring pg3's `source_trust`. */
-export type FinancialSourceTrust = 'high' | 'medium' | 'low';
+/** Trust banding for a source (`source_trust`). */
+type FinancialSourceTrust = 'high' | 'medium' | 'low';
 
 /**
  * One provenance record. A `FinancialResult` carries an array of these so
  * each field (revenue, vat, employees) can point at the exact match that
  * produced it.
  */
-export interface FinancialEvidence {
+interface FinancialEvidence {
   /** Which field this evidence supports. */
   field: 'vat_code' | 'revenue' | 'revenue_year' | 'employees' | 'utile' | 'company_name';
   source: FinancialSource;

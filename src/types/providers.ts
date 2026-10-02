@@ -5,7 +5,7 @@
 
 /**
  * Router method-families (the three method-registries: search/fetch/complete) PLUS
- * the non-router families that are cost-gated via `ProviderRouter.invoke` (addendum R1).
+ * the non-router families that are cost-gated via `ProviderRouter.invoke`.
  * Widening this is ledger/breaker tagging only — it does NOT add router method-registries.
  */
 export type ProviderFamily = 'serp' | 'http' | 'llm' | 'email' | 'official' | 'reviews' | 'ads' | 'captcha' | 'apify';
@@ -13,7 +13,7 @@ export type ProviderFamily = 'serp' | 'http' | 'llm' | 'email' | 'official' | 'r
 /**
  * Functional ROLE a provider can fill (orthogonal to family). A provider may have
  * MANY roles. The RoleRegistry maps each role to its ordered free→paid cascade.
- * Source of truth: docs/provider_cascade_architecture.md §2.
+ * Source of truth: docs/provider_cascade_architecture.md.
  */
 export type ProviderRole =
   | 'SEARCH_WEB'
@@ -41,7 +41,7 @@ export type ProviderRole =
   | 'EMBEDDINGS';
 
 /**
- * Minimal cost-gated provider descriptor for `ProviderRouter.invoke` (addendum R1).
+ * Minimal cost-gated provider descriptor for `ProviderRouter.invoke`.
  * Any non-router provider (email/official/reviews/ads/captcha) passes one of these so
  * the SAME paid-gate / budget / run-ceiling / breaker / ledger pipeline applies to it.
  */
@@ -88,7 +88,7 @@ export interface LLMCompletionResult {
 }
 
 /** Base provider — every provider implements this. */
-export interface Provider {
+interface Provider {
   readonly id: string;
   readonly family: ProviderFamily;
   readonly tier: number;

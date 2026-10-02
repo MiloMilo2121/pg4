@@ -9,13 +9,13 @@ import { getNotifier } from '../runtime/notifier';
 import { PreflightError } from '../discovery/preflight';
 import { runEnrichCommand } from './enrich_command';
 import { postRunValidate } from './_post_run';
-import { SuppressionList } from '../compliance/suppression';
+import { suppressionForCommand } from '../compliance/suppression';
 import { enforceRetention, resolveRetentionDays } from '../compliance/retention';
 
 /**
  * `pnpm run pipeline -- --category "X" --province PD --out output/campaign`
  *
- * Phase B.1 — the end-to-end command: scrape → enrich, one shared run id,
+ * The end-to-end command: scrape → enrich, one shared run id,
  * one run record, one log file. Output layout from `--out <base>`:
  *
  *   <base>_raw.csv / .jsonl          scrape output
@@ -64,13 +64,13 @@ async function main(): Promise<number> {
   const runCeilingArg = optString(args, 'run-cost-ceiling-eur');
 
   try {
-    // Phase D.2 — retention sweep (only when the operator opted in).
+    // Retention sweep (only when the operator opted in).
     const retentionDays = resolveRetentionDays(optString(args, 'retention-days'));
     if (retentionDays !== undefined) {
       enforceRetention({ outCsv: enrichedCsv, retentionDays });
     }
-    // Phase D.1 — one suppression list for both stages.
-    const suppression = SuppressionList.resolve({ flagPath: optString(args, 'suppression-list'), outCsv: enrichedCsv });
+    // One suppression list for both stages.
+    const suppression = suppressionForCommand(args.flags, enrichedCsv);
 
     // ---- Stage 1: scrape ----
     logger.info({ runId, category, province, comuniCsv, rawCsv }, '[run] stage 1/2 — scrape');

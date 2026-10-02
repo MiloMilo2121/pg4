@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { ProviderRouter } from '../../src/providers/provider_router';
 import { CostLedger } from '../../src/runtime/cost_ledger';
-import type { HttpProvider, SerpProvider } from '../../src/types/providers';
+import type { HttpProvider, SerpProvider, SerpResult } from '../../src/types/providers';
 
 class FakeSerp implements SerpProvider {
   family = 'serp' as const;
@@ -73,7 +73,7 @@ describe('ProviderRouter', () => {
       costPerCallEur = 0;
       callCount = 0;
       available() { return true; }
-      async search() {
+      async search(): Promise<SerpResult[]> {
         this.callCount += 1;
         throw new Error('upstream 5xx');
       }

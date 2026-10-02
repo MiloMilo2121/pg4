@@ -1,10 +1,10 @@
 import type { Lead } from '../../types/lead';
 import type { NormalizedLead } from '../../types/discovery';
-import type { PerLeadContext, Stage } from '../../types/enrichment';
+import type { PerLeadContext, Stage, StageRunOptions } from '../../types/enrichment';
 import type { StageOutcome } from '../../types/output';
 import { DiscoveryMethod } from '../../types/output';
 import type { ProviderRouter } from '../../providers/provider_router';
-import { verifyCandidates, routeFromLeadContext } from './verify_candidates';
+import { verifyCandidates, routeFromLeadContext } from '../website/verify_candidates';
 import { matchSocialUrl, type SocialKey } from '../extract/extract_from_body';
 import { normalizeVatCode, validateItalianVatChecksum } from '../financial/vat';
 import { getEnv } from '../../config/env';
@@ -38,10 +38,16 @@ function validatedSocial(url: string): { key: SocialKey; url: string } | undefin
  */
 export class PerplexityResolveStage implements Stage {
   readonly name = 'perplexity_resolve';
+  /**
+   * One Sonar call (up to 24 s for headers plus 24 s for the body) followed by
+   * the website verify (a few 8 s fetches and an RDAP probe). 90 s covers both,
+   * so the deadline only catches a hang, not a paid completion still arriving.
+   */
+  readonly timeoutMs = 90_000;
 
   constructor(private router: ProviderRouter) {}
 
-  async run(ctx: PerLeadContext, lead: Lead, normalized: NormalizedLead): Promise<StageOutcome> {
+  async run(ctx: PerLeadContext, lead: Lead, normalized: NormalizedLead, opts: StageRunOptions = {}): Promise<StageOutcome> {
     const start = Date.now();
     if (getEnv().PERPLEXITY_RESOLVE_ENABLED !== true) {
       return { stage: this.name, status: 'skipped', duration_ms: 0, detail: 'perplexity_resolve_disabled' };
@@ -78,6 +84,7 @@ export class PerplexityResolveStage implements Stage {
         remainingLeadBudgetEur: remaining,
         runCostCeilingEur: ctx.runCostCeilingEur,
         meta: { lead_id: ctx.leadId, run_id: ctx.runId ?? '', stage: this.name },
+        signal: opts.signal,
       },
     );
     if (!content) return { stage: this.name, status: 'not_found', duration_ms: Date.now() - start, detail: 'gated_or_no_completion' };
@@ -95,6 +102,7 @@ export class PerplexityResolveStage implements Stage {
         const verdict = await verifyCandidates(this.router, [parsed.website], normalized, lead, {
           timeoutMs: 8000,
           meta: { lead_id: ctx.leadId, run_id: ctx.runId ?? '', stage: this.name },
+          signal: opts.signal,
           fetchCache: ctx.httpFetchCache,
           route: routeFromLeadContext(ctx),
         });

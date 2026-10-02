@@ -1,5 +1,5 @@
 /**
- * Unit tests for src/scripts/validate_output.ts
+ * Unit tests for src/io/validation/output_validator.ts
  *
  * Writes temp fixture files to os.tmpdir(), runs the validator logic
  * in-process by importing internal helpers, asserts pass and fail cases.

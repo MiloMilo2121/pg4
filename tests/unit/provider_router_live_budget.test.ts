@@ -15,7 +15,7 @@ class FlakyPaidHttp implements HttpProvider {
   }
   async fetch(): Promise<HttpFetchResult> {
     this.calls += 1;
-    return { status: 503, html: undefined, error: 'upstream 503', duration_ms: 1, cost_eur: this.costPerCallEur };
+    return { status: 503, html: undefined, error: 'upstream 503', duration_ms: 1, cost_eur: this.costPerCallEur, provider: this.id };
   }
 }
 

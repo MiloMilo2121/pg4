@@ -1,4 +1,5 @@
 import { ItalianNerParser } from '../../discovery/website/hyper_guesser/italian_ner_parser';
+import { stripDiacritics } from '../../util/text';
 
 /**
  * Email pattern inference — PURE, deterministic.
@@ -54,10 +55,7 @@ const ROLE_LOCALS: ReadonlyArray<{ local: string; prior: number }> = [
  * across the deduper / NER so keys stay consistent.
  */
 function asciiName(s: string): string {
-  return s
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
+  return stripDiacritics(s.toLowerCase())
     .replace(/['’`]/g, '') // drop apostrophes so "D'Angelo" → "dangelo" (email convention)
     .replace(/[^a-z0-9\s]/g, ' ')
     .replace(/\s+/g, ' ')

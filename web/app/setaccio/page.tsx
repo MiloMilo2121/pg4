@@ -1,9 +1,8 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import './setaccio.css';
 import { INITIAL_STATE, type State } from './data';
-import type { ViewProps } from './ctx';
 import Sidebar from './Sidebar';
 import Topbar from './Topbar';
 import Home from './views/Home';
@@ -15,52 +14,59 @@ import Valutazione from './views/Valutazione';
 import Analytics from './views/Analytics';
 import Liste from './views/Liste';
 import Sistema from './views/Sistema';
-import { MiloFab, MiloModal, WizardModal } from './Modals';
+import { MiloFab, MiloModal, WizardModal, MILO_SEEN_KEY } from './Modals';
 import JobProgressModal from './JobProgressModal';
 import CompanyDrawer from './CompanyDrawer';
-
-const PAGE_BG =
-  'radial-gradient(120% 80% at 88% -10%, rgba(151,88,47,0.06), transparent 55%), ' +
-  'radial-gradient(90% 60% at 0% 100%, rgba(151,88,47,0.04), transparent 55%)';
+import StatusBar from './StatusBar';
+import CommandPalette from './CommandPalette';
+import HelpDialog from './HelpDialog';
+import { useShortcuts } from './useShortcuts';
 
 export default function SetaccioPage() {
   const [st, setSt] = useState<State>(INITIAL_STATE);
-  const set = useCallback((patch: Partial<State>) => setSt((s) => ({ ...s, ...patch })), []);
-
-  // animated count-up for the Italia map tooltip (cubic ease-out over 420ms).
-  const rafRef = useRef<number | null>(null);
-  const startCount = useCallback((target: number) => {
-    if (rafRef.current) cancelAnimationFrame(rafRef.current);
-    const t0 = performance.now();
-    const dur = 420;
-    const tick = (t: number) => {
-      const k = Math.min(1, (t - t0) / dur);
-      setSt((s) => ({ ...s, hoverCount: Math.round(target * (1 - Math.pow(1 - k, 3))) }));
-      if (k < 1) rafRef.current = requestAnimationFrame(tick);
-    };
-    rafRef.current = requestAnimationFrame(tick);
+  // Below 1100px the sidebar is an off-canvas drawer; navigating closes it.
+  const [menuOpen, setMenuOpen] = useState(false);
+  const set = useCallback((patch: Partial<State>) => {
+    if (patch.nav) setMenuOpen(false);
+    setSt((s) => ({ ...s, ...patch }));
   }, []);
+  const closeMenu = useCallback(() => setMenuOpen(false), []);
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
+  const openHelp = useCallback(() => { setPaletteOpen(false); setHelpOpen(true); }, []);
 
-  // first-visit onboarding: open Milo unless the tour was already seen.
+  useShortcuts({
+    overlayOpen: paletteOpen || helpOpen || menuOpen || st.miloOpen || st.wizardOpen || st.jobModalOpen || !!st.selectedCompanyId,
+    go: (nav) => set({ nav }),
+    palette: () => { setHelpOpen(false); setPaletteOpen((o) => !o); },
+    help: openHelp,
+    // "/" jumps to the archive search; the field mounts with the view, so focus it next frame.
+    search: () => {
+      set({ nav: 'aziende' });
+      requestAnimationFrame(() => document.getElementById('sx-azi-search')?.focus());
+    },
+  });
+
+  // First visit: the Milo button carries a "new" mark until the tour is seen.
+  // The tour no longer opens by itself: a dialog that steals focus on arrival
+  // hides the product behind it. localStorage exists only in the browser, so it
+  // is read after hydration.
+  const [miloSeen, setMiloSeen] = useState(true);
   useEffect(() => {
     try {
-      if (!localStorage.getItem('ag_milo_seen')) setSt((s) => ({ ...s, miloOpen: true }));
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- post-hydration read of browser-only storage
+      setMiloSeen(localStorage.getItem(MILO_SEEN_KEY) === '1');
     } catch {
-      /* ignore */
+      /* storage blocked: treat as seen */
     }
-    return () => {
-      if (rafRef.current) cancelAnimationFrame(rafRef.current);
-    };
   }, []);
-
-  const vp: ViewProps = { st, set, startCount };
 
   function renderView() {
     switch (st.nav) {
       case 'home': return <Home set={set} />;
       case 'mercati': return <Mercati set={set} />;
       case 'aziende': return <Aziende st={st} set={set} />;
-      case 'italia': return <Italia {...vp} />;
+      case 'italia': return <Italia st={st} set={set} />;
       case 'raff': return <Raffinazione st={st} set={set} />;
       case 'val': return <Valutazione st={st} set={set} />;
       case 'analytics': return <Analytics st={st} set={set} />;
@@ -70,39 +76,26 @@ export default function SetaccioPage() {
     }
   }
 
-  // The Italia view manages its own full-height layout (no scroll wrapper).
-  const isItalia = st.nav === 'italia';
-
   return (
-    <div className="setaccio-root">
-      <div
-        style={{
-          display: 'flex',
-          height: '100%',
-          width: '100%',
-          overflow: 'hidden',
-          background: 'var(--paper)',
-          color: 'var(--ink)',
-          fontFamily: 'var(--sans)',
-          backgroundImage: PAGE_BG,
-        }}
-      >
-        <Sidebar st={st} set={set} />
-        <main style={{ flex: 1, height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0 }}>
-          <Topbar st={st} set={set} />
-          {isItalia ? (
-            <div style={{ flex: 1, overflow: 'hidden', minHeight: 0 }}>{renderView()}</div>
-          ) : (
-            <div className="ag-scroll" style={{ flex: 1, overflowY: 'auto' }}>{renderView()}</div>
-          )}
-        </main>
+    <div className="sx-app">
+      <Sidebar st={st} set={set} open={menuOpen} onClose={closeMenu} onPalette={() => setPaletteOpen(true)} />
+      <main className="sx-main">
+        <Topbar st={st} set={set} menuOpen={menuOpen} onMenu={() => setMenuOpen((o) => !o)} />
+        {/* The Italia view manages its own full-height layout (no scroll wrapper). */}
+        {/* Focusable so keyboard users can scroll views without interactive content. */}
+        <div className={st.nav === 'italia' ? 'sx-stage' : 'sx-scroll'} key={st.nav} tabIndex={0} role="region" aria-label="Contenuto della vista">
+          {renderView()}
+        </div>
+        <StatusBar st={st} set={set} onHelp={openHelp} />
+      </main>
 
-        <MiloFab set={set} />
-        {st.miloOpen && <MiloModal st={st} set={set} />}
-        {st.wizardOpen && <WizardModal st={st} set={set} />}
-        {st.activeJob && <JobProgressModal st={st} set={set} />}
-        {st.selectedCompanyId && <CompanyDrawer st={st} set={set} />}
-      </div>
+      <MiloFab set={set} isNew={!miloSeen} />
+      {st.miloOpen && <MiloModal st={st} set={set} onSeen={() => setMiloSeen(true)} />}
+      {st.wizardOpen && <WizardModal st={st} set={set} />}
+      {st.activeJob && <JobProgressModal st={st} set={set} />}
+      {st.selectedCompanyId && <CompanyDrawer st={st} set={set} />}
+      {paletteOpen && <CommandPalette set={set} onClose={() => setPaletteOpen(false)} onHelp={openHelp} />}
+      {helpOpen && <HelpDialog onClose={() => setHelpOpen(false)} />}
     </div>
   );
 }

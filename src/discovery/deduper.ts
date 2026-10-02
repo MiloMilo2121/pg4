@@ -1,4 +1,6 @@
 import type { Lead } from '../types/lead';
+import { registrableDomain, subdomainOf } from '../util/domain';
+import { stripDiacritics } from '../util/text';
 
 /**
  * Raw-lead deduplicator used by the scraper to collapse results from
@@ -9,7 +11,7 @@ import type { Lead } from '../types/lead';
  *   - normalized (name + first 3 address tokens)
  *   - pg_url (canonical)
  *   - maps_url (canonical)
- *   - website registrable host
+ *   - website host (www stripped)
  *
  * Merge policy is conservative: incoming fields fill in only what the
  * existing record is missing. Existing values always win on conflict —
@@ -33,7 +35,7 @@ export class Deduplicator {
   private byMapsUrl = new Map<string, Lead>();
   private byHost = new Map<string, Lead>();
   /**
-   * Phase C.3 — auxiliary token-sorted name index for NEAR-duplicate
+   * Auxiliary token-sorted name index for NEAR-duplicate
    * detection. "Immobiliare Rossi | padova" and "Rossi Immobiliare |
    * padova" produce different primary keys but the same sorted-token
    * key. Candidates are LOGGED for operator review, never auto-merged —
@@ -42,7 +44,7 @@ export class Deduplicator {
    */
   private bySortedNameCity = new Map<string, Lead>();
   /**
-   * Gate-0 — first lead seen per registrable domain (eTLD+1). Used to flag
+   * First lead seen per registrable domain (eTLD+1). Used to flag
    * same-domain / different-name pairs for review (see add()).
    */
   private byRegistrableHost = new Map<string, Lead>();
@@ -73,7 +75,7 @@ export class Deduplicator {
     if (item.maps_url) this.byMapsUrl.set(item.maps_url, item);
     const host = this.hostKey(item.website);
     if (host) this.byHost.set(host, item);
-    // Phase C.3 — near-duplicate detection. Fires when the sorted-token
+    // Near-duplicate detection. Fires when the sorted-token
     // key collides but the primary name+city key does not (requires the
     // same words in a different order). Candidate is logged, not merged.
     const sk = this.sortedNameCityKey(item);
@@ -89,7 +91,7 @@ export class Deduplicator {
       }
       if (!near) this.bySortedNameCity.set(sk, item);
     }
-    // Gate-0 — shared-registrable-host review trigger. Two records on the
+    // Shared-registrable-host review trigger. Two records on the
     // SAME registrable domain (eTLD+1) but with different name+city keys are
     // most often the same business recorded twice (apex vs www, or a content
     // page vs the home page) — the full-host index above did not catch them
@@ -98,7 +100,7 @@ export class Deduplicator {
     // where both records sit on different non-www subdomains of a shared
     // brand domain (e.g. padova1.tecnocasaimpresa.it vs padova2.…) — those
     // are legitimately distinct branches.
-    const reg = registrableHostKey(item.website);
+    const reg = registrableDomain(item.website);
     if (reg) {
       const prior = this.byRegistrableHost.get(reg);
       if (prior && prior !== item && this.nameCityKey(prior) !== nc && !looksLikeFranchiseSiblings(prior.website, item.website)) {
@@ -113,7 +115,7 @@ export class Deduplicator {
     }
   }
 
-  /** Phase C.3 — near-duplicate pairs flagged during this run (review-only). */
+  /** Near-duplicate pairs flagged during this run (review-only). */
   getReviewCandidates(): DedupReviewCandidate[] {
     return this.reviewCandidates;
   }
@@ -123,9 +125,8 @@ export class Deduplicator {
    * Existing values are NEVER overwritten on scalar fields — caller
    * chooses authority by order of `add()` calls.
    *
-   * EXCEPTION: `sources[]` is treated as a UNION (Phase 3.7) — pg3 used
-   * a delimited string and lost provenance. pg4 keeps every contributing
-   * source visible.
+   * EXCEPTION: `sources[]` is treated as a UNION — a delimited string
+   * loses provenance. Every contributing source stays visible.
    */
   merge(existing: Lead, incoming: Lead): void {
     for (const [k, v] of Object.entries(incoming)) {
@@ -180,7 +181,7 @@ export class Deduplicator {
   }
 
   /**
-   * Phase C.3 — sorted-token variant of nameCityKey. Same locality rules;
+   * Sorted-token variant of nameCityKey. Same locality rules;
    * name tokens are sorted so word order stops mattering. Only produced
    * for names with ≥ 2 tokens (single-token names cannot reorder).
    */
@@ -250,16 +251,13 @@ function pickReviewFields(l: Lead): DedupReviewCandidate['existing'] {
 }
 
 export function normalizeForKey(s: string): string {
-  return s
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
+  return stripDiacritics(s.toLowerCase())
     .replace(/[^a-z0-9]+/g, ' ')
     .trim();
 }
 
 /**
- * Gate-0 — company-name key normalization that ALSO canonicalizes Italian
+ * Company-name key normalization that ALSO canonicalizes Italian
  * legal forms so punctuation/spacing variants of the same entity collapse.
  *
  * The base `normalizeForKey` turns "Immobiliare S.r.l." into "immobiliare s
@@ -283,37 +281,6 @@ export function normalizeCompanyNameForKey(s: string): string {
 }
 
 /**
- * Registrable domain (eTLD+1) heuristic: last two labels of the hostname.
- * Good enough for Italian SMB sites (overwhelmingly `name.it`/`name.com`).
- * Returns undefined for unparseable input or bare hostnames.
- */
-function registrableHostKey(website: string | undefined): string | undefined {
-  if (!website) return undefined;
-  let host: string;
-  try {
-    host = new URL(website.startsWith('http') ? website : `https://${website}`).hostname.toLowerCase();
-  } catch {
-    return undefined;
-  }
-  const labels = host.replace(/\.$/, '').split('.').filter(Boolean);
-  if (labels.length < 2) return undefined;
-  return labels.slice(-2).join('.');
-}
-
-/** The subdomain part of a host (labels before the registrable domain), www stripped. */
-function subdomainLabel(website: string | undefined): string {
-  if (!website) return '';
-  let host: string;
-  try {
-    host = new URL(website.startsWith('http') ? website : `https://${website}`).hostname.toLowerCase();
-  } catch {
-    return '';
-  }
-  const labels = host.replace(/\.$/, '').split('.').filter((l) => l && l !== 'www');
-  return labels.slice(0, Math.max(0, labels.length - 2)).join('.');
-}
-
-/**
  * Two sites are FRANCHISE SIBLINGS when both sit on a distinct, non-www
  * subdomain of the same registrable domain (e.g. `padova1.tecnocasa.it`
  * vs `padova2.tecnocasa.it`). A single company virtually never splits
@@ -322,8 +289,8 @@ function subdomainLabel(website: string | undefined): string {
  * franchise pattern and stays reviewable.)
  */
 function looksLikeFranchiseSiblings(a: string | undefined, b: string | undefined): boolean {
-  const sa = subdomainLabel(a);
-  const sb = subdomainLabel(b);
+  const sa = subdomainOf(a);
+  const sb = subdomainOf(b);
   return sa.length > 0 && sb.length > 0 && sa !== sb;
 }
 

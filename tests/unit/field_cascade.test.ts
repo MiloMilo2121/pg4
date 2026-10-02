@@ -3,6 +3,8 @@ import path from 'path';
 import { describe, expect, it } from 'vitest';
 import type { Lead } from '../../src/types/lead';
 import { CostLedger } from '../../src/runtime/cost_ledger';
+import { CircuitBreaker } from '../../src/runtime/circuit_breaker';
+import { ProviderRouter } from '../../src/providers/provider_router';
 import { runFieldCascade, runFieldCascades, runFieldDescriptor } from '../../src/enrichment/fields/run_field_cascade';
 import { FIELD_REGISTRY, fieldHasFreeTier } from '../../src/enrichment/fields/field_registry';
 import type { EnrichmentFieldDescriptor, EnrichmentStep } from '../../src/enrichment/fields/field_types';
@@ -19,7 +21,7 @@ describe('per-field cascade — free tiers (€0, from the already-fetched body)
   it('resolves email + pec from the website body at zero cost', async () => {
     const l = lead({ company_name: 'Neri', official_website: 'https://neriservizi.it' });
     const ledger = new CostLedger();
-    const [email, pec] = await runFieldCascades(l, ['email', 'pec'], { body: load('it_site_pec_and_phone.html'), ledger });
+    const [email, pec] = await runFieldCascades(l, ['email', 'pec'], { body: load('it_site_pec_and_phone.html'), router: new ProviderRouter([], [], [], ledger) });
     expect(email.resolved).toBe(true);
     expect(l.email_inferred).toBe('contatti@neriservizi.it');
     expect(pec.resolved).toBe(true);
@@ -81,7 +83,7 @@ describe('per-field cascade — gating (the safety triple-gate)', () => {
     const expensive: EnrichmentStep = { id: 'pricey', tier: 2, costEur: 0.5, enabled: true, run: () => ({ value: 'v', confidence: 1, source: 'api', costEur: 0.5 }) };
     const d: EnrichmentFieldDescriptor = { field: 'email', target: 'email_inferred', cascade: [expensive], ceilingEur: 0.02, stopConfidence: 0.5 };
     const ledger = new CostLedger();
-    const out = await runFieldDescriptor(lead({}), d, { paidEnabled: true, ledger });
+    const out = await runFieldDescriptor(lead({}), d, { paidEnabled: true, router: new ProviderRouter([], [], [], ledger) });
     expect(out.steps[0].reason).toBe('budget');
     expect(out.resolved).toBe(false);
     expect(ledger.getTotal()).toBe(0);
@@ -92,11 +94,57 @@ describe('per-field cascade — gating (the safety triple-gate)', () => {
     const d: EnrichmentFieldDescriptor = { field: 'email', target: 'email_inferred', cascade: [ok], ceilingEur: 0.05, stopConfidence: 0.75 };
     const l = lead({});
     const ledger = new CostLedger();
-    const out = await runFieldDescriptor(l, d, { paidEnabled: true, ledger, meta: { tenant_id: 't', lead_id: 'l1' } });
+    const router = new ProviderRouter([], [], [], ledger);
+    const out = await runFieldDescriptor(l, d, { paidEnabled: true, router, meta: { tenant_id: 't', lead_id: 'l1' } });
     expect(out.resolved).toBe(true);
     expect(l.email_inferred).toBe('found@y.it');
     expect(out.costEur).toBeCloseTo(0.02, 6);
     expect(ledger.getTotal()).toBeCloseTo(0.02, 6);
+    expect(ledger.costForLead('l1')).toBeCloseTo(0.02, 6);
+  });
+
+  it('a costed step never runs without a router (no gate, no ledger → no spend)', async () => {
+    let ran = false;
+    const step: EnrichmentStep = { id: 'finder', tier: 2, costEur: 0.02, enabled: true, run: () => { ran = true; return { value: 'found@y.it', confidence: 0.9, source: 'api', costEur: 0.02 }; } };
+    const d: EnrichmentFieldDescriptor = { field: 'email', target: 'email_inferred', cascade: [step], ceilingEur: 0.05, stopConfidence: 0.75 };
+    const out = await runFieldDescriptor(lead({}), d, { paidEnabled: true });
+    expect(ran).toBe(false);
+    expect(out.steps[0].reason).toBe('paid_gated');
+  });
+
+  it('records what the step actually cost, not its declared estimate', async () => {
+    // A finder that bails before its API call (no domain) spends nothing.
+    const step: EnrichmentStep = { id: 'finder', tier: 2, costEur: 0.04, enabled: true, run: () => ({ confidence: 0, source: 'api', costEur: 0, skippedReason: 'no_input' }) };
+    const d: EnrichmentFieldDescriptor = { field: 'email', target: 'email_inferred', cascade: [step], ceilingEur: 0.05, stopConfidence: 0.75 };
+    const ledger = new CostLedger();
+    const out = await runFieldDescriptor(lead({}), d, { paidEnabled: true, router: new ProviderRouter([], [], [], ledger), meta: { lead_id: 'l1' } });
+    expect(out.steps[0].ran).toBe(true);
+    expect(out.steps[0].costEur).toBe(0);
+    expect(out.costEur).toBe(0);
+    expect(ledger.getTotal()).toBe(0);
+  });
+
+  it('applies the router run ceiling: a costed step that would exceed it does not run', async () => {
+    let ran = false;
+    const step: EnrichmentStep = { id: 'finder', tier: 2, costEur: 0.04, enabled: true, run: () => { ran = true; return { value: 'a@b.it', confidence: 0.9, source: 'api', costEur: 0.04 }; } };
+    const d: EnrichmentFieldDescriptor = { field: 'email', target: 'email_inferred', cascade: [step], ceilingEur: 0.05, stopConfidence: 0.75 };
+    const ledger = new CostLedger();
+    ledger.record('earlier', 'serp', 0.98, true);
+    const out = await runFieldDescriptor(lead({}), d, { paidEnabled: true, router: new ProviderRouter([], [], [], ledger), runCostCeilingEur: 1 });
+    expect(ran).toBe(false);
+    expect(out.steps[0].reason).toBe('budget');
+    expect(ledger.getTotal()).toBeCloseTo(0.98, 6);
+  });
+
+  it('applies the router circuit breaker: an open breaker skips the step', async () => {
+    let ran = false;
+    const step: EnrichmentStep = { id: 'finder', tier: 2, costEur: 0.02, enabled: true, run: () => { ran = true; return { value: 'a@b.it', confidence: 0.9, source: 'api', costEur: 0.02 }; } };
+    const d: EnrichmentFieldDescriptor = { field: 'email', target: 'email_inferred', cascade: [step], ceilingEur: 0.05, stopConfidence: 0.75 };
+    const breaker = new CircuitBreaker({ failureThreshold: 1 });
+    breaker.recordFailure('finder', 'blocked');
+    const out = await runFieldDescriptor(lead({}), d, { paidEnabled: true, router: new ProviderRouter([], [], [], new CostLedger(), breaker) });
+    expect(ran).toBe(false);
+    expect(out.steps[0].ran).toBe(false);
   });
 
   it('an async step that throws degrades to no-value (cascade never fails)', async () => {

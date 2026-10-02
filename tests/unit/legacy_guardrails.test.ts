@@ -4,17 +4,17 @@ import { dedupeLeads } from '../../src/discovery/deduper';
 import { parsePagineGialleResults } from '../../src/discovery/sources/pagine_gialle_parser';
 import { parseGoogleMapsResults } from '../../src/discovery/sources/google_maps_parser';
 import { classifyCategoryMatch } from '../../src/discovery/sources/category_match';
-import { mapLegacyRow, mapLegacyRows } from '../../src/io/legacy_csv_mapper';
 import fs from 'fs';
 import path from 'path';
 
 /**
- * Phase 3.7 — guardrail regression tests. Each test corresponds to a section
- * in `docs/legacy_failure_taxonomy.md`. If a regression brings back the pg3
- * behavior, one of these fails first.
+ * Guardrail regression tests. Each test corresponds to a section
+ * in `docs/legacy_failure_taxonomy.md`. Each one pins a failure mode that a
+ * previous generation of this pipeline suffered from, so a regression breaks
+ * here first.
  */
 
-describe('§2 — dirty hosts NEVER count as official_website', () => {
+describe('dirty hosts NEVER count as official_website', () => {
   const samples = [
     'https://www.immobiliare.it/agenzie/foo',
     'https://www.tecnocasa.it/agenzie/milano-centro',
@@ -28,11 +28,11 @@ describe('§2 — dirty hosts NEVER count as official_website', () => {
     'https://feltre1.tecnocasa.it/contatti',
     'https://www.bing.com/search?q=foo',
     'https://www.google.com/maps/place/foo',
-    // Phase E.1 — directory portals that surfaced in p72 VR run
+    // directory portals that surfaced in a VR run
     'https://www.coobiz.it/azienda/badia-polesine-agenzia-intermediazione/co6341031',
     'https://italialei.it/informazioni-dettagliate/33013116/lanza-luigi/',
     'https://inelenco.com/?dir=vedi&id=3397091-privati',
-    // Phase G.1 — Serper-observed directory aggregators in p90 PD run
+    // Serper-observed directory aggregators in a PD run
     'https://cercacasa.it/dettaglio-agenzia/foo',
     'https://atoka.io/public/it/azienda/foo',
     'https://agentiimmobiliariabilitati.it/agenti/veneto/padova/foo',
@@ -48,7 +48,7 @@ describe('§2 — dirty hosts NEVER count as official_website', () => {
     'https://www.immobiliweb.com/Scheda-Agenzia_foo_padova.html',
     'https://reportazienda.it/aziende/PD/foo',
     'https://www.tellows.it/num/049000628',
-    // Phase G.1 — wrong-sector / public-admin observed in p90
+    // wrong-sector / public-admin observed in a PD run
     'https://www.treccani.it/enciclopedia/italia/',
     'https://www.beniculturali.unipd.it/foo',
     'https://www.consorziopadovaovest.it/foo',
@@ -57,7 +57,7 @@ describe('§2 — dirty hosts NEVER count as official_website', () => {
     'https://www.bed-and-breakfast.it/it/padova',
     'https://www.pickandroll.it/foo',
     'https://lucabottoniteam.wordpress.com/',
-    // Phase G.2 — Serper round-2 directory FPs from p91
+    // Serper round-2 directory FPs
     'https://www.casavenezia.it/it/agenzie/le_agenzie/foo/',
     'https://www.intercasarredamenti.it/chi-siamo/', // furniture, wrong sector
     'https://www.impresaitalia.info/kk03424261/foo/padova.aspx',
@@ -70,7 +70,7 @@ describe('§2 — dirty hosts NEVER count as official_website', () => {
     'https://www.aterpadova.it/',                 // public housing auth
     'https://www.aopd.veneto.it/sez,217',          // hospital
     'https://www.arte-casa.info/',
-    // R10.b TV — 2 FPs that slipped past R9 PaidEvidenceGate
+    // 2 FPs that slipped past the paid-evidence gate
     'https://trasparenza.cultura.gov.it/foo/contratti/123',
     'https://www.infoimmobile.it/agenzia/treviso/foo',
   ];
@@ -81,7 +81,7 @@ describe('§2 — dirty hosts NEVER count as official_website', () => {
   }
 });
 
-describe('§1 — cross-comune dedupe by stable identity', () => {
+describe('cross-comune dedupe by stable identity', () => {
   it('collapses two PG records with same pg_url under different query_locations', () => {
     const out = dedupeLeads([
       { company_name: 'Studio Foo', city: 'Belluno', query_location: 'Belluno', pg_url: 'https://www.paginegialle.it/studiofoo' },
@@ -108,7 +108,7 @@ describe('§1 — cross-comune dedupe by stable identity', () => {
   });
 });
 
-describe('§9 — sources[] is a UNION across merged records', () => {
+describe('sources[] is a UNION across merged records', () => {
   it('merges sources arrays without losing provenance', () => {
     const out = dedupeLeads([
       { company_name: 'Foo', city: 'Belluno', pg_url: 'https://www.paginegialle.it/foo', source: 'PG', sources: ['PG'] },
@@ -119,7 +119,7 @@ describe('§9 — sources[] is a UNION across merged records', () => {
   });
 });
 
-describe('§7 — Maps cap_likely flag', () => {
+describe('Maps cap_likely flag', () => {
   it('returns cap_likely=false for small feeds', () => {
     const html = fs.readFileSync(
       path.join(__dirname, '../fixtures/scraper/maps_feltre_feed.html'),
@@ -141,7 +141,7 @@ describe('§7 — Maps cap_likely flag', () => {
   });
 });
 
-describe('§8 — category_match marker', () => {
+describe('category_match marker', () => {
   it('returns confirmed when card type tag matches', () => {
     expect(classifyCategoryMatch('agenzie immobiliari', 'Agenzia immobiliare')).toBe('confirmed');
   });
@@ -157,7 +157,7 @@ describe('§8 — category_match marker', () => {
   });
 });
 
-describe('§1 — query_location is propagated by parsers', () => {
+describe('query_location is propagated by parsers', () => {
   it('PG parser sets query_location and business_city when card city differs', () => {
     const html = fs.readFileSync(
       path.join(__dirname, '../fixtures/scraper/pg_belluno_normal.html'),
@@ -168,65 +168,5 @@ describe('§1 — query_location is propagated by parsers', () => {
     // Re/Max card is in Sedico — should mark business_city
     const remax = r.results.find((l) => /re\s*\/\s*max/i.test(l.company_name));
     expect(remax?.business_city).toBe('Sedico');
-  });
-});
-
-describe('§10 — legacy CSV schema mapper', () => {
-  it('maps the pg3 raw+scoring schema to canonical Lead', () => {
-    const lead = mapLegacyRow({
-      company_name: 'Foo SRL',
-      city: 'Belluno',
-      province: 'BL',
-      vat_code: '12345678901',
-      website: 'https://foo.it',
-      geriko_tier: 'A',
-      score_total: '0.92',
-      score_negatives: '0',
-    });
-    expect(lead.company_name).toBe('Foo SRL');
-    expect(lead.vat_code).toBe('12345678901');
-    expect((lead as Record<string, unknown>).legacy_geriko_tier).toBe('A');
-    expect((lead as Record<string, unknown>).legacy_score_total).toBe('0.92');
-  });
-
-  it('maps the pg3 export schema (dm_*, email_type, contact_source)', () => {
-    const lead = mapLegacyRow({
-      company_name: 'Foo',
-      city: 'Milano',
-      website: 'https://foo.it',
-      email: 'sales@foo.it',
-      email_type: 'business',
-      pec: 'pec@foo.legalmail.it',
-      contact_source: 'website',
-      dm_name: 'Mario Rossi',
-      dm_role: 'CEO',
-      dm_linkedin: 'https://linkedin.com/in/mario',
-      dm_confidence: '0.8',
-      employees: '12',
-    });
-    expect(lead.decision_maker_name).toBe('Mario Rossi');
-    expect(lead.decision_maker_role).toBe('CEO');
-    expect(lead.decision_maker_linkedin).toBe('https://linkedin.com/in/mario');
-    expect(lead.email_type).toBe('business');
-    expect((lead as Record<string, unknown>).legacy_contact_source).toBe('website');
-    expect((lead as Record<string, unknown>).legacy_dm_confidence).toBe('0.8');
-  });
-
-  it('throws on a row missing company_name', () => {
-    expect(() => mapLegacyRow({ city: 'Foo' })).toThrow(/company_name/);
-  });
-
-  it('mapLegacyRows skips malformed rows without crashing', () => {
-    const out = mapLegacyRows([
-      { company_name: 'A' },
-      { city: 'no name here' },
-      { company_name: 'C' },
-    ]);
-    expect(out.map((l) => l.company_name)).toEqual(['A', 'C']);
-  });
-
-  it('parses combined source string ("PG + Maps") into sources[]', () => {
-    const lead = mapLegacyRow({ company_name: 'X', source: 'PG + Maps' });
-    expect((lead.sources ?? []).sort()).toEqual(['Maps', 'PG']);
   });
 });

@@ -20,7 +20,7 @@ const config = getActiveJudgmentConfig();
 const lead = (o: Partial<Lead>): Lead => ({ company_name: 'Acme Srl', ...o });
 
 function ctx(fetcher: PageFetcher, search?: HarvestContext['search']): HarvestContext {
-  return { tenantId: 't', cache: new InMemoryEnrichmentCache(), fetcher, search, paidEnabled: false, now: () => NOW, ledgerMeta: { company_name: 'Acme Srl' } };
+  return { tenantId: 't', cache: new InMemoryEnrichmentCache(), fetcher, search, paidEnabled: false, now: () => NOW };
 }
 
 const RICH_HTML = `<!doctype html><html lang="it"><head>
@@ -97,7 +97,7 @@ describe('guardrail: three-state firewall (discovery failure ≠ B basso)', () =
   });
 });
 
-describe('guardrail: quadrant label never lets "A unknown" read as "A low" (§5.3.5 at label level)', () => {
+describe('guardrail: quadrant label never lets "A unknown" read as "A low"', () => {
   const strongA: SegnaliA = [
     { axis: 'A', key: '2.1', state: 'confirmed_present', value: 'x', evidence: [{ source: 's', observedAt: '', confidence: 0.6 }] },
     { axis: 'A', key: '2.1', state: 'confirmed_present', value: 'y', evidence: [{ source: 's', observedAt: '', confidence: 0.6 }] },
@@ -149,7 +149,7 @@ describe('guardrail: evidence on every non-unknown signal', () => {
   });
 });
 
-describe('guardrail: disqualifiers operate BEFORE the gap logic (§4.5)', () => {
+describe('guardrail: disqualifiers operate BEFORE the gap logic', () => {
   it('a permanently_closed company is never a target even with strong A', async () => {
     const strongA: SegnaliA = [
       { axis: 'A', key: '2.1', state: 'confirmed_present', value: 'x', evidence: [{ source: 's', observedAt: '', confidence: 0.6 }] },
@@ -165,7 +165,7 @@ describe('guardrail: disqualifiers operate BEFORE the gap logic (§4.5)', () => 
     expect(verdict.disqualifiers).toContain('permanently_closed');
   });
 
-  it('§16 triage drops cheap disqualifiers before any collection', () => {
+  it('triage drops cheap disqualifiers before any collection', () => {
     expect(triage(lead({ permanently_closed: true }), config).pass).toBe(false);
     expect(triage(lead({ category: 'rivendita usato' }), config).disqualifier).toBe('pure_reseller');
     expect(triage(lead({ official_website: 'https://acme.it', category: 'produzione' }), config).pass).toBe(true);
@@ -191,7 +191,7 @@ describe('end-to-end runJudgment (offline, deterministic)', () => {
     // separation in citations: A subdims cite only signal_a, B surfaces only signal_b
     for (const sd of rec.valutazione_A?.subdims ?? []) for (const c of sd.citations) expect(c.startsWith('signal_b:')).toBe(false);
     for (const sv of rec.valutazione_B?.surfaces ?? []) for (const c of sv.citations) expect(c.startsWith('signal_a:')).toBe(false);
-    // versioned meta (§20)
+    // versioned meta
     expect(rec.meta?.ontologyVersion).toBe('v2');
     expect(rec.meta?.judgmentConfigVersion).toBe(config.version);
     // agentic validation present + no asymmetry breach

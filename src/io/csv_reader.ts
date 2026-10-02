@@ -37,7 +37,7 @@ export async function* readCsvAsLeads(path: string): AsyncIterable<{ lead: Lead;
 }
 
 function rowToLead(row: Record<string, string>): Lead {
-  // Tolerant column mapping: accept aliases pg1/pg3 used historically.
+  // Tolerant column mapping: accept the aliases earlier CSV schemas used.
   const get = (...keys: string[]): string | undefined => {
     for (const k of keys) {
       const v = row[k];

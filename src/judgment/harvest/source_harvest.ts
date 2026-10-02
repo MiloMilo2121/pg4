@@ -3,6 +3,7 @@ import type { Signal } from '../../types/judgment';
 import type { EnrichmentCache } from '../../persistence/enrichment_cache';
 import { cacheKey } from '../../persistence/enrichment_cache';
 import type { SerpResult } from '../../types/providers';
+import type { ProviderRouter, RouteOptions } from '../../providers/provider_router';
 
 /**
  * SourceHarvest — the generalization of pg4's website-only free-gold ("fetch
@@ -41,8 +42,17 @@ export interface HarvestContext {
   /** optional SERP access (social/press discovery); absent → those adapters are unavailable */
   search?: (query: string) => Promise<SerpResult[]>;
   paidEnabled: boolean;
+  /**
+   * The only way a paid adapter may spend: `router.invoke` applies the paid gate,
+   * the circuit breaker and the budget reservations, and records the cost in the
+   * router's ledger. Absent → paid adapters make no call.
+   */
+  router?: ProviderRouter;
+  /** Budget caps forwarded to every paid call made through `router`. */
+  route?: Pick<RouteOptions, 'runCostCeilingEur' | 'leadCostCeilingEur' | 'remainingLeadBudgetEur'>;
   /** time seam (Date.now is fine in src; injectable for tests) */
   now: () => number;
+  /** Ledger attribution for paid calls (run_id, lead_id, …). Non-PII values only. */
   ledgerMeta?: Record<string, string | number | boolean>;
 }
 
@@ -76,6 +86,13 @@ export interface SourceAdapter {
   ttlDays(): number | null;
   /** fetch + extract. MUST be offline-safe: throwing or empty → ok:false. */
   harvest(locator: string, ctx: HarvestContext): Promise<HarvestResult>;
+  /**
+   * Per-lead acceptance of a harvest, applied to fresh AND cached results. The
+   * cache is keyed by locator (a VAT, a host), which several leads can share, so a
+   * check that depends on the lead — the registry entity guard — cannot live in
+   * `harvest`: the first lead's verdict would be served to every later one.
+   */
+  admit?(result: HarvestResult, lead: Lead): HarvestResult;
 }
 
 /** All harvested sources for one company in one job (the multi-source bundle). */
@@ -102,7 +119,7 @@ function keyTypeFor(kind: SourceKind): string {
   }
 }
 
-export function unreachableResult(adapter: SourceAdapter, locator: string, nowIso: string): HarvestResult {
+function unreachableResult(adapter: SourceAdapter, locator: string, nowIso: string): HarvestResult {
   return {
     source: adapter.kind,
     sourceId: adapter.id,
@@ -129,7 +146,7 @@ export async function harvestSource(adapter: SourceAdapter, lead: Lead, bundle: 
   const key = cacheKey('harvest', keyTypeFor(adapter.kind), locator);
   const cached = await ctx.cache.get(ctx.tenantId, key);
   if (cached && cached.value && typeof cached.value === 'object') {
-    const hit = cached.value as HarvestResult;
+    const hit = admitFor(adapter, cached.value as HarvestResult, lead);
     bundle.byKind[adapter.kind] = hit;
     return hit;
   }
@@ -152,6 +169,11 @@ export async function harvestSource(adapter: SourceAdapter, lead: Lead, bundle: 
       ttlDays: ttl === null ? undefined : ttl,
     });
   }
-  bundle.byKind[adapter.kind] = result;
-  return result;
+  const admitted = admitFor(adapter, result, lead);
+  bundle.byKind[adapter.kind] = admitted;
+  return admitted;
+}
+
+function admitFor(adapter: SourceAdapter, result: HarvestResult, lead: Lead): HarvestResult {
+  return adapter.admit ? adapter.admit(result, lead) : result;
 }

@@ -7,7 +7,7 @@ import {
 import type { NormalizedLead } from '../../src/types/discovery';
 
 /**
- * R2 — `query_variants` 0-network unit tests.
+ * `query_variants` 0-network unit tests.
  *
  * The module is pure: input is a `NormalizedLead`, output is an
  * ordered list of `QueryVariant`. We test:
@@ -147,8 +147,9 @@ describe('buildCompanyQueries — vector ordering', () => {
     });
     const r = buildCompanyQueries(lead);
     const phone = r.find((v) => v.vector === 'phone');
-    // Faithful to pg3 — strip non-digits, country code stays. Serper
-    // / Bing tolerate extra-digit prefix; benchmark (R6) will tell us
+    // Strip non-digits, country code stays — the format the prior
+    // pipeline used. Serper
+    // / Bing tolerate extra-digit prefix; a future benchmark will tell us
     // whether dropping the country code lifts recall.
     expect(phone?.query).toContain('"390491234567"');
   });

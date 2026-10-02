@@ -1,5 +1,5 @@
 /**
- * OutputLock — stale-by-age / pid-reuse guard (R13.1)
+ * OutputLock — stale-by-age / pid-reuse guard
  *
  * Deterministic coverage of the reclaim policy via injected clock (`now`),
  * liveness probe (`isAlive`) and `maxAgeMs`. No real process probing, no

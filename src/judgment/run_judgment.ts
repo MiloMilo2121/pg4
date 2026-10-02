@@ -24,7 +24,7 @@ export interface JudgmentDeps {
   config: JudgmentConfig;
   /** optional LLM caller (wraps ProviderRouter.complete). Absent → deterministic. */
   llm?: JudgeLLM;
-  /** category benchmark (§17 two-pass); absent for single-company runs. */
+  /** category benchmark (two-pass); absent for single-company runs. */
   categoryProfile?: CategoryProfile;
   /** the concrete model id when an LLM produced the verdict (for meta). */
   modelId?: string;
@@ -41,7 +41,7 @@ export async function runJudgment(lead: Lead, ctx: HarvestContext, deps: Judgmen
     modelId: deps.modelId ?? (deps.llm ? 'llm' : 'deterministic'),
   };
 
-  // §16 Stage-0 triage — drop near-certain non-targets before any cost.
+  // Stage-0 triage — drop near-certain non-targets before any cost.
   const t = triage(lead, config);
   if (!t.pass) {
     const verdict: GapVerdict = {

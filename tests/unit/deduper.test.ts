@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { dedupeLeads, Deduplicator } from '../../src/discovery/deduper';
+import type { Lead } from '../../src/types/lead';
 
 describe('Deduplicator', () => {
   it('dedupes by phone digits', () => {
@@ -36,7 +37,7 @@ describe('Deduplicator', () => {
 
   it('merges fields from incoming into existing without overwriting', () => {
     const dd = new Deduplicator();
-    const a = { company_name: 'A', city: 'Milano', phone: '+39021' };
+    const a: Lead = { company_name: 'A', city: 'Milano', phone: '+39021' };
     dd.add(a);
     const b = { company_name: 'A', city: 'Milano', address: 'Via X', website: 'https://a.it' };
     dd.merge(a, b);

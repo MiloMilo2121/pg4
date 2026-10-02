@@ -5,7 +5,7 @@ import { parsePagineGialleResults } from '../../src/discovery/sources/pagine_gia
 import { parseGoogleMapsResults } from '../../src/discovery/sources/google_maps_parser';
 
 /**
- * Phase 3.6 — REAL fixture regression tests.
+ * REAL fixture regression tests.
  *
  * These run against minimal HTML containers captured from live PG and Maps
  * pages (see scripts/capture_fixtures.ts). They guard against:

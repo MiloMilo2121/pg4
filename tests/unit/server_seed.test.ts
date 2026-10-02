@@ -35,12 +35,21 @@ describe('dev seed — loads real-shaped free-gold JSONL into a single tenant', 
     expect(await seed.db.count(DEV_TENANT_ID)).toBe(2); // Alfa (merged) + Beta
     expect(seed.providerDead.map((d) => d.provider)).toContain('dns_mx');
     expect(seed.providerDead.map((d) => d.provider)).not.toContain('bing_html');
+    expect(seed.ledgerTotalEur).toBe(0);
   });
 
   it('missing seed file → empty store, no crash', async () => {
     const seed = await loadSeed('/tmp', 'does/not/exist.jsonl');
     expect(seed.loaded).toBe(0);
     expect(await seed.db.count(DEV_TENANT_ID)).toBe(0);
+  });
+
+  it('a seed without a cost ledger has an unknown cost (null), not a measured 0', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pg4-seed-'));
+    const jsonl = path.join(dir, 'seed.jsonl');
+    fs.writeFileSync(jsonl, JSON.stringify({ company_name: 'Beta', city: 'Verona', phone: '0452222222' }) + '\n', 'utf8');
+    const seed = await loadSeed(dir, jsonl);
+    expect(seed.ledgerTotalEur).toBeNull();
   });
 });
 

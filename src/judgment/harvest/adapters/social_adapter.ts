@@ -2,7 +2,7 @@ import type { Lead } from '../../../types/lead';
 import type { Signal, EvidenceRef } from '../../../types/judgment';
 import { companyNameMatches } from '../../../enrichment/fields/field_registry';
 import type { SourceAdapter, HarvestContext, HarvestResult } from '../source_harvest';
-import { SOURCE_TTL_DAYS } from '../routing';
+import { SOURCE_TTL_DAYS } from '../source_ttl';
 
 /**
  * Social SourceAdapter — discovers social profiles via SEARCH when they are NOT

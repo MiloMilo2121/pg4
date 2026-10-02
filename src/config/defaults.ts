@@ -3,11 +3,20 @@
  * `config/env.ts` → here. No magic numbers in modules.
  */
 
+import { CHROME_MAJOR } from './browser_versions';
+import { DEFAULT_MODELS } from './models';
+
 export const DEFAULTS = {
   pipeline: {
     concurrency: 4,
     costCeilingEurPerLead: 0.10,
     requestTimeoutMs: 8000,
+    /**
+     * Deadline for one enrichment stage. On expiry the stage's signal aborts
+     * its I/O, the stage is recorded as `ERROR_TIMEOUT_FETCH` and the ladder
+     * moves on. Paid stages whose provider legitimately takes longer declare
+     * their own `Stage.timeoutMs` instead.
+     */
     perStageTimeoutMs: 12000,
     /**
      * Shorter timeout for HYPER-GUESSER candidate fetches. A guessed domain that
@@ -17,7 +26,7 @@ export const DEFAULTS = {
      */
     guessTimeoutMs: 5000,
     /**
-     * Phase D.3 — transport-class retry schedule for `verifyCandidates`.
+     * Transport-class retry schedule for `verifyCandidates`.
      * `verifyRetryDelaysMs.length` is the number of EXTRA attempts after
      * the first fetch. Delays carry ±20% jitter at runtime.
      *
@@ -58,16 +67,16 @@ export const DEFAULTS = {
     // via runtime/fingerprint.ts; this default covers the other undici clients
     // (bing_html SERP, the fatturatoitalia search POST). Keep in sync with
     // fingerprint.ts pool head (DEFAULT_USER_AGENT).
-    userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+    userAgent: `Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${CHROME_MAJOR}.0.0.0 Safari/537.36`,
     maxRetries: 2,
     retryBaseMs: 500,
   },
   llm: {
-    defaultModel: 'gpt-4o-mini',
-    // Judgment-layer default judge (Anthropic). Latest capable Claude.
-    anthropicModel: 'claude-opus-4-8',
+    defaultModel: DEFAULT_MODELS.openai,
+    // Judgment-layer default judge (Anthropic).
+    anthropicModel: DEFAULT_MODELS.anthropic,
     // Claude reachable via OpenRouter without a dedicated Anthropic key.
-    openrouterModel: 'anthropic/claude-opus-4-8',
+    openrouterModel: DEFAULT_MODELS.openrouter,
     maxTokens: 1024,
     temperature: 0,
     /** Judgment judges need a larger budget for structured multi-dimension output. */

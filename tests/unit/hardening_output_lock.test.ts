@@ -83,7 +83,7 @@ describe('OutputLock — hardening', () => {
   });
 
   // ------------------------------------------------------------------ //
-  // 3. PID-reuse guard — FIXED in R13.1
+  // 3. PID-reuse guard — reclaimed via max age
   //
   // Previously the created_at field was never consulted, so a recycled pid
   // (OS reused a dead owner's pid for an unrelated live process) pinned the
@@ -93,7 +93,7 @@ describe('OutputLock — hardening', () => {
   // See output_lock_stale_age.test.ts for the deterministic, injected-clock
   // coverage of every branch.
   // ------------------------------------------------------------------ //
-  it('[R13.1 fix] reclaims an alive-looking lock once it exceeds max age (pid-reuse guard)', () => {
+  it('reclaims an alive-looking lock once it exceeds max age (pid-reuse guard)', () => {
     const target = tmpTarget();
     const lockPath = `${target}.lock`;
     // pid-reuse scenario: original owner died, OS recycled its pid to THIS

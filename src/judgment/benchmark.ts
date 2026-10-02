@@ -2,7 +2,7 @@ import type { CategoryProfile, CategoryBenchmark, SegnaliA, SegnaliB } from '../
 import type { JudgmentConfig } from './config/types';
 
 /**
- * §17 category benchmark (two-pass) ⟂ §1.4 relativity-of-category.
+ * Category benchmark (two-pass), orthogonal to the relativity-of-category principle.
  *
  * Pass-1: collect signals across the whole list. Then compute, ONCE, the
  * category profile: presence-rates + numeric medians per signal key. Pass-2: the

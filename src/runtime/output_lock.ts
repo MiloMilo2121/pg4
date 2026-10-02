@@ -31,7 +31,7 @@ interface LockPayload {
  * report "alive" forever and pinning the lock. 12h comfortably exceeds the
  * longest legitimate run while still self-healing within a day.
  */
-export const DEFAULT_MAX_LOCK_AGE_MS = 12 * 60 * 60 * 1000;
+const DEFAULT_MAX_LOCK_AGE_MS = 12 * 60 * 60 * 1000;
 
 export interface AcquireOutputLockOptions {
   /** Max age (ms) after which an alive-looking lock is reclaimed as stale. */

@@ -9,9 +9,10 @@ import { acquireOutputLock } from '../runtime/output_lock';
 import { buildMockHttpRouter, buildNoopPgDetailHarvester } from './mock_http';
 import { getNotifier } from '../runtime/notifier';
 import { reportProviderHealth } from '../runtime/provider_health';
+import { getEnv, assertPaidSecrets } from '../config/env';
 
 /**
- * Phase B.1 — the enrich core, extracted from the CLI so the `run` command
+ * The enrich core, extracted from the CLI so the `run` command
  * can chain scrape → enrich with one shared run id and so tests can drive
  * the full command without spawning a process.
  *
@@ -28,18 +29,18 @@ export interface EnrichCommandOptions {
   costCeilingEur?: number;
   runCostCeilingEur?: number;
   enablePaid?: boolean;
-  /** Phase B.1 — shared run id from the `run` command. */
+  /** shared run id from the `run` command. */
   runId?: string;
-  /** Phase B.5 — cooperative cancellation. */
+  /** cooperative cancellation. */
   abortSignal?: AbortSignal;
   /**
-   * Phase C.4 — enrich leads Maps marked "Chiuso definitivamente".
+   * Enrich leads Maps marked "Chiuso definitivamente".
    * Default false: closed businesses are written as SKIPPED without
    * burning provider calls on them.
    */
   includeClosed?: boolean;
   /**
-   * Phase D.1 — do-not-contact suppression. Matching leads are dropped
+   * Do-not-contact suppression. Matching leads are dropped
    * from the outputs entirely (counted in the summary + run record).
    */
   suppression?: import('../compliance/suppression').SuppressionList;
@@ -50,9 +51,9 @@ export interface EnrichCommandResult {
   total: number;
   withWebsite: number;
   errors: number;
-  /** Phase C.4 — leads skipped because Maps marked them permanently closed. */
+  /** leads skipped because Maps marked them permanently closed. */
   skippedClosed: number;
-  /** Phase D.1 — leads dropped by the suppression list. */
+  /** leads dropped by the suppression list. */
   suppressed: number;
   totalCostEur: number;
   /** Leads whose per-lead paid budget was exhausted mid-pipeline. */
@@ -60,7 +61,7 @@ export interface EnrichCommandResult {
   jsonlOut: string;
   ledgerPath: string;
   interrupted: boolean;
-  /** Gate-0 — providers that made ≥N calls but never succeeded this run. */
+  /** providers that made ≥N calls but never succeeded this run. */
   providerDead: string[];
 }
 
@@ -69,7 +70,7 @@ export async function runEnrichCommand(o: EnrichCommandOptions): Promise<EnrichC
   const ledgerPath = o.ledgerPath ?? o.csvOut.replace(/\.csv$/i, '') + '.cost-ledger.jsonl';
   const outputLock = acquireOutputLock(o.csvOut, { input: o.input, jsonlOut, ledgerPath, command: 'enrich' });
   try {
-    // Phase G — paid providers gate. Default DENY: paid is off unless
+    // Paid providers gate. Default DENY: paid is off unless
     // `--enable-paid` is passed. The cost-ceiling-eur=0 path also
     // forces paid off as an extra safety, so an operator can run
     // "free regression" by setting the ceiling to 0 even if they
@@ -79,7 +80,6 @@ export async function runEnrichCommand(o: EnrichCommandOptions): Promise<EnrichC
     // DEFAULT at a small per-lead cap (DEFAULT_PAID_CAP_EUR_PER_LEAD) so the
     // engine auto-escalates to Apify/Perplexity on leads the free ladder did
     // not resolve. The router's hard run-ceiling + per-lead budget still cap it.
-    const { getEnv } = await import('../config/env');
     const env = getEnv();
     const paidDefaultOn = env.PAID_DEFAULT_ON === true && !o.mockHttpPath;
     const wantPaid = o.enablePaid === true || paidDefaultOn;
@@ -93,11 +93,10 @@ export async function runEnrichCommand(o: EnrichCommandOptions): Promise<EnrichC
         '[enrich] --enable-paid is ignored because --cost-ceiling-eur is 0; force-OFF paid for this run',
       );
     }
-    // Phase B.4 — fail fast when paid was requested but no provider is usable.
+    // Fail fast when paid was requested but no provider is usable.
     // For an EXPLICIT --enable-paid this is a hard error (the operator asked).
     // For PAID_DEFAULT_ON it degrades to a free run (warn, never break).
     if (paidEnabled && !o.mockHttpPath) {
-      const { assertPaidSecrets } = await import('../config/env');
       try {
         assertPaidSecrets();
       } catch (err) {
@@ -119,7 +118,7 @@ export async function runEnrichCommand(o: EnrichCommandOptions): Promise<EnrichC
     });
     const notifier = getNotifier();
     const router = o.mockHttpPath ? buildMockHttpRouter(run.ledger, o.mockHttpPath) : buildProviderCatalog(run.ledger);
-    // Phase A.5 — run-ceiling event. The router latches: fires once.
+    // Run-ceiling event. The router latches: fires once.
     router.setRunCeilingListener(({ ledgerTotalEur, ceilingEur }) => {
       notifier.notify({
         kind: 'run_cost_ceiling_hit',
@@ -129,7 +128,7 @@ export async function runEnrichCommand(o: EnrichCommandOptions): Promise<EnrichC
       });
     });
     const dnsResolver = o.mockHttpPath ? async (_host: string): Promise<string[]> => [] : undefined;
-    // R1 — shared harvester so duplicate `pg_url`s across leads only
+    // Shared harvester so duplicate `pg_url`s across leads only
     // hit the network once per run.
     const pgHarvester = o.mockHttpPath ? buildNoopPgDetailHarvester() : new PgDetailHarvester();
 
@@ -163,7 +162,7 @@ export async function runEnrichCommand(o: EnrichCommandOptions): Promise<EnrichC
     const concurrency = run.cfg.pipeline.concurrency;
 
     for await (const item of readCsvAsLeads(o.input)) {
-      // Phase B.5 — cooperative abort: stop ingesting new rows; the
+      // Cooperative abort: stop ingesting new rows; the
       // in-flight drain below finishes the rows already started so the
       // CSV/JSONL stay parseable and the ledger summary is written.
       if (o.abortSignal?.aborted) {
@@ -171,18 +170,19 @@ export async function runEnrichCommand(o: EnrichCommandOptions): Promise<EnrichC
         break;
       }
       total += 1;
-      // Phase D.1 — suppression: a do-not-contact subject is dropped from
+      // Suppression: a do-not-contact subject is dropped from
       // the output entirely, before any provider call.
       if (o.suppression?.matches(item.lead)) {
         suppressed += 1;
         continue;
       }
-      // Phase C.4 — Maps flagged this business permanently closed: write
+      // Maps flagged this business permanently closed: write
       // it as SKIPPED (row parity preserved) without burning provider
       // calls. CSV roundtrip stores booleans as the string "true".
       const closed = item.lead.permanently_closed === true || String(item.lead.permanently_closed) === 'true';
       if (closed && !o.includeClosed) {
         skippedClosed += 1;
+        o.suppression?.dropSuppressedEmails(item.lead);
         await output.write({
           ...item.lead,
           status: 'SKIPPED',
@@ -203,16 +203,28 @@ export async function runEnrichCommand(o: EnrichCommandOptions): Promise<EnrichC
             pgHarvester,
             isSuppressedEmail: o.suppression ? (e: string) => o.suppression!.matchesEmail(e) : undefined,
           });
+          // Enrichment can surface the phone or VAT a subject asked us to
+          // suppress (website footer, PG detail page); the input check above
+          // could not see it.
+          if (o.suppression?.matches(result.lead)) {
+            suppressed += 1;
+            return;
+          }
           if (result.lead.official_website) withWebsite += 1;
           await output.write(result.lead, { stage_outcomes: result.stage_outcomes });
         } catch (err) {
           errors += 1;
           logger.error({ line: item.lineNumber, err: (err as Error).message }, '[enrich] row failed');
+          if (o.suppression?.matches(item.lead)) {
+            suppressed += 1;
+            return;
+          }
+          o.suppression?.dropSuppressedEmails(item.lead);
           await output.write({ ...item.lead, status: 'ERROR', reason_code: 'ERROR_INTERNAL', errors: [{ stage: 'pipeline', message: (err as Error).message }] });
         } finally {
           if (perLead.budgetExhausted) {
             budgetExhaustedLeads += 1;
-            // Phase A.5 — per-lead ceiling event, notified once per run
+            // Per-lead ceiling event, notified once per run
             // (many leads legitimately exhaust their budget; one ping is
             // signal, N pings are spam). The full count lands in the
             // ledger summary + run record.
@@ -241,7 +253,7 @@ export async function runEnrichCommand(o: EnrichCommandOptions): Promise<EnrichC
     if (suppressed > 0) {
       logger.warn({ suppressed, list: o.suppression?.sourcePath }, '[enrich] leads dropped by suppression list');
     }
-    // Gate-0 — flag any provider that made calls but never succeeded this
+    // Flag any provider that made calls but never succeeded this
     // run (the dns_mx/crtsh silent-failure class). Warn-only; never changes
     // the outcome. Computed before flushSummary so it lands in the summary.
     const providerDead = reportProviderHealth(run.ledger, { runId: run.ctx.runId });

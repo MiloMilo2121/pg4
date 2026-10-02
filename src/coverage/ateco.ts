@@ -8,6 +8,7 @@
 
 import fs from 'fs';
 import path from 'path';
+import { REPO_ROOT } from '../util/repo_root';
 
 export interface AtecoDivision {
   /** 2-digit division code, e.g. "68". */
@@ -18,7 +19,6 @@ export interface AtecoDivision {
   label: string;
 }
 
-const REPO_ROOT = path.resolve(__dirname, '..', '..');
 const DEFAULT_PATH = path.join(REPO_ROOT, 'data', 'reference', 'ateco_divisions.json');
 
 let cache: AtecoDivision[] | undefined;

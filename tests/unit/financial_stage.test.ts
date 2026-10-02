@@ -5,7 +5,7 @@ import type { Lead } from '../../src/types/lead';
 import type { NormalizedLead } from '../../src/types/discovery';
 
 /**
- * R13 — the financial stage is a disabled-by-default, no-op-safe skeleton.
+ * The financial stage is a disabled-by-default, no-op-safe skeleton.
  * It must NEVER touch the network and NEVER break a lead.
  */
 

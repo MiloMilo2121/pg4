@@ -73,7 +73,7 @@ describe('CostLedger — JSONL persistence', () => {
     expect(lines.length).toBe(2); // one record + one summary
   });
 
-  it('Phase D.5.1 — truncates the ledger file on construction by default', async () => {
+  it('truncates the ledger file on construction by default', async () => {
     // Re-running enrich against the same output path used to leave
     // stacked summaries + duplicated per-call entries. Default
     // behaviour now matches CSV / JSONL — overwrite, not append.
@@ -97,7 +97,7 @@ describe('CostLedger — JSONL persistence', () => {
     expect(summary.total_calls).toBe(2); // not 3 from first run
   });
 
-  it('Phase D.5.1 — appendToExistingFile=true preserves legacy append behaviour', async () => {
+  it('appendToExistingFile=true preserves legacy append behaviour', async () => {
     const file = tmpFile('append.jsonl');
     const l1 = new CostLedger({ jsonlPath: file, runId: 'run-1' });
     l1.record('direct_fetch', 'http', 0, true);

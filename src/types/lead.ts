@@ -1,5 +1,5 @@
 import type { LeadStatus, ReasonCode, DiscoveryMethod, StageOutcome, LeadError } from './output';
-import type { FinancialSource } from '../enrichment/financial/financial_types';
+import type { FinancialSource } from './financial';
 
 /**
  * The single canonical Lead shape. Raw fields populated by the scraper;
@@ -22,7 +22,7 @@ export interface Lead {
 
   // ---- Contact (raw, may be enriched) ----
   phone?: string;
-  /** Phase C.2 — the phone exactly as scraped, before E.164 normalization. */
+  /** the phone exactly as scraped, before E.164 normalization. */
   phone_raw?: string;
   email?: string;
   website?: string;
@@ -31,10 +31,9 @@ export interface Lead {
   // ---- Source provenance (raw) ----
   source?: string; // 'PG' | 'MAPS' | 'INPUT_CSV' | 'IMMOBILIARE' (primary)
   /**
-   * All sources that contributed to this record. Phase 3.7 audit found
-   * pg3 collapsed multi-source records into a single delimited string
-   * (e.g. `"PG + Maps"`); pg4 keeps the structured array and joins on
-   * CSV serialization.
+   * All sources that contributed to this record. Kept as a structured array
+   * and joined on CSV serialization, so a record fed by several sources stays
+   * queryable instead of collapsing into one delimited string.
    */
   sources?: string[];
   source_url?: string;
@@ -44,10 +43,9 @@ export interface Lead {
   discovery_notes?: string;
   /**
    * The query under which this record was scraped (e.g. comune used in
-   * the PG search URL). pg3 confused this with `city` — many records
-   * carried the query comune even when the parsed business city was
-   * different, leading to under-deduplication across queries. pg4 keeps
-   * the two distinct.
+   * the PG search URL). Deliberately distinct from `city`: conflating the
+   * two makes records carry the query comune even when the parsed business
+   * city differs, which under-deduplicates across queries.
    */
   query_location?: string;
   /**
@@ -70,12 +68,12 @@ export interface Lead {
    */
   category_match?: 'confirmed' | 'unknown' | 'mismatch';
   /**
-   * Phase C.4 — Maps marks businesses as "Chiuso definitivamente" in the
-   * card status span. Captured at parse time; enrich skips these leads by
-   * default (`--include-closed` overrides).
+   * Maps marks businesses as "Chiuso definitivamente" in the card status
+   * span. Captured at parse time; enrich skips these leads by default
+   * (`--include-closed` overrides).
    */
   permanently_closed?: boolean;
-  /** Phase C.1 — stamped on every output row. */
+  /** stamped on every output row. */
   _schema_version?: number;
 
   // ---- Enrichment fields (all optional) ----
@@ -93,8 +91,8 @@ export interface Lead {
   email_type?: 'pec' | 'business' | 'public' | 'unknown';
 
   /**
-   * Phase 1 (free-gold, schema v2) — social profile URLs mined from the
-   * firm's already-fetched website footer at zero marginal cost.
+   * Social profile URLs mined from the firm's already-fetched website
+   * footer at zero marginal cost.
    */
   instagram?: string;
   facebook?: string;
@@ -126,11 +124,11 @@ export interface Lead {
   rea?: string;
 
   /**
-   * R13.1 — financial provenance. Every financial field above is paired
+   * Financial provenance. Every financial field above is paired
    * with WHERE it came from and HOW confident we are, so the operator can
-   * audit any number. Populated by `FinancialStage`. In R13.1 safe mode
+   * audit any number. Populated by `FinancialStage`. In safe mode
    * the only source is `'input'` (a checksum-valid P.IVA promoted to
-   * `vat_code_final`); later phases add `fatturatoitalia` / `vies`.
+   * `vat_code_final`); paid lookup adds `fatturatoitalia` / `vies`.
    */
   financial_source?: FinancialSource;
   financial_confidence?: number; // 0..1
@@ -146,14 +144,14 @@ export interface Lead {
   lead_score?: number; // 0..1 final composite score
 
   /**
-   * Schema v5 (ENRICH-3) — email deliverability verdict. Set by the
+   * Email deliverability verdict. Set by the
    * email-verify pass; a run-style field (recomputed, not fill-only) so a
    * re-verify can change it. `invalid` never deletes `email_inferred`
    * (non-destructive) — consumers filter on this column instead.
    */
   email_status?: 'deliverable' | 'catch_all' | 'invalid' | 'unknown' | 'pec';
   /**
-   * Schema v5 (ENRICH-3) — real-estate portal signals, joined OFFLINE from
+   * Real-estate portal signals, joined OFFLINE from
    * bulk per-province portal scrapes by phone/name key. Portal URLs are
    * directories and never become official_website; these columns carry the
    * portal-only facts. `portal_source` lists the portals that contributed
@@ -176,7 +174,7 @@ export interface Lead {
 }
 
 /**
- * Phase C.1 — output schema version, stamped as the LAST column of every
+ * Output schema version, stamped as the LAST column of every
  * CSV row and as `_schema_version` in every JSONL line. Bump when columns
  * are appended so downstream consumers can detect capability without
  * sniffing headers.
@@ -184,13 +182,13 @@ export interface Lead {
  * Version history:
  *   1 — adds _schema_version itself, phone_raw, permanently_closed
  *       (everything before v1 is the unversioned pre-June-2026 layout).
- *   2 — adds instagram, facebook, linkedin (Phase 1 free-gold body mining).
+ *   2 — adds instagram, facebook, linkedin (free-gold body mining).
  *   3 — adds tiktok, youtube, rating, reviews_count, founding_year
  *       (JSON-LD sameAs/aggregateRating + Open Graph extraction).
  *   4 — adds net_profit, net_profit_year, share_capital, legal_form, ateco,
  *       rea (Apify regdata Italian business-register firmographics by P.IVA).
  *   5 — adds email_status, portal_source, portal_listings_count,
- *       portal_is_paid, portal_fiaip (ENRICH-3: email deliverability +
+ *       portal_is_paid, portal_fiaip (email deliverability +
  *       real-estate portal join).
  */
 export const SCHEMA_VERSION = 5;
@@ -222,7 +220,7 @@ const RAW_BASE_COLUMNS = [
 ] as const;
 
 /**
- * The original enriched-only column set (Phase 1 + R13.1). Frozen for the
+ * The original enriched-only column set. Frozen for the
  * same reason as RAW_BASE_COLUMNS.
  */
 const ENRICHED_BASE_COLUMNS = [
@@ -247,7 +245,7 @@ const ENRICHED_BASE_COLUMNS = [
   'duration_ms',
   'providers_used',
   'errors',
-  // R13.1 — APPENDED ONLY (never reorder the columns above). Financial
+  // APPENDED ONLY (never reorder the columns above). Financial
   // provenance trails the existing enriched columns so older readers that
   // index by position are unaffected.
   'financial_source',
@@ -257,7 +255,7 @@ const ENRICHED_BASE_COLUMNS = [
 ] as const;
 
 /**
- * Phase C — columns appended in schema v1. They trail BOTH flavors so
+ * Columns appended in schema v1. They trail BOTH flavors so
  * positional readers of either CSV are unaffected:
  *   raw      = RAW_BASE + V1
  *   enriched = RAW_BASE + ENRICHED_BASE + V1
@@ -271,7 +269,7 @@ const APPENDED_COLUMNS_V1 = [
 ] as const;
 
 /**
- * Phase 1 (schema v2) — social columns appended AFTER the v1 appendix on
+ * Schema v2 — social columns appended AFTER the v1 appendix on
  * the enriched flavor only (they are enrichment output, never raw scrape).
  * Trailing position keeps positional readers of v1 outputs unaffected.
  */
@@ -300,7 +298,7 @@ const APPENDED_COLUMNS_V4 = [
   'rea',
 ] as const;
 
-/** Schema v5 — ENRICH-3: email deliverability + portal-join signals. */
+/** Schema v5 — email deliverability + portal-join signals. */
 const APPENDED_COLUMNS_V5 = [
   'email_status',
   'portal_source',
@@ -311,7 +309,7 @@ const APPENDED_COLUMNS_V5 = [
 
 /**
  * Stable column order for the RAW CSV emitted by the scraper.
- * Phase 3.7 extended with `query_location`, `business_city`, and
+ * Extended with `query_location`, `business_city`, and
  * `category_match` for cross-query dedupe and off-category flagging.
  * (No v2 social columns here — they are enrichment-only.)
  */
@@ -320,7 +318,7 @@ export const RAW_CSV_COLUMNS = [...RAW_BASE_COLUMNS, ...APPENDED_COLUMNS_V1] as 
 /**
  * Stable column order for the ENRICHED CSV emitted by the enricher.
  * Includes all RAW base columns plus enriched fields plus the v1 + v2
- * appendices. Locked from Phase 1; append-only via APPENDED_COLUMNS_V*.
+ * appendices. Locked; append-only via APPENDED_COLUMNS_V*.
  */
 export const ENRICHED_CSV_COLUMNS = [
   ...RAW_BASE_COLUMNS,
@@ -332,5 +330,3 @@ export const ENRICHED_CSV_COLUMNS = [
   ...APPENDED_COLUMNS_V5,
 ] as const;
 
-export type RawCsvColumn = (typeof RAW_CSV_COLUMNS)[number];
-export type EnrichedCsvColumn = (typeof ENRICHED_CSV_COLUMNS)[number];

@@ -8,17 +8,24 @@ on:
 permissions:
   contents: read
 
+# Cancel superseded runs: on a fast-moving repo a push usually lands while the
+# previous CI is still installing. The head-SHA guard makes sure a later commit
+# is never reported against an earlier commit's result.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   core:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
         with:
           version: 10.33.2
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 22
+          node-version-file: .nvmrc
           cache: pnpm
           cache-dependency-path: pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
@@ -29,21 +36,73 @@ jobs:
       # pnpm 10's audit client still calls npm endpoints retired in 2026. This
       # checks the exact installed production graph against npm's bulk API.
       - run: node scripts/audit_prod_dependencies.mjs .
+      # The ratchet: vitest.config.ts holds the floors, so a PR that silently
+      # drops coverage fails here. Runs after the fast gates on purpose.
+      - run: pnpm run test:coverage
 
   dashboard:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
         with:
           version: 10.33.2
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 22
+          node-version-file: .nvmrc
           cache: pnpm
           cache-dependency-path: web/pnpm-lock.yaml
-      - run: pnpm --dir web install --frozen-lockfile
-      - run: pnpm --dir web run typecheck
-      - run: pnpm --dir web run lint
-      - run: pnpm --dir web run build
+      # web/ is intentionally NOT a pnpm workspace member (it keeps its own
+      # lockfile + CI): --ignore-workspace forces a standalone install even
+      # though pnpm-workspace.yaml exists at the repo root (Fase 5.4).
+      - run: pnpm --dir web install --ignore-workspace --frozen-lockfile
+      - run: pnpm --dir web run --ignore-workspace typecheck
+      - run: pnpm --dir web run --ignore-workspace lint
+      - run: pnpm --dir web run --ignore-workspace build
       - run: node scripts/audit_prod_dependencies.mjs web
+
+  # Dead-code gate. knip runs twice: over everything (unused files, exports,
+  # dependencies), then over the production graph for files only, which
+  # catches modules that nothing but tests reaches. Test-only exports are
+  # legitimate, hence files only in the second pass.
+  dead-code:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          version: 10.33.2
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run knip
+
+  # Publishes the unit-test coverage summary on every PR. A failing upload
+  # must never block the merge: Codecov is infrastructure, not a gate, and the
+  # real coverage gate is `test:coverage` in the `core` job.
+  coverage:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          version: 10.33.2
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run test:coverage
+      - uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
+        with:
+          files: ./coverage/coverage-summary.json
+          fail_ci_if_error: false
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}

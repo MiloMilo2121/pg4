@@ -7,14 +7,15 @@ import {
   shortHost,
 } from '../semantic_evidence';
 import { ItalianNerParser } from './italian_ner_parser';
+import { stripDiacritics } from '../../../util/text';
 
 /**
- * Phase D.4 — pre-fetch ranking of HyperGuesser alive candidates.
+ * Pre-fetch ranking of HyperGuesser alive candidates.
  *
  * Today HyperGuesserStage verifies `guesses.slice(0, 6)` blindly.
  * That means a noisy Treviso lead with 6 alive candidates spends the
  * whole per-stage budget on weak guesses (acronym + TLD generics)
- * and never reaches the strong one. The TV p64 audit traced this to
+ * and never reaches the strong one. A TV audit traced this to
  * candidates like `bs.net`, `ad.com`, `as.eu` eating the retry budget.
  *
  * The ranker assigns a deterministic score to each alive candidate
@@ -60,10 +61,7 @@ export function rankCandidate(domain: string, lead: NormalizedLead): CandidateSc
   const compactFull = compactFullName(lead.company_name);
   const distinctiveTokens = extractDistinctiveTokens(lead.company_name);
   const ner = ItalianNerParser.parse(lead.company_name);
-  const leadCityCompact = (lead.city ?? '')
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
+  const leadCityCompact = stripDiacritics((lead.city ?? '').toLowerCase())
     .replace(/[^a-z0-9]/g, '');
 
   let score = 0;
@@ -128,7 +126,7 @@ export function rankCandidate(domain: string, lead: NormalizedLead): CandidateSc
     reasons.push(`common_bare_stem_${distinctiveTokens[0]}`);
   }
 
-  // Phase D.5 — also flag the COMPACT stripped brand (multi-token
+  // Also flag the COMPACT stripped brand (multi-token
   // join) when it's denylisted: e.g. "Solar System" →
   // compactStripped="solarsystem" matches solarsystem.it. The
   // 1-distinctive-token check above misses this multi-word case.

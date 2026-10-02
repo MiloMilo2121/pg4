@@ -2,10 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { Deduplicator } from '../../src/discovery/deduper';
 
 /**
- * Phase C.3 — near-duplicate review candidates. Token-sorted name+city
+ * Near-duplicate review candidates. Token-sorted name+city
  * collisions are FLAGGED, never merged.
  */
-describe('Deduplicator review candidates — Phase C.3', () => {
+describe('Deduplicator review candidates', () => {
   it('flags reordered names in the same city as review candidates without merging', () => {
     const dd = new Deduplicator();
     const a = { company_name: 'Immobiliare Rossi', city: 'Padova' };

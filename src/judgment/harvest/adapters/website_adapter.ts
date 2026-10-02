@@ -1,8 +1,9 @@
 import type { Lead } from '../../../types/lead';
 import type { Signal, EvidenceRef } from '../../../types/judgment';
-import { extractFromBody, registrableDomain } from '../../../enrichment/extract/extract_from_body';
+import { extractFromBody } from '../../../enrichment/extract/extract_from_body';
+import { registrableDomain } from '../../../util/domain';
 import type { SourceAdapter, HarvestContext, HarvestResult } from '../source_harvest';
-import { SOURCE_TTL_DAYS } from '../routing';
+import { SOURCE_TTL_DAYS } from '../source_ttl';
 
 /**
  * Website SourceAdapter — the fully-offline core (no key, no paid call). Fetches
@@ -27,7 +28,7 @@ function ev(url: string, excerpt: string, iso: string, confidence = 0.8): Eviden
 /** Deterministic Axis-B markers read from the homepage HTML. Conservative:
  *  emits ONLY positive (confirmed_present) observations — a missing marker is
  *  left to the collector as `unknown`, never `confirmed_absent`. */
-export function websiteBSignals(html: string, url: string, iso: string): Signal[] {
+function websiteBSignals(html: string, url: string, iso: string): Signal[] {
   const out: Signal[] = [];
   const lc = html.toLowerCase();
   const markers: string[] = [];
@@ -43,7 +44,7 @@ export function websiteBSignals(html: string, url: string, iso: string): Signal[
   if (/(contatt|preventiv|richiedi|acquista|prenota|chiama ora|scopri di pi[uù])/i.test(lc)) markers.push('cta');
   if (/(case study|testimonianz|dicono di noi|recensioni|certificazion|premi[oa]\b|iso\s?9001)/i.test(lc)) markers.push('proof');
 
-  // §3.1 — the site EXISTS (we fetched it): confirmed_present, with quality markers.
+  // The site EXISTS (we fetched it): confirmed_present, with quality markers.
   out.push({
     axis: 'B',
     key: '3.1',
@@ -53,17 +54,17 @@ export function websiteBSignals(html: string, url: string, iso: string): Signal[
     notes: 'website present; quality markers for Judge B',
   });
 
-  // §3.15 multilingua is also an A-adjacent export/ambition validator, but the
+  // Multilingua is also an A-adjacent export/ambition validator, but the
   // OWNED-channel reading (a multilingual SITE) is a B signal here.
   if (langs.size > 1) {
     out.push({ axis: 'B', key: '3.1', state: 'confirmed_present', value: 'multilingua', evidence: [ev(url, `langs: ${[...langs].join(',')}`, iso)], notes: 'multilingua (export/ambition)' });
   }
 
-  // §3.10 own e-commerce — positive marker only.
+  // Own e-commerce — positive marker only.
   if (/(carrello|aggiungi al carrello|checkout|add to cart|\/shop\b|negozio online|e-?commerce)/i.test(lc)) {
     out.push({ axis: 'B', key: '3.10', state: 'confirmed_present', value: 'ecommerce_markers', evidence: [ev(url, 'cart/checkout/shop markers', iso)] });
   }
-  // §3.12 owned audience — newsletter signup.
+  // Owned audience — newsletter signup.
   if (/(newsletter|iscriviti alla|subscribe|registrati per ricevere)/i.test(lc)) {
     out.push({ axis: 'B', key: '3.12', state: 'confirmed_present', value: 'newsletter_signup', evidence: [ev(url, 'newsletter/subscribe form', iso)] });
   }

@@ -1,5 +1,5 @@
 /**
- * R14 — free SERP routing policy + router denylist.
+ * Free SERP routing policy + router denylist.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -34,7 +34,7 @@ describe('resolveSerpProfile', () => {
 
 describe('resolveFreeSerpRoute', () => {
   it('real-estate (no expanded) gates off the low-yield ddg_lite', () => {
-    // Gate-0: dns_mx + crtsh were deleted from the catalog; only ddg_lite
+    // dns_mx + crtsh were deleted from the catalog; only ddg_lite
     // remains to gate on the real-estate profile.
     const r = resolveFreeSerpRoute('agenzie immobiliari', false);
     expect(r.profile).toBe('italian_real_estate');
@@ -77,7 +77,7 @@ class FakeSerp implements SerpProvider {
   }
 }
 
-describe('ProviderRouter — excludeProviderIds (R14)', () => {
+describe('ProviderRouter — excludeProviderIds', () => {
   // Generic exclusion mechanism (still used to gate ddg_lite on the
   // real-estate profile). Uses neutral free-SERP stub ids — not the deleted
   // dns_mx/crtsh — so the test exercises the mechanism, not gone providers.

@@ -55,7 +55,7 @@ describe('PreVerifyGate', () => {
 });
 
 /**
- * Phase D — pin every false-positive from the Phase C audit so a future
+ * Pins every false-positive found by the manual website audit so a future
  * loosening of the gate can never resurrect them. Companion to the
  * acceptance set below.
  */
@@ -77,7 +77,7 @@ function htmlPage(title: string, body: string): string {
   return `<html><head><title>${title}</title></head><body><h1>${title}</h1><p>${body}</p></body></html>`;
 }
 
-describe('PreVerifyGate — Phase D audit REJECT cases (must NOT match)', () => {
+describe('PreVerifyGate — audited false positives (must NOT match)', () => {
   it('Bloom → bloom.it (single-token denylist)', () => {
     const lead = normalizeLead({ company_name: 'Bloom', city: 'Pieve di Cadore', category: 'agenzie immobiliari' });
     const html = htmlPage('Bloom Org Consulting', realEstateBody);
@@ -180,7 +180,7 @@ describe('PreVerifyGate — Phase D audit REJECT cases (must NOT match)', () => 
 
   it('Agenzia Mercato Immobiliare → am.com (domain stem too short)', () => {
     // 2-3 char domains substring-match into long company-name compacts
-    // and used to leak through Layer A. Phase D enforces a 6-char
+    // and used to leak through Layer A. The gate now enforces a 6-char
     // minimum domain stem to block this class of FPs.
     const lead = normalizeLead({
       company_name: 'Agenzia Mercato Immobiliare',
@@ -193,9 +193,9 @@ describe('PreVerifyGate — Phase D audit REJECT cases (must NOT match)', () => 
   });
 
   it('Pb Properties → pbproperties.com (acronym + generic English noun, US homonym)', () => {
-    // Phase D.1 regression: audit Phase C identified Pb Properties as
+    // Regression: the audit identified Pb Properties as
     // FP_GENERIC_HOMONYM (the actual pbproperties.com is "Premier
-    // Business Properties, Inc.", a US firm). The previous Phase D
+    // Business Properties, Inc.", a US firm). An earlier version of the
     // gate let this through Layer B because "pb" qualified as a short
     // acronym and "properties" got stripped as a descriptor, so the
     // pattern "acronym + generic English real-estate noun" matched
@@ -212,7 +212,7 @@ describe('PreVerifyGate — Phase D audit REJECT cases (must NOT match)', () => 
     expect(r.status).toBe('REJECTED');
   });
 
-  it('Phase D.5 — Broker S.r.l. → broker.eu (Belgian broker, not Italian SMB)', () => {
+  it('Broker S.r.l. → broker.eu (Belgian broker, not Italian SMB)', () => {
     const lead = normalizeLead({
       company_name: 'Broker S.r.l.',
       city: 'Montebelluna',
@@ -224,7 +224,7 @@ describe('PreVerifyGate — Phase D audit REJECT cases (must NOT match)', () => 
     expect(r.detail).toMatch(/common_stem/);
   });
 
-  it('Phase D.5 — Contea S.r.l. → contea.com (Spaceship marketplace listing)', () => {
+  it('Contea S.r.l. → contea.com (Spaceship marketplace listing)', () => {
     const lead = normalizeLead({
       company_name: 'Contea S.r.l.',
       city: 'Montebelluna',
@@ -236,7 +236,7 @@ describe('PreVerifyGate — Phase D audit REJECT cases (must NOT match)', () => 
     expect(r.status).toBe('REJECTED');
   });
 
-  it('Phase D.5 — contea.com Spaceship marketplace title triggers tiny_or_parked', () => {
+  it('contea.com Spaceship marketplace title triggers tiny_or_parked', () => {
     // Even without the COMMON_BARE_STEMS rule, the marketplace title
     // pattern "<domain> for sale | Spaceship.com" must be detected
     // as parked.
@@ -255,7 +255,7 @@ describe('PreVerifyGate — Phase D audit REJECT cases (must NOT match)', () => 
     expect(r.detail).toMatch(/tiny_or_parked/);
   });
 
-  it('Phase E — Palace Immobiliare → palace.it (Palace Merano medical spa, not real estate)', () => {
+  it('Palace Immobiliare → palace.it (Palace Merano medical spa, not real estate)', () => {
     const lead = normalizeLead({
       company_name: 'Palace Immobiliare S.r.l.',
       city: 'Montagnana',
@@ -267,7 +267,7 @@ describe('PreVerifyGate — Phase D audit REJECT cases (must NOT match)', () => 
     expect(r.detail).toMatch(/common_stem/);
   });
 
-  it('Phase E — Domino S.r.l. → domino.it (digital marketing agency Turin/Venice)', () => {
+  it('Domino S.r.l. → domino.it (digital marketing agency Turin/Venice)', () => {
     const lead = normalizeLead({
       company_name: 'Domino S.r.l.',
       city: 'Lazise',
@@ -278,7 +278,7 @@ describe('PreVerifyGate — Phase D audit REJECT cases (must NOT match)', () => 
     expect(r.status).toBe('REJECTED');
   });
 
-  it('Phase E — Camelot Sas → camelot.it (e-voting platform Ivrea)', () => {
+  it('Camelot Sas → camelot.it (e-voting platform Ivrea)', () => {
     const lead = normalizeLead({
       company_name: 'Camelot Sas',
       city: 'Villafranca di Verona',
@@ -289,7 +289,7 @@ describe('PreVerifyGate — Phase D audit REJECT cases (must NOT match)', () => 
     expect(r.status).toBe('REJECTED');
   });
 
-  it('Phase E — Libertà Immobiliare → liberta.eu (Nameshift domain marketplace)', () => {
+  it('Libertà Immobiliare → liberta.eu (Nameshift domain marketplace)', () => {
     const lead = normalizeLead({
       company_name: "Liberta' Immobiliare S.r.l.",
       city: 'Legnago',
@@ -300,7 +300,7 @@ describe('PreVerifyGate — Phase D audit REJECT cases (must NOT match)', () => 
     expect(r.status).toBe('REJECTED');
   });
 
-  it('Phase E — Alfa Omega Immobiliare → alfaomega.it (Monza pharmaceuticals, multi-token brand)', () => {
+  it('Alfa Omega Immobiliare → alfaomega.it (Monza pharmaceuticals, multi-token brand)', () => {
     // Multi-token brand: NER tokens=["alfa","omega"] → distinctive=2.
     // The 1-distinctive-token denylist check would miss this; the
     // compactStripped denylist check (D.5) catches "alfaomega".
@@ -315,7 +315,7 @@ describe('PreVerifyGate — Phase D audit REJECT cases (must NOT match)', () => 
     expect(r.detail).toMatch(/common_stem/);
   });
 
-  it('Phase F — Americanino → americanino.eu (clothing brand, not real estate)', () => {
+  it('Americanino → americanino.eu (clothing brand, not real estate)', () => {
     const lead = normalizeLead({
       company_name: 'Americanino',
       city: 'Padova',
@@ -326,7 +326,7 @@ describe('PreVerifyGate — Phase D audit REJECT cases (must NOT match)', () => 
     expect(r.detail).toMatch(/common_stem/);
   });
 
-  it('Phase F — Raffaello S.r.l. → raffaello.it (Ferrero confectionery brand)', () => {
+  it('Raffaello S.r.l. → raffaello.it (Ferrero confectionery brand)', () => {
     const lead = normalizeLead({
       company_name: 'Raffaello S.r.l.',
       city: 'Limena',
@@ -336,7 +336,7 @@ describe('PreVerifyGate — Phase D audit REJECT cases (must NOT match)', () => 
     expect(r.status).toBe('REJECTED');
   });
 
-  it('Phase F — Cantele S.r.l. → cantele.it (wine producer Salento)', () => {
+  it('Cantele S.r.l. → cantele.it (wine producer Salento)', () => {
     const lead = normalizeLead({
       company_name: 'Cantele S.r.l.',
       city: 'Padova',
@@ -346,7 +346,7 @@ describe('PreVerifyGate — Phase D audit REJECT cases (must NOT match)', () => 
     expect(r.status).toBe('REJECTED');
   });
 
-  it('Phase F — Immobiliare Gemini → gemini.it (condo management software)', () => {
+  it('Immobiliare Gemini → gemini.it (condo management software)', () => {
     const lead = normalizeLead({
       company_name: 'Immobiliare Gemini S.r.l.',
       city: 'Albignasego',
@@ -356,7 +356,7 @@ describe('PreVerifyGate — Phase D audit REJECT cases (must NOT match)', () => 
     expect(r.status).toBe('REJECTED');
   });
 
-  it('Phase F — Fusion S.a.s. → fusion.org (parked / domain marketplace)', () => {
+  it('Fusion S.a.s. → fusion.org (parked / domain marketplace)', () => {
     const lead = normalizeLead({
       company_name: 'Fusion S.a.s.',
       city: 'Albignasego',
@@ -366,7 +366,7 @@ describe('PreVerifyGate — Phase D audit REJECT cases (must NOT match)', () => 
     expect(r.status).toBe('REJECTED');
   });
 
-  it('Phase F — My Home S.r.l. → myhome.com (US Williston Financial real-estate tech)', () => {
+  it('My Home S.r.l. → myhome.com (US Williston Financial real-estate tech)', () => {
     const lead = normalizeLead({
       company_name: 'My Home S.r.l.',
       city: 'Padova',
@@ -376,7 +376,7 @@ describe('PreVerifyGate — Phase D audit REJECT cases (must NOT match)', () => 
     expect(r.status).toBe('REJECTED');
   });
 
-  it('Phase F — Immobiliare Orchidea → orchidea.it (Orchidea Milano furniture retail)', () => {
+  it('Immobiliare Orchidea → orchidea.it (Orchidea Milano furniture retail)', () => {
     const lead = normalizeLead({
       company_name: 'Immobiliare Orchidea S.r.l.',
       city: 'Mestrino',
@@ -386,7 +386,7 @@ describe('PreVerifyGate — Phase D audit REJECT cases (must NOT match)', () => 
     expect(r.status).toBe('REJECTED');
   });
 
-  it('Phase F — Ypsilon S.r.l. → ypsilon.net (travel tech AG, ISO/PCI)', () => {
+  it('Ypsilon S.r.l. → ypsilon.net (travel tech AG, ISO/PCI)', () => {
     const lead = normalizeLead({
       company_name: 'Ypsilon S.r.l.',
       city: 'Albignasego',
@@ -396,7 +396,7 @@ describe('PreVerifyGate — Phase D audit REJECT cases (must NOT match)', () => 
     expect(r.status).toBe('REJECTED');
   });
 
-  it('Phase F — Alessandra S.r.l. → alessandra.com (Dr. Tony Alessandra US consultant)', () => {
+  it('Alessandra S.r.l. → alessandra.com (Dr. Tony Alessandra US consultant)', () => {
     const lead = normalizeLead({
       company_name: 'Alessandra S.r.l.',
       city: 'Padova',
@@ -406,7 +406,7 @@ describe('PreVerifyGate — Phase D audit REJECT cases (must NOT match)', () => 
     expect(r.status).toBe('REJECTED');
   });
 
-  it('Phase F.1 — Franca Immobiliare → franca.it (Residence Franca tourist residence Arco TN)', () => {
+  it('Franca Immobiliare → franca.it (Residence Franca tourist residence Arco TN)', () => {
     const lead = normalizeLead({
       company_name: 'Franca Immobiliare',
       city: 'Albignasego',
@@ -417,7 +417,7 @@ describe('PreVerifyGate — Phase D audit REJECT cases (must NOT match)', () => 
     expect(r.detail).toMatch(/common_stem/);
   });
 
-  it('Phase F.1 — Immobiliare Sartori → sartori.it (Sartori Studio Legale Trento law firm)', () => {
+  it('Immobiliare Sartori → sartori.it (Sartori Studio Legale Trento law firm)', () => {
     const lead = normalizeLead({
       company_name: 'Immobiliare Sartori',
       city: 'Casalserugo',
@@ -427,7 +427,7 @@ describe('PreVerifyGate — Phase D audit REJECT cases (must NOT match)', () => 
     expect(r.status).toBe('REJECTED');
   });
 
-  it('Phase F.1 — Studio Immobiliare Colonna → colonna.net (Wittmann family personal site)', () => {
+  it('Studio Immobiliare Colonna → colonna.net (Wittmann family personal site)', () => {
     const lead = normalizeLead({
       company_name: 'Studio Immobiliare Colonna',
       city: 'Montegrotto Terme',
@@ -437,7 +437,7 @@ describe('PreVerifyGate — Phase D audit REJECT cases (must NOT match)', () => 
     expect(r.status).toBe('REJECTED');
   });
 
-  it('Phase F.1 — Immobiliare Chemello → chemello.it (Chemello Metalworking, same town, different business)', () => {
+  it('Immobiliare Chemello → chemello.it (Chemello Metalworking, same town, different business)', () => {
     // Edge case: same surname AND same town as the lead, but the
     // chemello.it owner is "Chemello Metalworking Srl" (funeral-art
     // metalwork). Same family, different legal entity. Treat as FP
@@ -451,7 +451,7 @@ describe('PreVerifyGate — Phase D audit REJECT cases (must NOT match)', () => 
     expect(r.status).toBe('REJECTED');
   });
 
-  it('Phase F.1 — La Chiave → lachiave.com stays MATCHED (audit-confirmed TP)', () => {
+  it('La Chiave → lachiave.com stays MATCHED (audit-confirmed TP)', () => {
     // Manual WebFetch confirmed lachiave.com IS Immobiliare La Chiave
     // (Padova, Via Torino 11). Real estate agency, same firm, same
     // city. TP regression pin.
@@ -465,7 +465,7 @@ describe('PreVerifyGate — Phase D audit REJECT cases (must NOT match)', () => 
     expect(r.status).toBe('VERIFIED_SEMANTIC');
   });
 
-  it('Phase F.1 — Phosphoro → phosphoro.com stays MATCHED (audit-confirmed TP)', () => {
+  it('Phosphoro → phosphoro.com stays MATCHED (audit-confirmed TP)', () => {
     // Manual WebFetch confirmed phosphoro.com IS Phosphoro rental
     // platform headquartered in Padova ("Affitti sicuri di stanze,
     // appartamenti..."). Same firm, same city. TP regression pin.
@@ -479,7 +479,7 @@ describe('PreVerifyGate — Phase D audit REJECT cases (must NOT match)', () => 
     expect(r.status).toBe('VERIFIED_SEMANTIC');
   });
 
-  it('Phase F.3 — Academy S.r.l. → academy.it (The British Academy English school, Lazio)', () => {
+  it('Academy S.r.l. → academy.it (The British Academy English school, Lazio)', () => {
     const lead = normalizeLead({
       company_name: 'Academy S.r.l.',
       city: 'Rovigo',
@@ -490,7 +490,7 @@ describe('PreVerifyGate — Phase D audit REJECT cases (must NOT match)', () => 
     expect(r.detail).toMatch(/common_stem/);
   });
 
-  it('Phase F.3 — Giemme S.r.l. → giemme.org (Gi. Emme Macchine Utensili, same town different sector)', () => {
+  it('Giemme S.r.l. → giemme.org (Gi. Emme Macchine Utensili, same town different sector)', () => {
     // Same town as the lead (Albignasego PD), but giemme.org is a
     // machine-tools company since 1997, not a real estate agency.
     // Same family pattern as Chemello in F.1: shared
@@ -504,11 +504,11 @@ describe('PreVerifyGate — Phase D audit REJECT cases (must NOT match)', () => 
     expect(r.status).toBe('REJECTED');
   });
 
-  it('Phase E — Cangrande Immobiliare → cangrande.it stays MATCHED (audit-confirmed TP)', () => {
+  it('Cangrande Immobiliare → cangrande.it stays MATCHED (audit-confirmed TP)', () => {
     // Manual WebFetch confirmed cangrande.it IS Cangrande Immobiliare
     // di Francesco Geom. Savino, Verona — same firm, same sector,
-    // same city. Must NOT regress to REJECTED when adding Phase E
-    // denylist entries. `cangrande` is intentionally NOT in
+    // same city. Must NOT regress to REJECTED as denylist entries
+    // accumulate. `cangrande` is intentionally NOT in
     // COMMON_BARE_STEMS.
     const lead = normalizeLead({
       company_name: 'Cangrande Immobiliare',
@@ -520,7 +520,7 @@ describe('PreVerifyGate — Phase D audit REJECT cases (must NOT match)', () => 
     expect(r.status).toBe('VERIFIED_SEMANTIC');
   });
 
-  it('Phase D.5 — Immobiliare Possagno → possagno.it (town stem, intermittent placeholder)', () => {
+  it('Immobiliare Possagno → possagno.it (town stem, intermittent placeholder)', () => {
     const lead = normalizeLead({
       company_name: 'Immobiliare Possagno',
       city: 'Treviso',
@@ -536,7 +536,7 @@ describe('PreVerifyGate — Phase D audit REJECT cases (must NOT match)', () => 
     expect(r.detail).toMatch(/common_stem/);
   });
 
-  it('Phase D.5 — possagno.it "coming soon" placeholder rejected', () => {
+  it('possagno.it "coming soon" placeholder rejected', () => {
     const lead = normalizeLead({
       company_name: 'Some Real Estate',
       city: 'Treviso',
@@ -551,7 +551,7 @@ describe('PreVerifyGate — Phase D audit REJECT cases (must NOT match)', () => 
     expect(r.detail).toMatch(/tiny_or_parked/);
   });
 
-  it('Phase D.5 — Immobiliare Galileo → galileo.it (e-learning portal)', () => {
+  it('Immobiliare Galileo → galileo.it (e-learning portal)', () => {
     const lead = normalizeLead({
       company_name: 'Immobiliare Galileo S.r.l.',
       city: 'Montebelluna',
@@ -562,7 +562,7 @@ describe('PreVerifyGate — Phase D audit REJECT cases (must NOT match)', () => 
     expect(r.status).toBe('REJECTED');
   });
 
-  it('Phase D.5 — Sinergia S.r.l. → sinergia.it (consulting in Pesaro, not real estate)', () => {
+  it('Sinergia S.r.l. → sinergia.it (consulting in Pesaro, not real estate)', () => {
     const lead = normalizeLead({
       company_name: 'Sinergia S.r.l.',
       city: 'Castelfranco Veneto',
@@ -573,7 +573,7 @@ describe('PreVerifyGate — Phase D audit REJECT cases (must NOT match)', () => 
     expect(r.status).toBe('REJECTED');
   });
 
-  it('Phase D.5 — Solar System S.r.l. → solarsystem.it (solar panels in Sicily)', () => {
+  it('Solar System S.r.l. → solarsystem.it (solar panels in Sicily)', () => {
     // Multi-token brand: NER tokens=["solar","system"]. The
     // 1-distinctive-token denylist check would miss this; the new
     // compactStripped denylist check catches "solarsystem".
@@ -589,7 +589,7 @@ describe('PreVerifyGate — Phase D audit REJECT cases (must NOT match)', () => 
   });
 
   it('Studio Master Immobiliare → master.it (electrical manufacturer in Este — generic English noun)', () => {
-    // Phase D.4 TV audit (p64): "Studio Master Immobiliare" was
+    // Web verification audit: "Studio Master Immobiliare" was
     // matched to master.it. master.it is "Master S.r.l. Divisione
     // Elettrica", an electrical materials manufacturer in Este (PD)
     // — confirmed via WebFetch. "master" is also a generic English
@@ -606,7 +606,7 @@ describe('PreVerifyGate — Phase D audit REJECT cases (must NOT match)', () => 
   });
 
   it('Immobiliare Europa → europa.eu (EU institutional portal — generic supranational stem)', () => {
-    // Phase D.2 TV audit (p61): "Immobiliare Europa" was matched to
+    // Web verification audit: "Immobiliare Europa" was matched to
     // europa.eu (the European Union's official institutional portal).
     // The Layer-A reverse-include direction (compactFull.includes
     // (domainStem)) had let "immobiliareeuropa" swallow the 6-char
@@ -651,7 +651,7 @@ describe('PreVerifyGate — Phase D audit REJECT cases (must NOT match)', () => 
   });
 });
 
-describe('PreVerifyGate — Phase D audit ACCEPT cases (must remain matched)', () => {
+describe('PreVerifyGate — audited true positives (must remain matched)', () => {
   it('Pierobon → agenziaimmobiliareestimopierobon.com (Layer A full-name)', () => {
     const lead = normalizeLead({
       company_name: 'Agenzia Immobiliare Estimo Pierobon',

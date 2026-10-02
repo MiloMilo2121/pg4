@@ -6,12 +6,13 @@
  * carries its activation condition. The RoleResolver compiles (role, ctx) → RouteOptions
  * using this table; the ProviderRouter then re-asserts every gate independently.
  *
- * Source: docs/provider_cascade_architecture.md §2–§4 + ADDENDUM v1.1.
+ * Source: docs/provider_cascade_architecture.md + ADDENDUM v1.1.
  * Addendum corrections applied here: Perplexity is LLM-only (not SEARCH_WEB);
  * zhipu/kimi/deepseek are paid-gated (no assumed-free LLM); brightdata is split into
  * distinct ids brightdata_serp / brightdata_unlocker; PEC has no free API step.
  */
 import type { ProviderRole } from '../types/providers';
+import { CALL_COST_EUR, HUNTER_OP_COST_EUR } from './pricing';
 
 /** How the resolver dispatches a role: which router verb (or non-router invoke). */
 export type RoleVerb = 'search' | 'fetch' | 'complete' | 'invoke';
@@ -28,7 +29,7 @@ export interface RoleStep {
   condition: string;
   /** Only active for these category profiles (e.g. hospitality → reviews). */
   categoryOnly?: string[];
-  /** Excluded for these category profiles (R14: real-estate low-yield SERP). */
+  /** Excluded for these category profiles (e.g. real-estate low-yield SERP). */
   categoryExclude?: string[];
   /** Openapi paid tiers: fire only when isTopCompany(lead) && onRequest. */
   onRequestTopOnly?: boolean;
@@ -59,30 +60,31 @@ export const ROLE_REGISTRY: RoleEntry[] = [
     steps: [
       free('bing_html', 1, 'always (free, no-key)'),
       free('ddg_lite', 1, 'free EXCEPT italian_real_estate (R14) unless SERP_EXPANDED_FREE_ENABLED', { categoryExclude: ['italian_real_estate'] }),
-      // R14 excluded serper for real-estate as "low-yield", but a 2026-07-20 live
-      // re-test found serper returns the agency's OWN site ~50% of the time on
+      // Serper was once excluded for real-estate as "low-yield", but a
+      // 2026-07-20 live re-test found serper returns the agency's OWN site
+      // ~50% of the time on
       // no-site immobiliari leads (bing_html returns 0 — directories only); the
       // existing directory/preverify guard cleans the rest. Re-enabled: paid SERP
       // is the highest-ROI lever on the 48% no-website gap.
-      paid('serper', 2, 0.001, 'paid SERP; re-enabled for real-estate (2026-07-20 re-test: ~50% own-site hit)'),
-      paid('tavily', 2, 0.0074, 'richer snippets / raw content for judgment discovery'),
-      paid('exa', 2, 0.0064, 'semantic/editorial precision for third-party A-signals'),
-      paid('brightdata_serp', 2, 0.00138, 'last-resort SERP when free blocked'),
+      paid('serper', 2, CALL_COST_EUR.serper, 'paid SERP; re-enabled for real-estate (2026-07-20 re-test: ~50% own-site hit)'),
+      paid('tavily', 2, CALL_COST_EUR.tavily, 'richer snippets / raw content for judgment discovery'),
+      paid('exa', 2, CALL_COST_EUR.exa, 'semantic/editorial precision for third-party A-signals'),
+      paid('brightdata_serp', 2, CALL_COST_EUR.brightdata, 'last-resort SERP when free blocked'),
     ],
   },
   {
     role: 'WEB_FETCH', verb: 'fetch', phase: 'research',
     steps: [
       free('direct_fetch', 0, 'always; breaker tuned loose'),
-      paid('firecrawl', 2, 0.0046, 'only after direct_fetch returns block/empty'),
-      paid('brightdata_unlocker', 2, 0.00138, 'tough targets; compliance review'),
+      paid('firecrawl', 2, CALL_COST_EUR.firecrawl, 'only after direct_fetch returns block/empty'),
+      paid('brightdata_unlocker', 2, CALL_COST_EUR.brightdata, 'tough targets; compliance review'),
     ],
   },
   {
     role: 'WEB_UNBLOCK', verb: 'fetch', phase: 'research',
     steps: [
-      paid('firecrawl', 2, 0.0046, 'direct_fetch failed (block/JS render)'),
-      paid('brightdata_unlocker', 2, 0.00138, 'firecrawl failed OR residential needed'),
+      paid('firecrawl', 2, CALL_COST_EUR.firecrawl, 'direct_fetch failed (block/JS render)'),
+      paid('brightdata_unlocker', 2, CALL_COST_EUR.brightdata, 'firecrawl failed OR residential needed'),
       free('oracle_crawl4ai', 2, 'self-hosted sidecar if ORACLE_CRAWL4AI_URL set'),
     ],
     note: 'paid-only escalation subset of WEB_FETCH',
@@ -90,29 +92,29 @@ export const ROLE_REGISTRY: RoleEntry[] = [
   {
     role: 'LLM_JUDGE', verb: 'complete', phase: 'judgment',
     steps: [
-      paid('anthropic', 2, 0.02, 'DEFAULT judge (two-axis verdict synthesis)'),
-      paid('openrouter', 2, 0.02, 'routes to Claude/other (no new secret)'),
-      paid('openai', 2, 0.01, 'fallback judge when anthropic + openrouter down'),
+      paid('anthropic', 2, CALL_COST_EUR.anthropic, 'DEFAULT judge (two-axis verdict synthesis)'),
+      paid('openrouter', 2, CALL_COST_EUR.openrouter, 'routes to Claude/other (no new secret)'),
+      paid('openai', 2, CALL_COST_EUR.openai, 'fallback judge when anthropic + openrouter down'),
     ],
   },
   {
     role: 'LLM_REASON', verb: 'complete', phase: 'enrich',
     steps: [
-      paid('openrouter', 2, 0.01, 'multi-model gateway'),
-      paid('openai', 2, 0.01, 'general reasoning/extraction'),
-      paid('deepseek', 2, 0.002, 'cost-optimized'),
-      paid('perplexity', 2, 0.012, 'grounded reasoning/answer (addendum R6: LLM role, not SEARCH)'),
-      paid('anthropic', 2, 0.02, 'premium reasoning'),
+      paid('openrouter', 2, CALL_COST_EUR.openrouter, 'multi-model gateway'),
+      paid('openai', 2, CALL_COST_EUR.openai, 'general reasoning/extraction'),
+      paid('deepseek', 2, CALL_COST_EUR.deepseek, 'cost-optimized'),
+      paid('perplexity', 2, CALL_COST_EUR.perplexity, 'grounded reasoning/answer (addendum R6: LLM role, not SEARCH)'),
+      paid('anthropic', 2, CALL_COST_EUR.anthropic, 'premium reasoning'),
     ],
   },
   {
     role: 'LLM_CHEAP', verb: 'complete', phase: 'enrich',
     steps: [
       // Addendum R6: NO assumed-free LLM. All paid-gated; on a free-only run LLM_CHEAP returns null.
-      paid('zhipu_glm', 2, 0.0003, 'cheapest extraction (verify free-tier before relying)'),
-      paid('deepseek', 2, 0.0006, 'cheap reasoning'),
-      paid('kimi', 2, 0.001, 'long-context cheap'),
-      paid('openai', 2, 0.002, 'reliable cheap fallback (gpt-4o-mini class)'),
+      paid('zhipu_glm', 2, CALL_COST_EUR.zhipu_glm, 'cheapest extraction (verify free-tier before relying)'),
+      paid('deepseek', 2, CALL_COST_EUR.deepseek, 'cheap reasoning'),
+      paid('kimi', 2, CALL_COST_EUR.kimi, 'long-context cheap'),
+      paid('openai', 2, CALL_COST_EUR.openai, 'reliable cheap fallback (gpt-4o-mini class)'),
     ],
   },
   {
@@ -120,8 +122,8 @@ export const ROLE_REGISTRY: RoleEntry[] = [
     steps: [
       free('vies', 1, 'checksum-valid VAT present; OFFICIAL_DATA_VIES_ENABLED'),
       free('fatturatoitalia', 1, 'resolved VAT; entity-guard isWrongEntity; OFFICIAL_DATA_FATTURATOITALIA_ENABLED'),
-      paid('openapi_search', 2, 0.01, 'IT-search dryRun coverage sizing; critic: ~€0.01/req beyond free quota (free-tier unverified)'),
-      paid('openapi_advanced', 2, 0.10, 'IT-advanced firmographics; isTopCompany && on-request; per-lead ceiling €0.13', { onRequestTopOnly: true }),
+      paid('openapi_search', 2, CALL_COST_EUR.openapi_search, 'IT-search dryRun coverage sizing; critic: ~€0.01/req beyond free quota (free-tier unverified)'),
+      paid('openapi_advanced', 2, CALL_COST_EUR.openapi_advanced, 'IT-advanced firmographics; isTopCompany && on-request; per-lead ceiling €0.13', { onRequestTopOnly: true }),
     ],
   },
   {
@@ -129,37 +131,37 @@ export const ROLE_REGISTRY: RoleEntry[] = [
     steps: [
       free('website_body', 0, 'deepened body extraction (homepage + contact/about)'),
       free('email_pattern_guess', 1, 'DISABLED until a real verifier exists (precision risk)', { disabled: true }),
-      paid('hunter', 2, 0.04, 'body produced nothing; within per-field ceiling'),
-      paid('snov', 2, 0.036, 'deferred (addendum R6: Hunter covers this)', { disabled: true }),
+      paid('hunter', 2, HUNTER_OP_COST_EUR.find, 'body produced nothing; within per-field ceiling'),
+      paid('snov', 2, CALL_COST_EUR.snov, 'deferred (addendum R6: Hunter covers this)', { disabled: true }),
     ],
   },
   {
     role: 'EMAIL_VERIFY', verb: 'invoke', phase: 'enrich',
     steps: [
-      paid('hunter', 2, 0.02, 'an email exists to verify (no free fallback — addendum R8)'),
-      paid('snov', 2, 0.036, 'deferred', { disabled: true }),
+      paid('hunter', 2, HUNTER_OP_COST_EUR.verify, 'an email exists to verify (no free fallback — addendum R8)'),
+      paid('snov', 2, CALL_COST_EUR.snov, 'deferred', { disabled: true }),
     ],
   },
   {
     role: 'B2B_CONTACT', verb: 'invoke', phase: 'enrich',
     steps: [
-      paid('hunter', 2, 0.04, 'decision-maker roles requested'),
-      paid('openapi_advanced', 2, 0.10, 'legal rep / shareholders; isTopCompany', { onRequestTopOnly: true }),
-      paid('snov', 2, 0.036, 'deferred', { disabled: true }),
+      paid('hunter', 2, HUNTER_OP_COST_EUR.find, 'decision-maker roles requested'),
+      paid('openapi_advanced', 2, CALL_COST_EUR.openapi_advanced, 'legal rep / shareholders; isTopCompany', { onRequestTopOnly: true }),
+      paid('snov', 2, CALL_COST_EUR.snov, 'deferred', { disabled: true }),
     ],
   },
   {
     role: 'DECISION_MAKER', verb: 'invoke', phase: 'enrich',
     steps: [
       free('website_body', 0, 'minority "Legale Rappresentante/Titolare" catch'),
-      paid('openapi_advanced', 2, 0.10, 'legal rep field; isTopCompany', { onRequestTopOnly: true }),
-      paid('hunter', 2, 0.04, 'people-finder; per-field ceiling'),
+      paid('openapi_advanced', 2, CALL_COST_EUR.openapi_advanced, 'legal rep field; isTopCompany', { onRequestTopOnly: true }),
+      paid('hunter', 2, HUNTER_OP_COST_EUR.find, 'people-finder; per-field ceiling'),
     ],
   },
   {
     role: 'REVIEWS_REPUTATION', verb: 'invoke', phase: 'judgment',
     steps: [
-      paid('google_places', 2, 0.06, 'hospitality/ristorazione routing (P3); New API FieldMask SKU', { categoryOnly: ['hospitality', 'ristorazione'] }),
+      paid('google_places', 2, CALL_COST_EUR.google_places, 'hospitality/ristorazione routing (P3); New API FieldMask SKU', { categoryOnly: ['hospitality', 'ristorazione'] }),
     ],
     note: 'no free fallback (addendum R8); §17 firewall treats absence as unknown, never negative',
   },
@@ -177,8 +179,8 @@ export const ROLE_REGISTRY: RoleEntry[] = [
     role: 'NEWS_AWARDS', verb: 'search', phase: 'judgment',
     steps: [
       free('bing_html', 1, 'free SERP for §2.7 premi/stampa queries'),
-      paid('serper', 2, 0.001, 'richer dated news'),
-      paid('tavily', 2, 0.0074, 'topic=news'),
+      paid('serper', 2, CALL_COST_EUR.serper, 'richer dated news'),
+      paid('tavily', 2, CALL_COST_EUR.tavily, 'topic=news'),
     ],
   },
   {
@@ -199,7 +201,7 @@ export const ROLE_REGISTRY: RoleEntry[] = [
   },
   {
     role: 'EMBEDDINGS', verb: 'invoke', phase: 'enrich',
-    steps: [paid('openai', 2, 0.0001, 'vector embeddings for ICP similarity/dedup (future)')],
+    steps: [paid('openai', 2, CALL_COST_EUR.openai, 'vector embeddings for ICP similarity/dedup (future)')],
   },
 ];
 

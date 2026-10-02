@@ -9,9 +9,9 @@ ACTIVATION LAYER will enforce. 2026-06-16. Nothing is enabled; €0 until the op
 Openapi is never an automatic/default lever. It fires only for a TOP company, only on an
 explicit operator request. It is the deliberate, paid, deep-enrich — not the free pass.
 
-## What the BASE enforces NOW (always-on safety — `openapi_enrich.ts` + `openapi_client.ts`)
+## What the BASE enforces NOW (always-on safety — `openapi_client.ts` + the registry harvest adapter, which calls it through the provider router)
 1. **Disabled by default** — triple-gate: `OPENAPI_ENABLED=true` + `OPENAPI_API_KEY` set
-   (`client.available()`) + the caller's ceiling. Off → `enrichByVat` returns `disabled`.
+   (`client.available()`) + the caller's ceiling. Off → the adapter makes no call.
 2. **Entity-guard (mandatory)** — the official record's name must ≥2-match the lead
    (`isWrongEntity`), else the VAT belongs to a different entity (franchisor/accountant)
    → `entity_mismatch`, data refused. (Even though Openapi's by-identity VAT is far

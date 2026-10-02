@@ -1,13 +1,16 @@
-import { request } from 'undici';
+import { followRedirects } from '../../providers/http/follow_redirects';
 import type { NormalizedLead } from '../../types/discovery';
 import { DEFAULTS } from '../../config/defaults';
+import { registryDomain } from '../../util/domain';
+import { classifyHttpFailure } from '../../types/providers';
+import { publicRegistryGuard, RDAP_NIC_IT, RDAP_ORG, type EndpointGuard } from '../../runtime/endpoint_guard';
 
 export interface RdapEvidence {
   confidence: number;            // 0..1
   evidence: 'piva_in_payload' | 'name_in_vcard' | 'name_in_payload' | 'none';
   detail?: string;
   /**
-   * Phase D: explicit registrant mismatch — true when RDAP returns a
+   * Explicit registrant mismatch — true when RDAP returns a
    * registrant whose locality / region / country contradicts the
    * lead's. Backward-compatible (optional). Used by `verify_candidates`
    * to veto a `VERIFIED_SEMANTIC` decision.
@@ -31,30 +34,44 @@ export class RdapValidator {
    * 0.2 = weak/raw name match
    * 0.0 = no signal / 4xx / unreachable
    */
-  static async checkDomainOwnership(domain: string, lead: NormalizedLead, opts: { signal?: AbortSignal } = {}): Promise<RdapEvidence> {
-    const cleanDomain = this.normalizeDomainInput(domain);
-    if (!cleanDomain) return { confidence: 0, evidence: 'none', detail: 'invalid_domain_input' };
+  static async checkDomainOwnership(
+    domain: string,
+    lead: NormalizedLead,
+    opts: { signal?: AbortSignal; guard?: EndpointGuard } = {},
+  ): Promise<RdapEvidence> {
+    // Registries hold records for the registrable domain only: `shop.foo.it`
+    // answers 404, so the probe always asks for `foo.it`.
+    const cleanDomain = registryDomain(domain);
+    if (!cleanDomain) return { confidence: 0, evidence: 'none', detail: 'no_registry_domain' };
     const tld = cleanDomain.split('.').pop();
-    const endpoint = tld === 'it'
-      ? `https://rdap.nic.it/domain/${cleanDomain}`
-      : `https://rdap.org/domain/${cleanDomain}`;
+    const server = tld === 'it' ? RDAP_NIC_IT : RDAP_ORG;
+    const endpoint = `https://${server}/domain/${cleanDomain}`;
+
+    const guard = opts.guard ?? publicRegistryGuard;
+    if (!(await guard.admit(server))) return { confidence: 0, evidence: 'none', detail: 'rdap_circuit_open' };
 
     try {
-      const res = await request(endpoint, {
+      const { response: res } = await followRedirects(endpoint, {
         method: 'GET',
         bodyTimeout: DEFAULTS.pipeline.requestTimeoutMs,
         headersTimeout: DEFAULTS.pipeline.requestTimeoutMs,
         signal: opts.signal,
         headers: { accept: 'application/rdap+json', 'user-agent': DEFAULTS.http.userAgent },
-        maxRedirections: 3,
       });
       if (res.statusCode !== 200) {
         await res.body.dump();
+        // A 404 is the registry answering "no such domain": the service is up.
+        // 429 and 5xx are the server itself failing, for every lead alike.
+        if (res.statusCode === 429 || res.statusCode >= 500) guard.failed(server, classifyHttpFailure({ status: res.statusCode }));
+        else guard.succeeded(server);
         return { confidence: 0, evidence: 'none', detail: `http_${res.statusCode}` };
       }
       const data = await res.body.json();
+      guard.succeeded(server);
       return this.score(data, lead);
     } catch (err) {
+      // The caller's own abort (lead deadline) says nothing about the server.
+      if (!opts.signal?.aborted) guard.failed(server, classifyHttpFailure({ error: (err as Error).message }));
       return { confidence: 0, evidence: 'none', detail: `error_${(err as Error).message}` };
     }
   }
@@ -70,7 +87,7 @@ export class RdapValidator {
       return { confidence: 0.9, evidence: 'piva_in_payload', detail: `piva=${piva}` };
     }
 
-    // Phase D: detect explicit mismatch from registrant locality / region /
+    // Detect explicit mismatch from registrant locality / region /
     // country fields. Used by the verify_candidates layer to veto a
     // semantic-only acceptance when the registrant is clearly elsewhere.
     const mismatch = this.detectMismatch(payload, lead);
@@ -171,15 +188,5 @@ export class RdapValidator {
     const lower = target.toLowerCase();
     const matched = tokens.filter((t) => lower.includes(t));
     return matched.length / tokens.length;
-  }
-
-  private static normalizeDomainInput(input: string): string | undefined {
-    if (!input) return undefined;
-    let s = input.trim().toLowerCase();
-    if (s.startsWith('http://') || s.startsWith('https://')) {
-      try { s = new URL(s).hostname; } catch { return undefined; }
-    }
-    s = s.replace(/^www\./, '').replace(/\/.*$/, '');
-    return /^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(s) ? s : undefined;
   }
 }

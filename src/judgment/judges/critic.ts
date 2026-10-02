@@ -80,7 +80,7 @@ export async function critic(
   return { validationScore, consistent, flags, reviewedBy: 'agent' };
 }
 
-export const CRITIC_SCHEMA = {
+const CRITIC_SCHEMA = {
   type: 'object',
   properties: {
     consistent: { type: 'boolean' },

@@ -1,25 +1,15 @@
 import fs from 'fs';
 import path from 'path';
 import { describe, expect, it } from 'vitest';
-import { extractFromBody, registrableDomain } from '../../src/enrichment/extract/extract_from_body';
+import { extractFromBody } from '../../src/enrichment/extract/extract_from_body';
 
 /**
- * Phase 1 (free-gold) — the pure body extractor. Offline, deterministic,
+ * Free-gold extraction — the pure body extractor. Offline, deterministic,
  * fixture-driven. No network. Italian SMB page shapes.
  */
 
 const FIX = path.join(__dirname, '..', 'fixtures', 'extract');
 const load = (name: string): string => fs.readFileSync(path.join(FIX, name), 'utf8');
-
-describe('registrableDomain', () => {
-  it('reduces host/URL to last two labels, strips www/scheme/path', () => {
-    expect(registrableDomain('https://www.studiorossi.it/contatti')).toBe('studiorossi.it');
-    expect(registrableDomain('mail.studiorossi.it')).toBe('studiorossi.it');
-    expect(registrableDomain('studiorossi.it')).toBe('studiorossi.it');
-    expect(registrableDomain(undefined)).toBeUndefined();
-    expect(registrableDomain('localhost')).toBeUndefined();
-  });
-});
 
 describe('extractFromBody — email', () => {
   it('keeps the same-domain business email, rejects 3rd-party (gmail)', () => {
@@ -28,6 +18,20 @@ describe('extractFromBody — email', () => {
     expect(ex.email).toBeDefined();
     expect(ex.email!.endsWith('@studiorossi.it')).toBe(true);
     expect(ex.email).not.toContain('gmail');
+  });
+
+  it('treats a hosting tenant as its own domain: a sibling tenant email is foreign', () => {
+    // x.altervista.org and y.altervista.org are two different owners; the old
+    // last-two-labels rule saw both as altervista.org and kept the neighbour.
+    const html = `<html><body><p>Scrivici a info@y.altervista.org oppure a posta@x.altervista.org per un preventivo.</p></body></html>`;
+    const ex = extractFromBody(html, { official_website: 'https://x.altervista.org' });
+    expect(ex.email).toBe('posta@x.altervista.org');
+  });
+
+  it('rejects an email on a different firm under the same province suffix (foo.pd.it vs bar.pd.it)', () => {
+    const html = `<html><body><p>Contatti: info@bar.pd.it — ufficio tecnico, orari 9-18, lunedi-venerdi.</p></body></html>`;
+    const ex = extractFromBody(html, { official_website: 'https://www.foo.pd.it' });
+    expect(ex.email).toBeUndefined();
   });
 
   it('with unknown own-domain, accepts the first non-PEC email (weak)', () => {

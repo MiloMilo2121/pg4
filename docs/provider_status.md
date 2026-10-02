@@ -43,8 +43,8 @@ enable. Status legend: ✅ working (real impl, tested) · 🔑 working, needs AP
 | Source | Why | Path |
 |---|---|---|
 | INI-PEC direct (PEC by VAT) | ⛔ official lookup is CAPTCHA-gated, no clean free API | free PEC = on-page body PEC (✅); full PEC-by-VAT via Openapi (paid) |
-| ANAC/TED (gare) | ⛔ A-axis source, not wired | "cose in più" — `ANAC_TED_ENABLED` flag reserved |
-| Accredia (certificazioni) | ⛔ A-axis source, not wired | "cose in più" — `ACCREDIA_ENABLED` flag reserved |
+| ANAC/TED (gare) | ⛔ A-axis source, not wired | "cose in più" — no client and no flag yet |
+| Accredia (certificazioni) | ⛔ A-axis source, not wired | "cose in più" — no client and no flag yet |
 | email_pattern_guess (old) | replaced | superseded by email inference + MX (Fase 1a) |
 | dns_mx, crtsh | removed (0/12,728 as discovery) | MX reused only as the email VERIFIER (Fase 1a), not discovery |
 

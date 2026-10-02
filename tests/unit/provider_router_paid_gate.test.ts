@@ -4,7 +4,7 @@ import { CostLedger } from '../../src/runtime/cost_ledger';
 import type { SerpProvider, SerpResult } from '../../src/types/providers';
 
 /**
- * Phase G — paid-gate router tests. Default-deny is the load-bearing
+ * Paid-gate router tests. Default-deny is the load-bearing
  * safety: a run without `paidEnabled: true` MUST NOT reach any
  * provider with cost > 0, regardless of tier or budget hints.
  */
@@ -35,7 +35,7 @@ class FakePaidSerp implements SerpProvider {
   }
 }
 
-describe('ProviderRouter — Phase G paid gate', () => {
+describe('ProviderRouter — paid gate', () => {
   it('paidEnabled default-false: paid providers are NEVER called', async () => {
     const ledger = new CostLedger();
     const free = new FakeFreeSerp();
@@ -112,7 +112,7 @@ describe('ProviderRouter — Phase G paid gate', () => {
   });
 
   it('runCostCeilingEur enforces aggregate cap across calls (the p90-blowup hotfix)', async () => {
-    // Phase G hotfix regression: without this gate the router would
+    // Regression: without this gate the router would
     // keep calling paid providers indefinitely after the cap.
     const ledger = new CostLedger();
     const empty = new FakeFreeSerp();
@@ -142,7 +142,7 @@ describe('ProviderRouter — Phase G paid gate', () => {
     expect(paid.callCount).toBe(1);
   });
 
-  it('Phase G.1 — concurrent paid calls cannot both pass when only one fits the cap', async () => {
+  it('concurrent paid calls cannot both pass when only one fits the cap', async () => {
     // Two pipelines fire router.search at the same time. The cap is
     // €0.001 (one call's worth). Without atomic reservation both
     // would pass the filter (ledger.getTotal()=0 at filter time)

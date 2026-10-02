@@ -16,9 +16,9 @@ echo "==> 1/5 base packages"
 sudo apt-get update -y
 sudo apt-get install -y git tmux ca-certificates curl gnupg
 
-echo "==> 2/5 Node 22 + pnpm"
-if ! command -v node >/dev/null || [ "$(node -v | cut -dv -f2 | cut -d. -f1)" -lt 22 ]; then
-  curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
+echo "==> 2/5 Node 24 + pnpm"
+if ! command -v node >/dev/null || [ "$(node -v | cut -dv -f2 | cut -d. -f1)" -lt 24 ]; then
+  curl -fsSL https://deb.nodesource.com/setup_24.x | sudo -E bash -
   sudo apt-get install -y nodejs
 fi
 sudo corepack enable
@@ -38,13 +38,28 @@ if [ ! -f .env ]; then
   echo "   created .env (add API keys only if you will use paid providers)"
 fi
 
+echo "==> 6/6 systemd units (Opzione A, raccomandata — vedi docs/VPS_RUNBOOK.md)"
+if [ -f deploy/pg4-api.service ] && [ -f deploy/pg4-campaign.service ] && [ -f deploy/pg4-campaign.timer ]; then
+  sudo cp deploy/pg4-api.service deploy/pg4-campaign.service deploy/pg4-campaign.timer /etc/systemd/system/
+  sudo systemctl daemon-reload
+  echo "   units installed (then: pnpm build && sudo systemctl enable --now pg4-api pg4-campaign.timer)"
+else
+  echo "   deploy/*.service|timer missing — skipping unit install"
+fi
+
 cat <<'DONE'
 
-Setup complete. To run a resilient campaign (survives reboots):
+Setup complete. Production runs on systemd (Opzione A, raccomandata):
 
-  tmux new -s campaign
-  bash scripts/watchdog.sh PD VR VI VE TV RO BL     # watchdog + campaign
-  # detach with Ctrl-b d ; reattach with: tmux attach -t campaign
+  pnpm build
+  sudo systemctl enable --now pg4-api            # dashboard API (node dist/)
+  sudo systemctl enable --now pg4-campaign.timer # campagna ogni notte alle 02:00
+
+Logs:    journalctl -u pg4-api -f  /  journalctl -u pg4-campaign -f
+Timer:   systemctl list-timers pg4-campaign.timer
+
+Legacy (deprecato, un solo ciclo di verifica): tmux + bash scripts/watchdog.sh
+  (vedi docs/VPS_RUNBOOK.md Opzione B).
 
 Progress:  tail -f output/recall/_campaign.log
 Count:     cat output/recall/*_raw.jsonl | wc -l

@@ -1,6 +1,16 @@
-import 'dotenv/config';
 import { z } from 'zod';
 import { DEFAULTS } from './defaults';
+import { DEFAULT_MODELS } from './models';
+
+// Node 24 loads .env natively (Fase 5.3): dotenv is gone. loadEnvFile writes
+// nothing to stdout by construction, so the MCP JSON-RPC channel stays clean.
+// Skipped under vitest/CI (hermetic tests: process.env is the only source)
+// and when no .env file exists (every key is optional — providers just stay off).
+try {
+  if (!process.env.VITEST && !process.env.CI) process.loadEnvFile();
+} catch {
+  /* no .env file — defaults apply, nothing is required */
+}
 
 /**
  * Robust env-boolean parser. `z.coerce.boolean()` is WRONG for env vars because
@@ -23,7 +33,8 @@ function envBool(def: boolean) {
  * Missing API keys do NOT fail validation — they cause the corresponding
  * provider to be silently dropped from the registry at runtime.
  */
-const EnvSchema = z.object({
+/** Exported for the .env.example ↔ schema sync test (Fase 5.3). */
+export const EnvSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   LOG_LEVEL: z.enum(['trace', 'debug', 'info', 'warn', 'error']).default('info'),
   LOG_FORMAT: z.enum(['pretty', 'json']).optional(),
@@ -33,10 +44,9 @@ const EnvSchema = z.object({
   COST_CEILING_EUR_PER_LEAD: z.coerce.number().nonnegative().optional(),
   REQUEST_TIMEOUT_MS: z.coerce.number().int().positive().optional(),
 
-  // Free SERP routing — R14. The low-yield free provider `ddg_lite` is
-  // SKIPPED for the `italian_real_estate` category profile (dns_mx + crtsh
-  // were deleted outright in Gate-0).
-  // R12 evidence (1,492 leads): the free SERP tier produced 0 final-website
+  // Free SERP routing. The low-yield free provider `ddg_lite` is
+  // SKIPPED for the `italian_real_estate` category profile.
+  // Measured over 1,492 leads: the free SERP tier produced 0 final-website
   // conversions; all 536 websites came from input/guess methods + direct_fetch.
   // Set true to force the full free SERP set even for that profile (debug or
   // other-vertical evaluation). See src/providers/provider_policy.ts.
@@ -51,19 +61,18 @@ const EnvSchema = z.object({
   TAVILY_API_KEY: z.string().optional(),
   PERPLEXITY_ENABLED: envBool(false),
   PERPLEXITY_API_KEY: z.string().optional(),
-  PERPLEXITY_BASE_URL: z.string().url().default('https://api.perplexity.ai'),
-  PERPLEXITY_MODEL: z.string().default('sonar'),
+  PERPLEXITY_BASE_URL: z.url().default('https://api.perplexity.ai'),
+  PERPLEXITY_MODEL: z.string().default(DEFAULT_MODELS.perplexity),
 
   // HTTP fallbacks (WEB_FETCH / WEB_UNBLOCK roles)
   BRIGHTDATA_ENABLED: envBool(false),
   BRIGHTDATA_API_KEY: z.string().optional(), // legacy single-key (kept for back-compat)
-  BRIGHTDATA_API_TOKEN: z.string().optional(), // current token auth (pg3-recovered)
+  BRIGHTDATA_API_TOKEN: z.string().optional(), // token auth
   BRIGHTDATA_WEB_UNLOCKER_ZONE: z.string().optional(), // zone for WEB_UNBLOCK
-  BRIGHTDATA_SERP_ZONE: z.string().optional(), // zone for SEARCH_WEB (serp) — distinct id brightdata_serp
   FIRECRAWL_ENABLED: envBool(false),
   FIRECRAWL_API_KEY: z.string().optional(),
-  FIRECRAWL_BASE_URL: z.string().url().default('https://api.firecrawl.dev'),
-  ORACLE_CRAWL4AI_URL: z.string().url().optional(),
+  FIRECRAWL_BASE_URL: z.url().default('https://api.firecrawl.dev'),
+  ORACLE_CRAWL4AI_URL: z.url().optional(),
 
   // LLM providers
   OPENAI_ENABLED: envBool(false),
@@ -72,21 +81,21 @@ const EnvSchema = z.object({
   OPENROUTER_ENABLED: envBool(false),
   OPENROUTER_API_KEY: z.string().optional(),
   OPENROUTER_MODEL: z.string().default(DEFAULTS.llm.openrouterModel),
-  OPENAI_BASE_URL: z.string().url().default('https://api.openai.com/v1'),
+  OPENAI_BASE_URL: z.url().default('https://api.openai.com/v1'),
   DEEPSEEK_ENABLED: envBool(false),
   DEEPSEEK_API_KEY: z.string().optional(),
-  DEEPSEEK_MODEL: z.string().default('deepseek-chat'),
-  DEEPSEEK_BASE_URL: z.string().url().default('https://api.deepseek.com'),
+  DEEPSEEK_MODEL: z.string().default(DEFAULT_MODELS.deepseek),
+  DEEPSEEK_BASE_URL: z.url().default('https://api.deepseek.com'),
   // Zhipu GLM (Z.AI) — LLM_CHEAP. OpenAI-compatible. PAID (no assumed free tier — see addendum R6).
   ZHIPU_ENABLED: envBool(false),
   ZHIPU_API_KEY: z.string().optional(),
-  ZHIPU_MODEL: z.string().default('glm-4-flash'),
-  ZHIPU_BASE_URL: z.string().url().default('https://api.z.ai/api/paas/v4'),
+  ZHIPU_MODEL: z.string().default(DEFAULT_MODELS.zhipu),
+  ZHIPU_BASE_URL: z.url().default('https://api.z.ai/api/paas/v4'),
   // Kimi (Moonshot) — LLM_CHEAP / long-context. OpenAI-compatible. Key recovered as KIMI_API_KEY.
   KIMI_ENABLED: envBool(false),
   KIMI_API_KEY: z.string().optional(),
-  KIMI_MODEL: z.string().default('moonshot-v1-8k'),
-  KIMI_BASE_URL: z.string().url().default('https://api.moonshot.ai/v1'),
+  KIMI_MODEL: z.string().default(DEFAULT_MODELS.kimi),
+  KIMI_BASE_URL: z.url().default('https://api.moonshot.ai/v1'),
   // Anthropic — default judge LLM for the judgment layer (L4/L5). PAID,
   // disabled by default like every other paid provider (paid-gate OFF).
   ANTHROPIC_ENABLED: envBool(false),
@@ -94,7 +103,7 @@ const EnvSchema = z.object({
   ANTHROPIC_MODEL: z.string().default(DEFAULTS.llm.anthropicModel),
 
   // Email inference + MX/SMTP handshake (EMAIL_FIND). FREE (DNS + SMTP RCPT, no
-  // mail sent). Gate-A: an inferred email is personal data, so the master flag is
+  // mail sent). An inferred email is personal data, so the master flag is
   // OFF by default — turning it on is the operator's explicit, documented choice.
   // When ON, the SMTP RCPT handshake runs by default (the whole point: verify
   // before asserting); set EMAIL_SMTP_PROBE_ENABLED=false to force MX-only mode
@@ -129,15 +138,6 @@ const EnvSchema = z.object({
   // Enrichment extras — email find/verify + B2B contact
   HUNTER_ENABLED: envBool(false),
   HUNTER_API_KEY: z.string().optional(),
-  // Snov.io — EMAIL_FIND/VERIFY/B2B (deferred: Hunter covers these; see addendum R6). OAuth2 creds.
-  SNOV_ENABLED: envBool(false),
-  SNOV_CLIENT_ID: z.string().optional(),
-  SNOV_CLIENT_SECRET: z.string().optional(),
-  // 2Captcha — CAPTCHA_SOLVE, gated; NEVER for official/government sources. Key recovered as 2CAPTCHA_API_KEY.
-  TWOCAPTCHA_ENABLED: envBool(false),
-  TWOCAPTCHA_API_KEY: z.string().optional(),
-  // Residential proxy (RESIDENTIAL_IP) — explicit operator flag + compliance sign-off only.
-  PROXY_RESIDENTIAL_URL: z.string().optional(),
 
   // Official Italian company-data sources (OFFICIAL_COMPANY_DATA role). Free sources default ON.
   // MASTER switch for running the guarded per-field official-data cascades
@@ -147,12 +147,9 @@ const EnvSchema = z.object({
   OFFICIAL_DATA_ENRICH_ENABLED: envBool(false),
   OFFICIAL_DATA_VIES_ENABLED: envBool(true),
   OFFICIAL_DATA_FATTURATOITALIA_ENABLED: envBool(true),
-  // A-axis open-data harvest adapters (TENDER_CONTRACTS / CERTIFICATIONS) — P1, not yet wired.
-  ANAC_TED_ENABLED: envBool(false),
-  ACCREDIA_ENABLED: envBool(false),
 
   // Judgment-layer sources (all disabled by default; presence-before-depth).
-  // Google Places API — official source for Maps/GBP/reviews/hours (plan §19).
+  // Google Places API — official source for Maps/GBP/reviews/hours.
   GOOGLE_PLACES_ENABLED: envBool(false),
   GOOGLE_PLACES_API_KEY: z.string().optional(),
   // Ad transparency libraries (Meta Ad Library / Google Ads Transparency).
@@ -165,7 +162,7 @@ const EnvSchema = z.object({
   // (≤100/day) still requires the key + enabled. Base URL switches prod/sandbox.
   OPENAPI_ENABLED: envBool(false),
   OPENAPI_API_KEY: z.string().optional(),
-  OPENAPI_BASE_URL: z.string().url().default('https://company.openapi.com'),
+  OPENAPI_BASE_URL: z.url().default('https://company.openapi.com'),
 
   // Apify — external actor marketplace. PAID, OFF by default. Per-actor flags gate
   // each actor: maps = GREEN (public business data); contact/facebook = YELLOW;
@@ -178,9 +175,9 @@ const EnvSchema = z.object({
   APIFY_FACEBOOK_ENABLED: envBool(false),
   APIFY_TIKTOK_ENABLED: envBool(false),
   APIFY_REGISTRO_ENABLED: envBool(false),
-  // ENRICH-3 actors — marketplace actors never used before this phase, so each
-  // gets an id override (APIFY_*_ACTOR_ID) to survive marketplace drift without
-  // a code change. email_verify has NO default id: the operator picks the
+  // Marketplace actors each get an id override (APIFY_*_ACTOR_ID) so they
+  // survive marketplace drift without a code change.
+  // email_verify has NO default id: the operator picks the
   // verifier actor at probe time, so its ACTOR_ID is required to enable it.
   APIFY_PORTAL_IMMOBILIARE_ENABLED: envBool(false),
   APIFY_PORTAL_IMMOBILIARE_ACTOR_ID: z.string().optional(),
@@ -205,7 +202,6 @@ const EnvSchema = z.object({
 
   // Browser
   PLAYWRIGHT_HEADLESS: envBool(true),
-  PATCHRIGHT_ENABLED: envBool(false),
 
   // Tests
   RUN_SMOKE: envBool(false),
@@ -244,18 +240,15 @@ export function resetEnvCache(): void {
 }
 
 /**
- * Phase B.4 — fail fast with an actionable message when the operator asked
- * for paid providers but none is actually usable. Without this, a missing
- * SERPER_API_KEY silently dropped the provider from the registry and the
- * "paid" run completed free-only with no signal.
+ * The paid-provider candidate table. Data-driven so enabling ANY implemented paid
+ * provider satisfies `--enable-paid`. Each entry names the enable flag + the secret
+ * that makes it usable. Keep in sync with the role registry / catalog.
+ *
+ * Only providers with an implementation under src/providers belong here. Snov and
+ * 2Captcha have env vars but no client: listing them let `--enable-paid` pass on
+ * their keys alone while every call stayed free.
  */
-/**
- * Addendum R3 — the paid-provider candidate table. Data-driven so enabling ANY
- * paid provider (not just the original four) satisfies `--enable-paid`. Each entry
- * names the enable flag + the secret that makes it usable. Snov uses its OAuth
- * client secret as the "key". Keep in sync with the role registry / catalog.
- */
-export function paidProviderCandidates(): Array<{ name: string; enabled: boolean; key?: string; keyVar: string; enableVar: string }> {
+function paidProviderCandidates(): Array<{ name: string; enabled: boolean; key?: string; keyVar: string; enableVar: string }> {
   const env = getEnv();
   return [
     { name: 'serper', enabled: env.SERPER_ENABLED, key: env.SERPER_API_KEY, keyVar: 'SERPER_API_KEY', enableVar: 'SERPER_ENABLED' },
@@ -271,14 +264,18 @@ export function paidProviderCandidates(): Array<{ name: string; enabled: boolean
     { name: 'kimi', enabled: env.KIMI_ENABLED, key: env.KIMI_API_KEY, keyVar: 'KIMI_API_KEY', enableVar: 'KIMI_ENABLED' },
     { name: 'anthropic', enabled: env.ANTHROPIC_ENABLED, key: env.ANTHROPIC_API_KEY, keyVar: 'ANTHROPIC_API_KEY', enableVar: 'ANTHROPIC_ENABLED' },
     { name: 'hunter', enabled: env.HUNTER_ENABLED, key: env.HUNTER_API_KEY, keyVar: 'HUNTER_API_KEY', enableVar: 'HUNTER_ENABLED' },
-    { name: 'snov', enabled: env.SNOV_ENABLED, key: env.SNOV_CLIENT_SECRET, keyVar: 'SNOV_CLIENT_SECRET', enableVar: 'SNOV_ENABLED' },
     { name: 'google_places', enabled: env.GOOGLE_PLACES_ENABLED, key: env.GOOGLE_PLACES_API_KEY, keyVar: 'GOOGLE_PLACES_API_KEY', enableVar: 'GOOGLE_PLACES_ENABLED' },
     { name: 'openapi', enabled: env.OPENAPI_ENABLED, key: env.OPENAPI_API_KEY, keyVar: 'OPENAPI_API_KEY', enableVar: 'OPENAPI_ENABLED' },
     { name: 'apify', enabled: env.APIFY_ENABLED, key: env.APIFY_API_KEY, keyVar: 'APIFY_API_KEY', enableVar: 'APIFY_ENABLED' },
-    { name: '2captcha', enabled: env.TWOCAPTCHA_ENABLED, key: env.TWOCAPTCHA_API_KEY, keyVar: 'TWOCAPTCHA_API_KEY', enableVar: 'TWOCAPTCHA_ENABLED' },
   ];
 }
 
+/**
+ * Fail fast with an actionable message when the operator asked
+ * for paid providers but none is actually usable. Without this, a missing
+ * SERPER_API_KEY silently dropped the provider from the registry and the
+ * "paid" run completed free-only with no signal.
+ */
 export function assertPaidSecrets(): void {
   const paidCandidates = paidProviderCandidates();
   const usable = paidCandidates.filter((p) => p.enabled && p.key && p.key.length > 0);

@@ -107,9 +107,14 @@ export class Checkpoint {
   /**
    * Build a stable composite key from the parts a typical scrape uses.
    * Caller can pass any key directly to set/get/has.
+   *
+   * Category and location are free text, so a ':' inside them would add a
+   * piece and make the key unparseable for the coverage manifest. They are
+   * percent-escaped for ':' and '%' only: a part without either character
+   * produces the same key as before, so existing checkpoints still resume.
    */
   static buildKey(parts: { provider: 'pg' | 'maps'; category: string; location: string; page?: number }): string {
-    const pieces = [parts.provider, parts.category.toLowerCase(), parts.location.toLowerCase()];
+    const pieces = [parts.provider, escapeKeyPart(parts.category.toLowerCase()), escapeKeyPart(parts.location.toLowerCase())];
     if (parts.page !== undefined) pieces.push(`p${parts.page}`);
     return pieces.join(':');
   }
@@ -141,6 +146,12 @@ export class Checkpoint {
     fs.writeFileSync(tmp, JSON.stringify(this.state, null, 2), 'utf8');
     fs.renameSync(tmp, this.filePath);
   }
+}
+
+// '%' is escaped first so an input that already contains '%3A' decodes back
+// to itself instead of to ':'.
+function escapeKeyPart(part: string): string {
+  return part.replace(/%/g, '%25').replace(/:/g, '%3A');
 }
 
 function isCheckpointState(value: unknown): value is Record<string, CheckpointEntry> {

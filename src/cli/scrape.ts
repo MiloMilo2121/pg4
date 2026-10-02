@@ -7,11 +7,11 @@ import { RunRecorder, EXIT, installInterruptHandler, readRunHistory, runsFilePat
 import { getNotifier } from '../runtime/notifier';
 import { PreflightError } from '../discovery/preflight';
 import { postRunValidate } from './_post_run';
-import { SuppressionList } from '../compliance/suppression';
+import { suppressionForCommand } from '../compliance/suppression';
 import { enforceRetention, resolveRetentionDays } from '../compliance/retention';
 
 /**
- * scrape — Phase 4 CLI (thin wrapper).
+ * scrape — the CLI thin wrapper.
  *
  * Argument parsing + flag validation + lifecycle (run record, signals,
  * exit codes) + dispatch. All orchestration (fixture mode + live mode +
@@ -31,7 +31,7 @@ import { enforceRetention, resolveRetentionDays } from '../compliance/retention'
  * Live mode skips Maps unless `--maps` is passed (PG-only by default,
  * because Maps' Cloudflare/consent surface needs more hardening).
  *
- * Exit codes (Phase B.3): 0 ok · 2 fatal · 3 preflight failed ·
+ * Exit codes: 0 ok · 2 fatal · 3 preflight failed ·
  * 130 interrupted. Never prompts — safe for cron/launchd as-is.
  */
 
@@ -45,7 +45,7 @@ async function main(): Promise<number> {
   const category = optString(args, 'category');
   const fixtureFlag = optString(args, 'fixture');
 
-  // Phase A.1 — per-run log file alongside outputs (LOG_FILE env overrides).
+  // Per-run log file alongside outputs (LOG_FILE env overrides).
   const logFile = bindRunLogFile(out.replace(/\.csv$/i, '') + '.log.jsonl');
 
   if (fixtureFlag) {
@@ -56,6 +56,7 @@ async function main(): Promise<number> {
         category,
         fixture: fixtureFlag,
         sourceFlag: optString(args, 'source'),
+        suppression: suppressionForCommand(args.flags, out),
       });
       return EXIT.OK;
     } finally {
@@ -66,7 +67,7 @@ async function main(): Promise<number> {
   if (!category) {
     throw new Error('Live mode requires --category. Pass --fixture <path> for offline mode.');
   }
-  // R5 — `--coverage` flag. Accept 'default' (single query) or 'full'
+  // `--coverage` flag. Accept 'default' (single query) or 'full'
   // (sector-keyword variants per comune). Anything else is rejected
   // so a typo doesn't silently fall back to default and surprise
   // the operator with under-coverage.
@@ -92,13 +93,13 @@ async function main(): Promise<number> {
     },
   });
 
-  // Phase D.2 — retention sweep (only when the operator opted in).
+  // Retention sweep (only when the operator opted in).
   const retentionDays = resolveRetentionDays(optString(args, 'retention-days'));
   if (retentionDays !== undefined) {
     enforceRetention({ outCsv: out, retentionDays });
   }
-  // Phase D.1 — suppression list (flag > env > auto-discovered suppression.csv).
-  const suppression = SuppressionList.resolve({ flagPath: optString(args, 'suppression-list'), outCsv: out });
+  // Suppression list (flag > env > auto-discovered suppression.csv).
+  const suppression = suppressionForCommand(args.flags, out);
 
   const outputLock = acquireOutputLock(out, { command: 'scrape', mode: 'live', category });
   try {
@@ -123,7 +124,7 @@ async function main(): Promise<number> {
       suppression,
     });
 
-    // Phase A.4 — yield anomaly check against run history (advisory only).
+    // Yield anomaly check against run history (advisory only).
     // History is read BEFORE this run's record is appended, so the baseline
     // never includes the run being assessed.
     const history = readRunHistory(runsFilePath(out));
@@ -152,7 +153,7 @@ async function main(): Promise<number> {
       coverage_manifest: out.replace(/\.csv$/i, '') + '.coverage.json',
     });
 
-    // Phase B.2 — automatic output validation (warn-only).
+    // Automatic output validation (warn-only).
     await postRunValidate({
       csvPath: out,
       jsonlPath: summary.output_jsonl,
@@ -226,14 +227,14 @@ Modes:
   --checkpoint <path>       Resume checkpoint path.
   --fresh                   Clear previous output/checkpoint for this target.
   --headless false          Show browser in live mode.
-  --skip-preflight          Skip the selector health check (Phase A.3).
+  --skip-preflight          Skip the selector health check.
   --run-id <id>             Externally supplied run id (used by the run command).
   --suppression-list <csv>  Do-not-contact list (phone,vat,reason,date). Also: SUPPRESSION_LIST env
                             or auto-discovered suppression.csv next to the output.
   --retention-days <n>      Delete output artifacts older than n days at run start (default: off).
   --out <path>              Required raw CSV output path.
 
-Observability (Phase A):
+Observability:
   LOG_FILE env              Per-run JSONL log. Default: <out>.log.jsonl. LOG_FILE=off disables.
   NOTIFY env                local (default) | off. Completion/anomaly events.
   Run history               One record per run appended to <outdir>/_runs.jsonl.

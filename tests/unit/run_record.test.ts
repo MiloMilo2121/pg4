@@ -10,7 +10,7 @@ function tmpOut(): string {
   return path.join(dir, 'out.csv');
 }
 
-describe('RunRecorder — Phase A.2 audit trail', () => {
+describe('RunRecorder — audit trail', () => {
   it('appends exactly one record on finish, with timestamps and exit code', () => {
     const out = tmpOut();
     const rec = new RunRecorder({ runId: 'run-test-1', command: 'scrape', outCsv: out, category: 'agenzie immobiliari' });
@@ -65,7 +65,7 @@ describe('RunRecorder — Phase A.2 audit trail', () => {
   });
 });
 
-describe('assessYield — Phase A.4 anomaly detection', () => {
+describe('assessYield — anomaly detection', () => {
   const mkRecord = (comuni: Record<string, number>, category = 'agenzie immobiliari', status: RunRecord['status'] = 'ok'): RunRecord => ({
     record_version: 1,
     run_id: `run-${Math.random()}`,

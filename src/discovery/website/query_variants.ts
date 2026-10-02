@@ -1,41 +1,37 @@
 import type { NormalizedLead } from '../../types/discovery';
 
 /**
- * R2 — pg3-style multi-vector SERP query builder.
+ * Multi-vector SERP query builder.
  *
- * Today pg4 emits ONE generic query per lead:
+ * A single generic query
  *   `${name} ${city} P.IVA ${vat} sito ufficiale`
- *
- * pg3's `QuerySanitizer.buildQueryVariants(target='company')` instead
- * produces 8-12 ordered variants, each targeting a distinct evidence
+ * yields little; 8-12 ordered variants, each targeting a distinct evidence
  * vector (P.IVA, email-domain, exact-name, contacts, legal pages,
- * phone, address, official-site fallback). Every variant carries an
- * aggressive `-site:` exclusion dork list that keeps directory hits
- * out of the SERP page.
+ * phone, address, official-site fallback), surface far more. Every variant
+ * carries an aggressive `-site:` exclusion dork list that keeps directory
+ * hits out of the SERP page.
  *
- * This file ports pg3's `target='company'` path. Other targets
- * (linkedin/registry/bilancio) are intentionally OUT of scope — pg4
- * doesn't run those pipelines today.
+ * Only the company evidence vectors are covered — linkedin / registry /
+ * bilancio queries are out of scope, those pipelines don't run.
  *
- * pg4 differences vs pg3:
- *   - the exclusion dork list mirrors pg4's most-frequent offenders
- *     instead of the legacy pg3 list (cercacasa.it, atoka.io,
- *     companyreports.it added; tripadvisor/yelp dropped — never seen
- *     in pg4 audits).
- *   - 10-variant cap (vs pg3's 12) — phase R6 will trim further if
- *     the benchmark shows a long tail of dead-end variants.
+ * Notable choices:
+ *   - the exclusion dork list mirrors the offenders actually observed
+ *     (cercacasa.it, atoka.io, companyreports.it present; tripadvisor/
+ *     yelp absent — never seen in audits).
+ *   - 10-variant cap; the benchmark may trim it further if it shows
+ *     a long tail of dead-end variants.
  *   - returns `QueryVariant[]` with `vector` + `priority` so the
- *     caller (SmartSerperGate, R4) can decide which subset is worth
+ *     caller (SmartSerperGate) can decide which subset is worth
  *     burning paid budget on.
  *
  * Stop-word check:
- *   pg3 returns `[]` when the company name reduces to legal-form
+ *   Returns `[]` when the company name reduces to legal-form
  *   abbreviations only (`"S.r.l." → ['srl']` → all stop words). We
- *   keep this rule verbatim — there's nothing useful to query when
+ *   keep this rule — there's nothing useful to query when
  *   the name is just `srl` or `sas`.
  */
 
-export type QueryVector =
+type QueryVector =
   | 'piva'
   | 'email_domain'
   | 'exact_name'
@@ -61,8 +57,8 @@ export interface BuildQueryOptions {
   /** Override exclusion dork list (test only). */
   exclusionDorks?: string;
   /** When true, omit the `-site:` exclusion list — only used when the
-   *  caller wants to compare directory-vs-official surfaces explicitly
-   *  (e.g. R3 `serp_evidence.ts`). Default false. */
+   *  caller wants to compare directory-vs-official surfaces explicitly.
+   *  Default false. */
   omitExclusions?: boolean;
 }
 
@@ -71,8 +67,8 @@ export interface BuildQueryOptions {
  * directory results in the top 10 — saves a verify call AND removes
  * the temptation to set `lead.official_website` to a paginegialle URL.
  *
- * Capped at the offenders most frequently observed in pg4 audits
- * (G.1 + G.2 directory leak triage). The full DIRECTORIES content
+ * Capped at the offenders most frequently observed in audits
+ * (directory leak triage). The full DIRECTORIES content
  * filter (~80 hosts) would blow the 200-char query budget — these
  * 10 cover ~80 % of the FP volume.
  */
@@ -83,8 +79,8 @@ export const EXCLUSION_DORKS =
 
 /**
  * Italian legal-form abbreviations + connectives. A name that reduces
- * to ONLY these tokens after sanitisation is too weak to query — pg3
- * returns an empty variant list in that case.
+ * to ONLY these tokens after sanitisation is too weak to query — the
+ * variant list comes back empty in that case.
  */
 const STOP_WORDS = new Set([
   'srl', 's.r.l', 's.r.l.', 'spa', 's.p.a', 's.p.a.', 'snc', 's.n.c', 's.n.c.',

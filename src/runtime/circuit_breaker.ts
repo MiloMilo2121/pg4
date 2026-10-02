@@ -1,14 +1,14 @@
 /**
  * Per-key circuit breaker.
  *
- * Phase 3.7 audit of pg3 logs found:
- *   - 89 `CRTSH_ERROR: DB returned non-200 status. Status: 502/503` in a
- *     single batch — crt.sh routinely 5xx-storms, but pg3 retried it for
- *     every lead.
- *   - Repeated `CLOUDFLARE_TURNSTILE on bing.com via scraper_client` —
- *     once Bing serves a captcha to your IP, the next ~1000 calls also
- *     get the captcha. pg3 kept calling.
- *   - `ENOTFOUND rdap.nic.it` storms when the registry was down.
+ * Guards three failure patterns where retries make things worse:
+ *   - crt.sh routinely 5xx-storms: one batch logged 89
+ *     `CRTSH_ERROR: DB returned non-200 status. Status: 502/503`, and a
+ *     retry-per-lead policy turns one storm into one storm per lead.
+ *   - Bing serves a captcha to your IP and then keeps serving it: once
+ *     `CLOUDFLARE_TURNSTILE on bing.com via scraper_client` appears, the
+ *     next ~1000 calls get the captcha too.
+ *   - `ENOTFOUND rdap.nic.it` storms while the registry is down.
  *
  * The breaker enforces: after N consecutive failures inside `windowMs`,
  * trip OPEN; after `cooldownMs` move to HALF_OPEN; the next outcome
@@ -27,7 +27,7 @@ export interface CircuitConfig {
 interface CircuitInternal {
   state: CircuitState;
   /**
-   * Weighted failure counter (Phase D). Most failure kinds count as 1.0;
+   * Weighted failure counter. Most failure kinds count as 1.0;
    * `timeout` counts as 0.5 because a single slow target should not
    * poison the breaker for all targets behind the same provider id.
    * Block / rate_limit / transport stay full-weight.
@@ -88,14 +88,13 @@ export class CircuitBreaker {
 
   /**
    * Record a punitive failure. `kind` is informational AND modulates
-   * the increment weight (Phase D):
+   * the increment weight:
    *   - `timeout` → +0.5 (slow targets shouldn't poison the breaker
    *                       across all targets sharing the provider id)
    *   - all other failure kinds → +1.0
    *
-   * Empty SERP results MUST NOT call this — pg3's logs proved free SERP
-   * returns empty more often than not, and the breaker would lock down
-   * DDG/crt.sh permanently.
+   * Empty SERP results MUST NOT call this — free SERP returns empty more
+   * often than not, and the breaker would lock down DDG/crt.sh permanently.
    *
    * Trip rule: cumulative weighted failures inside `windowMs` reach
    * `failureThreshold`.

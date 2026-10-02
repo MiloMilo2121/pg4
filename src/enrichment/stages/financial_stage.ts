@@ -7,12 +7,11 @@ import type { FinancialResult } from '../financial/financial_types';
 import { normalizeVatCode, validateItalianVatChecksum } from '../financial/vat';
 
 /**
- * R13 — Financial enrichment stage SKELETON.
+ * Financial enrichment stage SKELETON.
  *
- * DISABLED BY DEFAULT and NOT wired into the production ladder
- * (`enrichment_pipeline.ts`). This is a safe placeholder that establishes
- * the contract; the live/paid paths land in later phases (see
- * the R13 financial-enrichment audit, §9).
+ * Safe placeholder that establishes the contract: the default instance
+ * does pure checksum work only, and the guarded network lookups live in the
+ * field cascades (`fields/run_field_cascade.ts`).
  *
  * Hard rules (enforced here):
  *   - NO network. The only work done is PURE: validate the input

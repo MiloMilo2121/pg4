@@ -4,7 +4,7 @@ import {
   PROVINCE_COMUNI,
   getComuniForProvince,
   parseComuniList,
-} from '../../src/discovery/sources/italy_geo';
+} from '../../src/geo/italy_geo';
 
 describe('PROVINCE_CODES', () => {
   it('contains the canonical 110 Italian province sigle (≥107 to allow micro-province movements)', () => {

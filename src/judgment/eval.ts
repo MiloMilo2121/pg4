@@ -1,13 +1,13 @@
 import type { AxisLevel, JudgmentRecord, Quadrant, TargetVerdict, BusinessModel } from '../types/judgment';
 
 /**
- * §15 eval / golden-set harness — the antidote to the judge's blindness.
+ * Eval / golden-set harness — the antidote to the judge's blindness.
  *
  * A golden item is a hand-judged company. The harness runs the pipeline (or just
  * L4 replay) and compares. Metrics: precision/recall on the TARGET verdict (what
  * matters) + SEPARATE agreement on A and on B (so you know WHICH judge errs —
  * the asymmetry means a target miss could be either) + a quadrant confusion
- * matrix. Pure TS (pandas/sklearn not needed at this scale, plan §15).
+ * matrix. Pure TS (pandas/sklearn not needed at this scale).
  *
  * Human overrides (L5b) append to the golden set as growing ground truth.
  */
@@ -15,11 +15,12 @@ import type { AxisLevel, JudgmentRecord, Quadrant, TargetVerdict, BusinessModel 
 export interface GoldenItem {
   id: string;
   /**
-   * The BLOCK label for stratified eval (§1.4 + §17): metrics are computed PER block,
-   * never pooled — the A of a restaurant (1300 reviews) and the A of a dentist
-   * (credentials) are not the same metro, so a single global number is meaningless.
-   * Distinct from `lead.category` (the firm's own category); the harness falls back
-   * to lead.category when this is absent.
+   * The BLOCK label for stratified eval: metrics are computed PER block, never
+   * pooled — benchmarks are category-relative, not absolute, so the A of a
+   * restaurant (1300 reviews) and the A of a dentist (credentials) are not the
+   * same yardstick and a single global number is meaningless. Distinct from
+   * `lead.category` (the firm's own category); the harness falls back to
+   * lead.category when this is absent.
    */
   categoria?: string;
   expectedTarget: TargetVerdict;
@@ -99,7 +100,7 @@ export function evaluate(golden: GoldenItem[], predictions: Map<string, Judgment
 }
 
 export interface MultiBlockReport {
-  /** Per-block report, keyed by `categoria`. NEVER pooled into one number (§1.4). */
+  /** Per-block report, keyed by `categoria`. NEVER pooled into one number. */
   blocks: Record<string, EvalReport>;
   /** Block labels, sorted, for stable iteration. */
   categories: string[];
@@ -107,8 +108,8 @@ export interface MultiBlockReport {
 
 /**
  * Group golden items by `categoria` (block) and run `evaluate` PER block. Returns one
- * EvalReport per block — the eval mirrors the per-category benchmark (§17): the judge
- * must be validated as good *within each model*, not on a meaningless cross-block mean.
+ * EvalReport per block — the eval mirrors the per-category benchmark: the judge must
+ * be validated as good *within each model*, not on a meaningless cross-block mean.
  * Items without a categoria fall into 'uncategorized'.
  */
 export function evaluateByCategory(golden: GoldenItem[], predictions: Map<string, JudgmentRecord>): MultiBlockReport {

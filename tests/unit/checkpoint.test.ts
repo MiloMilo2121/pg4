@@ -63,6 +63,14 @@ describe('Checkpoint', () => {
     expect(Checkpoint.buildKey({ provider: 'maps', category: 'a', location: 'b' })).toBe('maps:a:b');
   });
 
+  it('buildKey escapes the key separator so a colon inside a part cannot add a piece', () => {
+    const key = Checkpoint.buildKey({ provider: 'pg', category: 'Bar: Caffè', location: 'Reggio: centro', page: 1 });
+    expect(key).toBe('pg:bar%3A caffè:reggio%3A centro:p1');
+    expect(key.split(':')).toHaveLength(4);
+    // A literal escape sequence is itself escaped, so decoding stays unambiguous.
+    expect(Checkpoint.buildKey({ provider: 'maps', category: '100%3A', location: 'b' })).toBe('maps:100%253a:b');
+  });
+
   it('write is durable per call (atomic via tmp+rename)', () => {
     const dir = tmp();
     const file = path.join(dir, 'atomic.json');

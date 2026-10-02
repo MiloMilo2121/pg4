@@ -3,7 +3,7 @@ import { rankCandidate, rankCandidates } from '../../src/discovery/website/hyper
 import { normalizeLead } from '../../src/discovery/input_normalizer';
 
 /**
- * Phase D.4 — pre-fetch ranker tests.
+ * Pre-fetch ranker tests.
  *
  * The ranker decides which alive HyperGuesser candidates earn the full
  * retry budget. It must:

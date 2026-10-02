@@ -27,38 +27,42 @@ residential proxy or reduce concurrency.
 git clone https://github.com/MiloMilo2121/pg4.git
 bash pg4/scripts/vps_setup.sh
 ```
-Installs Node 22 + pnpm, dependencies, Playwright+Chromium with the system libraries, `.env`.
+Installs Node 24 + pnpm, dependencies, Playwright+Chromium with the system libraries, `.env`.
 
 ## Resilient execution
-Option A — tmux + watchdog (simple):
+Opzione A — systemd (raccomandata): restart con backoff, stop graceful e log
+su journald con rotazione. Richiede una build di produzione sul VPS.
+
+```bash
+# on the VPS, inside the checkout
+pnpm build
+sudo cp deploy/pg4-api.service deploy/pg4-campaign.service deploy/pg4-campaign.timer /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now pg4-api            # dashboard API (node dist/, porta 8787)
+sudo systemctl enable --now pg4-campaign.timer # campagna ogni notte alle 02:00
+```
+
+```bash
+systemctl status pg4-api
+journalctl -u pg4-api -f                        # log dell'API
+journalctl -u pg4-campaign -f                   # log dell'ultima campagna
+systemctl list-timers pg4-campaign.timer        # prossima esecuzione
+```
+
+Le province della campagna stanno nella riga `ExecStart` di
+`deploy/pg4-campaign.service` (dopo la modifica: `daemon-reload`).
+Il `.env` del checkout viene letto dalle unit (`EnvironmentFile`).
+
+Opzione B — tmux + watchdog (DEPRECATA, solo per compatibilità):
 ```bash
 cd pg4
 tmux new -s campaign
 bash scripts/watchdog.sh PD VR VI VE TV RO BL   # relaunches itself if it dies
 # Ctrl-b d to detach; `tmux attach -t campaign` to reattach
 ```
-
-Option B — systemd (restarts on reboot):
-```ini
-# /etc/systemd/system/pg4-campaign.service
-[Unit]
-Description=pg4 campaign
-After=network-online.target
-Wants=network-online.target
-[Service]
-Type=simple
-User=ubuntu
-WorkingDirectory=/home/ubuntu/pg4
-ExecStart=/usr/bin/bash scripts/watchdog.sh PD VR VI VE TV RO BL
-Restart=on-failure
-RestartSec=30
-[Install]
-WantedBy=multi-user.target
-```
-```bash
-sudo systemctl enable --now pg4-campaign
-journalctl -u pg4-campaign -f
-```
+`scripts/watchdog.sh` è deprecato: resta nel repo per un solo ciclo di
+verifica in produzione accanto a systemd, poi si cancella. Non puntare nuove
+unit systemd al watchdog; usa `deploy/pg4-campaign.service` + timer.
 
 ## Monitoring
 - Cell progress: `tail -f output/recall/_campaign.log`

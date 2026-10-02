@@ -13,7 +13,7 @@ const ALLOWED_PRODUCTION_PATHS = new Set([
   // selector without weakening the preflight safety gate. Keep this explicit:
   // the source directory also contains unrelated geography/detail harvesters.
   'src/discovery/sources/maps_live.ts',
-  'src/discovery/sources/pg_live.ts',
+  'src/discovery/sources/pagine_gialle_live.ts',
   'src/discovery/sources/google_maps_parser.ts',
   'src/discovery/sources/pagine_gialle_parser.ts',
   'src/discovery/sources/category_match.ts',

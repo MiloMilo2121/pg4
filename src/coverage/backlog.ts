@@ -13,6 +13,7 @@
 
 import type { CoverageReport, CoverageCell, RegionRollup } from './coverage_engine';
 import { Crosswalk } from './crosswalk';
+import { stripDiacritics } from '../util/text';
 
 export interface BacklogItem {
   rank: number;
@@ -51,7 +52,7 @@ const DEFAULTS: Required<Omit<BacklogOptions, 'crosswalk'>> = {
 };
 
 function slug(s: string): string {
-  return s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 40);
+  return stripDiacritics(s.toLowerCase()).replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 40);
 }
 
 const WEAK_FIELD_THRESHOLD = 50; // fill % below which a field is "weak"

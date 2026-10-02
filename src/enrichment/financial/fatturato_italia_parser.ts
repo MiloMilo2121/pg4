@@ -1,8 +1,8 @@
 /**
- * R13 — fatturatoitalia.it page parser. PURE: takes HTML, returns data.
+ * fatturatoitalia.it page parser. PURE: takes HTML, returns data.
  * NO fetch, NO network, NO live scraper. The live lookup (deterministic
  * POST by P.IVA) is deferred to a later, rate-limited, opt-in phase
- * (R13 financial-enrichment audit, §9). This module only
+ * (see `fatturato_italia_fetch.ts`). This module only
  * understands the *shape* of a company page.
  *
  * Extraction paths, tried in order — first hit wins:
@@ -12,7 +12,7 @@
  *   2. The label/value DOM — the CURRENT `<th scope="row">…</th><td>…</td>`
  *      summary table, merged with the LEGACY `.col-xs-5 / .col-xs-7` grid.
  *
- * Chart data wins when present (pg3 "Law 401: Source of Truth").
+ * Chart data wins when present — it is the machine-readable source of truth.
  */
 
 import * as cheerio from 'cheerio';

@@ -204,7 +204,7 @@ patchState({ last_resume_exit: status });
 if (status === 0) {
   const outputCsv = typeof state.envelope?.output_csv === 'string' ? state.envelope.output_csv : '';
   const verification = outputCsv
-    ? spawnSync('pnpm', ['exec', 'tsx', 'src/scripts/verify_completion.ts', outputCsv], { stdio: 'inherit', cwd: root })
+    ? spawnSync('pnpm', ['exec', 'tsx', 'src/cli/verify_completion.ts', outputCsv], { stdio: 'inherit', cwd: root })
     : { status: 1 };
   if (verification.status === 0) {
     patchState({ status: 'complete', completed_at: new Date().toISOString(), resume_interrupted: undefined });

@@ -24,7 +24,7 @@ export interface CostLedgerOptions {
   /** Stable run identifier — written on every line + the final summary. */
   runId?: string;
   /**
-   * Phase D.5.1 — when `jsonlPath` is set and this is `false` (default),
+   * When `jsonlPath` is set and this is `false` (default),
    * the file is **truncated** at construction so the resulting JSONL
    * contains only THIS run's entries + summary. CSV / JSONL outputs
    * already truncate; the ledger now matches. Pass `true` to retain
@@ -42,8 +42,9 @@ export interface CostLedgerOptions {
 /**
  * Cost ledger.
  *
- * pg3's CostLedger persisted to disk (Phase 3.7 audit found 16K+ entries
- * per batch). pg4 keeps an in-memory aggregator AND, when `jsonlPath` is
+ * Real batches have been observed writing 16K+ entries per run, so cost
+ * accounting must not assume the ledger stays in memory. The ledger keeps
+ * an in-memory aggregator AND, when `jsonlPath` is
  * configured, mirrors every record to disk as JSONL — one entry per
  * provider call. The final summary is appended as one extra line with
  * `kind: 'summary'` so post-mortem readers can find it deterministically.

@@ -3,9 +3,10 @@ import type { SerpProvider, SerpResult } from '../../types/providers';
 import { ProviderBlockError } from '../../types/providers';
 import { DEFAULTS } from '../../config/defaults';
 import { getEnv } from '../../config/env';
+import { CALL_COST_EUR } from '../pricing';
 
 /**
- * Phase G — paid SERP via Serper.dev (Google-backed).
+ * Paid SERP via Serper.dev (Google-backed).
  *
  * Tier 2 / paid. Default cost €0.001/call (Serper Starter plan).
  * Off by default. Available only when:
@@ -20,16 +21,12 @@ import { getEnv } from '../../config/env';
  * gate are the load-bearing safeguards. This provider's
  * `available()` only reports availability; budget enforcement
  * happens in the router filter.
- *
- * Adapted from `pg3/src/enricher/core/discovery/search_provider.ts`
- * but rewritten for pg4's `SerpProvider` interface — no shared code
- * with pg3 to keep the pg4 surface clean.
  */
 export class SerperProvider implements SerpProvider {
   readonly id = 'serper';
   readonly family = 'serp' as const;
   readonly tier = 2;
-  readonly costPerCallEur = 0.001;
+  readonly costPerCallEur = CALL_COST_EUR.serper;
 
   available(): boolean {
     const env = getEnv();
@@ -59,7 +56,7 @@ export class SerperProvider implements SerpProvider {
         body: JSON.stringify({ q: query, gl: 'it', hl: 'it', num: limit }),
       });
     } catch (err) {
-      // Phase G.1 — re-throw network errors so the router classifies
+      // Re-throw network errors so the router classifies
       // them as transport / timeout and the breaker sees them.
       // Returning [] would have been silently treated as `empty`.
       throw err;
@@ -77,7 +74,7 @@ export class SerperProvider implements SerpProvider {
       await res.body.dump();
       throw new ProviderBlockError(this.id, 'serper rate limit (429)');
     }
-    // Phase G.1 — 5xx upstream is a real failure, NOT empty. Throw an
+    // 5xx upstream is a real failure, NOT empty. Throw an
     // Error whose message starts with the status so `classifyThrown`
     // routes it to `transport`, the breaker sees it, and the ledger
     // does not silently mark it as `empty success`.

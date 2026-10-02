@@ -1,12 +1,12 @@
 import type { Lead } from '../../types/lead';
 import type { NormalizedLead } from '../../types/discovery';
-import type { PerLeadContext, Stage } from '../../types/enrichment';
+import type { PerLeadContext, Stage, StageRunOptions } from '../../types/enrichment';
 import type { StageOutcome, ReasonCode } from '../../types/output';
 import { ReasonCode as RC, DiscoveryMethod } from '../../types/output';
 import { InputWebsiteCandidate, domainMatchesCompanyName } from '../../discovery/website/input_website_candidate';
 import { DEFAULTS } from '../../config/defaults';
 import type { ProviderRouter } from '../../providers/provider_router';
-import { verifyCandidates, routeFromLeadContext } from './verify_candidates';
+import { verifyCandidates, routeFromLeadContext } from '../website/verify_candidates';
 import { getEnv } from '../../config/env';
 
 /** Verify the input `website` field via direct_fetch + PreVerifyGate. */
@@ -14,7 +14,7 @@ export class InputWebsiteStage implements Stage {
   readonly name = 'input_website';
   constructor(private router: ProviderRouter) {}
 
-  async run(ctx: PerLeadContext, lead: Lead, normalized: NormalizedLead): Promise<StageOutcome> {
+  async run(ctx: PerLeadContext, lead: Lead, normalized: NormalizedLead, opts: StageRunOptions = {}): Promise<StageOutcome> {
     const start = Date.now();
     const website = normalized.website;
     if (!website) {
@@ -33,13 +33,14 @@ export class InputWebsiteStage implements Stage {
     const verdict = await verifyCandidates(this.router, assessed.candidates.slice(0, 3), normalized, lead, {
       timeoutMs: DEFAULTS.pipeline.requestTimeoutMs,
       meta: { lead_id: ctx.leadId, run_id: ctx.runId, stage: this.name },
+      signal: opts.signal,
       fetchCache: ctx.httpFetchCache,
       route: routeFromLeadContext(ctx),
     });
     if (verdict.matched) {
       lead.website_discovery_method = verdict.method === 'piva' ? DiscoveryMethod.INPUT_PIVA_MATCH : DiscoveryMethod.INPUT_SEMANTIC;
       lead.website_confidence = verdict.confidence;
-      if (verdict.body) ctx.verifiedBody = verdict.body; // Phase 1 free-gold seam
+      if (verdict.body) ctx.verifiedBody = verdict.body; // free-gold seam
       return { stage: this.name, status: 'success', duration_ms: Date.now() - start, provider: verdict.provider, detail: verdict.detail };
     }
     // NAME-MATCH recovery (flag-gated, free): content-verify rejected it, but the

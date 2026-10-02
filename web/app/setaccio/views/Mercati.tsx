@@ -1,55 +1,52 @@
 import { useMarkets } from '../queries';
-import { fmt, statePillStyle } from '../helpers';
+import { fmt, EMPTY } from '../helpers';
 import type { ViewProps } from '../ctx';
+import { PageSection, PageHeader } from '../ui/Page';
+import { Stat } from '../ui/Stat';
+import { Pill, type PillTone } from '../ui/Pill';
+import { Bar } from '../ui/Bar';
+import { EmptyState } from '../ui/Callout';
 
-const SECTION = { padding: '34px 36px 60px', maxWidth: 1180, margin: '0 auto' } as const;
-
-function Stat({ value, label }: { value: string; label: string }) {
-  return (
-    <div>
-      <div style={{ fontFamily: 'var(--serif)', fontSize: '1.3rem', fontWeight: 500 }}>{value}</div>
-      <div style={{ fontSize: '.7rem', color: 'var(--ink-3)', textTransform: 'uppercase', letterSpacing: '.1em' }}>{label}</div>
-    </div>
-  );
+/** Dataset maturity → pill tone: the further along, the darker. */
+function statoTone(stato: string): PillTone {
+  if (stato.includes('arricchito')) return 'wash';
+  if (stato.includes('raffinare')) return 'outline';
+  return 'muted';
 }
 
 export default function Mercati({ set }: Pick<ViewProps, 'set'>) {
   const markets = useMarkets();
   return (
-    <section className="agfade" style={SECTION}>
-      <div style={{ marginBottom: 8 }}><span className="kicker">Mercati</span></div>
-      <h1 style={{ fontSize: '1.95rem', fontWeight: 500, letterSpacing: '-.02em', marginBottom: 6 }}>I tuoi Market Dataset</h1>
-      <p style={{ fontSize: '1rem', color: 'var(--ink-2)', maxWidth: 620, marginBottom: 28 }}>
-        Ogni dataset è l&apos;universo acquisito per un settore e un territorio. Lo stato descrive la sua maturità, non un job tecnico.
-      </p>
-      {markets.length === 0 && (
-        <p style={{ fontSize: '.9rem', color: 'var(--ink-3)' }}>Caricamento mercati dal motore…</p>
-      )}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 16 }}>
+    <PageSection>
+      <PageHeader
+        kicker="Mercati" number="02"
+        title="I tuoi dataset di mercato"
+        lead="Ogni dataset è l’universo acquisito per un settore e un territorio. Lo stato descrive la sua maturità, non un job tecnico."
+      />
+      {markets.length === 0 && <EmptyState title="Caricamento mercati dal motore" />}
+      <div className="sx-grid sx-grid--2 sx-grid--joined">
         {markets.map((m) => (
-          <button key={m.id} className="ag-card-h" onClick={() => set({ nav: 'italia', market: m.id })} style={{ textAlign: 'left', background: 'var(--paper)', border: '1px solid var(--line)', borderRadius: 16, padding: '22px 24px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14 }}>
-              <div>
-                <div style={{ fontFamily: 'var(--serif)', fontSize: '1.22rem', fontWeight: 500, lineHeight: 1.2, marginBottom: 3 }}>{m.settore}</div>
-                <div style={{ fontSize: '.82rem', color: 'var(--ink-3)' }}>{m.territorio}</div>
-              </div>
-              <span style={statePillStyle(m.stato)}>{m.stato}</span>
-            </div>
-            <div style={{ display: 'flex', gap: 24, marginBottom: 16 }}>
-              <Stat value={fmt(m.aziende)} label="aziende" />
-              <Stat value={m.target ? fmt(m.target) : '—'} label="target" />
-              <Stat value={String(m.comuni)} label="comuni" />
-            </div>
-            <div style={{ height: 6, borderRadius: 999, background: 'var(--paper-3)', overflow: 'hidden', marginBottom: 7 }}>
-              <div style={{ height: '100%', width: m.cov + '%', background: 'var(--accent)', borderRadius: 999 }} />
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '.74rem', color: 'var(--ink-3)' }}>
-              <span>Copertura dati {m.cov}%</span>
+          <button key={m.id} type="button" className="mm-card mm-card--interactive sx-market-card" onClick={() => set({ nav: 'italia', market: m.id })}>
+            <span className="sx-market-card__top">
+              <span>
+                <span className="sx-market-card__title">{m.settore}</span>
+                <span className="sx-meta">{m.territorio}</span>
+              </span>
+              <Pill tone={statoTone(m.stato)}>{m.stato}</Pill>
+            </span>
+            <span className="sx-market-card__stats">
+              <Stat boxed={false} variant="value-top" size="sm" value={fmt(m.aziende)} label="aziende" />
+              <Stat boxed={false} variant="value-top" size="sm" value={m.target ? fmt(m.target) : EMPTY} label="con sito" />
+              <Stat boxed={false} variant="value-top" size="sm" value={String(m.comuni)} label={m.comuni === 1 ? 'provincia' : 'province'} />
+            </span>
+            <Bar value={m.cov} label={`Copertura dati ${m.settore}`} />
+            <span className="sx-market-card__foot sx-meta">
+              <span>Copertura dati <span className="num">{m.cov}%</span></span>
               <span>agg. {m.ultimo}</span>
-            </div>
+            </span>
           </button>
         ))}
       </div>
-    </section>
+    </PageSection>
   );
 }

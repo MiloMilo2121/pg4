@@ -3,6 +3,7 @@ import type { HttpFetchResult, HttpProvider, ProviderRole } from '../../types/pr
 import { ProviderBlockError } from '../../types/providers';
 import { DEFAULTS } from '../../config/defaults';
 import { getEnv } from '../../config/env';
+import { CALL_COST_EUR } from '../pricing';
 
 /**
  * Bright Data Web Unlocker — last-resort WEB_FETCH / WEB_UNBLOCK for hard targets
@@ -18,7 +19,7 @@ export class BrightDataUnlockerProvider implements HttpProvider {
   readonly id = 'brightdata_unlocker';
   readonly family = 'http' as const;
   readonly tier = 2;
-  readonly costPerCallEur = 0.00138;
+  readonly costPerCallEur = CALL_COST_EUR.brightdata;
   readonly roles: ReadonlyArray<ProviderRole> = ['WEB_FETCH', 'WEB_UNBLOCK'];
 
   available(): boolean {

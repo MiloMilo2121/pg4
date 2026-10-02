@@ -11,7 +11,7 @@ import type { Lead } from '../../src/types/lead';
 const tmpDir = () => fs.mkdtempSync(path.join(os.tmpdir(), 'pg4-resume-stop-'));
 
 /**
- * Phase 4.2.1 — resume must HARD ERROR by default when the JSONL is
+ * Resume must HARD ERROR by default when the JSONL is
  * missing but the checkpoint says pages are done. Otherwise the
  * resulting CSV silently loses every lead from those pages.
  */

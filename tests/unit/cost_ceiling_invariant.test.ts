@@ -4,7 +4,7 @@ import { CostLedger } from '../../src/runtime/cost_ledger';
 import type { SerpProvider } from '../../src/types/providers';
 
 /**
- * Gate-0 — the money-guard invariant, proven deterministically at €0.
+ * The money-guard invariant, proven deterministically at €0.
  *
  * The discovery pass flagged that the run-cost ceiling was "verified by READ,
  * not by spend" — the reservation logic was unit-tested for the event but the
@@ -26,7 +26,7 @@ function paidSerp(id: string, costPerCallEur: number): SerpProvider {
   } as unknown as SerpProvider;
 }
 
-describe('Gate-0 — run-cost-ceiling invariant', () => {
+describe('run-cost-ceiling invariant', () => {
   it('ledger total NEVER exceeds the ceiling across many paid calls', async () => {
     const ledger = new CostLedger();
     const router = new ProviderRouter([paidSerp('paid', 0.01)], [], [], ledger);

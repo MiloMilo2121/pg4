@@ -3,32 +3,40 @@ import path from 'path';
 import { parse } from 'csv-parse/sync';
 import { logger } from '../runtime/logger';
 import type { Lead } from '../types/lead';
+import { UserError } from '../runtime/errors';
 
 /**
- * Phase D.1 — suppression list (do-not-contact / GDPR right-to-objection).
+ * Suppression list (do-not-contact / GDPR right-to-objection).
  *
- * Format: CSV with header `phone,vat,reason,date` — any subset of the
- * key columns may be filled per row:
+ * Format: CSV with header `phone,vat,email,reason,date`. Every column is
+ * optional per row; a row suppresses whatever key columns it fills:
  *
- *   phone,vat,reason,date
- *   +390422000177,,operator_request,2026-06-01
- *   ,01234567897,gdpr_deletion,2026-05-20
+ *   phone,vat,email,reason,date
+ *   +390422000177,,,operator_request,2026-06-01
+ *   ,01234567897,,gdpr_deletion,2026-05-20
+ *   ,,info@example.it,gdpr_objection,2026-06-10
  *
- * Matching:
- *   - phone: digit-normalized (country prefix stripped) — "+39 0422 000177",
- *     "0422000177" and "0039 0422-000177" all match the same entry.
- *   - vat: 11-digit P.IVA, compared against both `vat_code` and
- *     `vat_code_final`.
+ *   - phone:  digit-normalized (country prefix stripped) — "+39 0422 000177",
+ *             "0422000177" and "0039 0422-000177" all match the same entry.
+ *             A match drops the whole company.
+ *   - vat:    11-digit P.IVA, compared against both `vat_code` and
+ *             `vat_code_final`. A match drops the whole company.
+ *   - email:  case-insensitive. Channel-specific: the address is removed from
+ *             the lead (`email`, `email_inferred`, `pec`) and never synthesised,
+ *             but the company stays (it may still be reachable by phone).
+ *   - reason, date: audit trail for the operator; not used for matching.
  *
- * Resolution order for the list path:
+ * Resolution order for the list path (`suppressionForCommand`):
  *   1. `--suppression-list <path>` CLI flag
  *   2. `SUPPRESSION_LIST` env var
- *   3. `suppression.csv` next to the run's output (auto-discovered)
- *   4. none → suppression disabled (logged at debug)
+ *   3. `suppression.csv` next to the command's output — for the report-only
+ *      commands (coverage, benchmark), next to the enriched input they read
+ *   4. none → suppression disabled
  *
- * Suppressed leads are DROPPED from outputs entirely (not written as
- * SKIPPED rows): a do-not-contact subject must not keep appearing in
- * delivered files. The drop count lands in the run summary + run record.
+ * Every command that emits or counts companies applies the list (scrape,
+ * enrich, run, judge, coverage, benchmark). Suppressed companies are DROPPED
+ * (not written as SKIPPED rows): a do-not-contact subject must not keep
+ * appearing in delivered files. The drop count lands in the run summary.
  */
 
 export interface SuppressionEntry {
@@ -94,7 +102,7 @@ export class SuppressionList {
   }
 
   get active(): boolean {
-    return this.phones.size > 0 || this.vats.size > 0;
+    return this.phones.size > 0 || this.vats.size > 0 || this.emails.size > 0;
   }
 
   /** True when the lead matches a suppression entry (phone or P.IVA). */
@@ -122,6 +130,63 @@ export class SuppressionList {
     const m = normalizeEmailKey(email);
     return !!m && this.emails.has(m);
   }
+
+  /** Remove every suppressed address from the lead; returns the fields cleared. */
+  dropSuppressedEmails(lead: Lead): string[] {
+    if (this.emails.size === 0) return [];
+    return dropSuppressedEmails(lead, (e) => this.matchesEmail(e));
+  }
+
+  /**
+   * The filter a command runs before emitting or counting companies: drops the
+   * suppressed ones and strips suppressed addresses from the rest (in place).
+   */
+  apply(leads: Lead[]): { kept: Lead[]; suppressed: number } {
+    if (!this.active) return { kept: leads, suppressed: 0 };
+    const kept: Lead[] = [];
+    for (const lead of leads) {
+      if (this.matches(lead)) continue;
+      this.dropSuppressedEmails(lead);
+      kept.push(lead);
+    }
+    return { kept, suppressed: leads.length - kept.length };
+  }
+}
+
+/**
+ * The one place a command turns its flags into a suppression list. `anchorPath`
+ * is the file the command writes (or reads, for report-only commands): the
+ * auto-discovered `suppression.csv` sits next to it.
+ */
+export function suppressionForCommand(flags: Readonly<Record<string, string | boolean>>, anchorPath: string): SuppressionList {
+  const flag = flags['suppression-list'];
+  // A bare `--suppression-list` would otherwise fall through to "no list" and
+  // run unprotected while the operator believes a list is loaded.
+  if (flag === true) throw new UserError('--suppression-list needs a path');
+  return SuppressionList.resolve({ flagPath: typeof flag === 'string' ? flag : undefined, outCsv: anchorPath });
+}
+
+/**
+ * Clear every address on the lead that `isSuppressed` flags — the business
+ * email, the inferred one and the PEC — and the fields that describe them.
+ * Pure over its inputs; mutates the lead. Returns the fields cleared.
+ */
+export function dropSuppressedEmails(lead: Lead, isSuppressed: (email: string) => boolean): string[] {
+  const cleared: string[] = [];
+  for (const field of ['email', 'email_inferred', 'pec'] as const) {
+    const v = lead[field];
+    if (v && isSuppressed(v)) {
+      delete lead[field];
+      cleared.push(field);
+    }
+  }
+  if (cleared.includes('email_inferred')) delete lead.email_status; // it described that address
+  // email_type labels email_inferred, or the PEC when there is no business email.
+  if (cleared.length > 0 && lead.email_type && !lead.email_inferred) {
+    if (lead.pec) lead.email_type = 'pec';
+    else delete lead.email_type;
+  }
+  return cleared;
 }
 
 /** Digit-only, Italian country prefix stripped — mirrors the deduper's key. */

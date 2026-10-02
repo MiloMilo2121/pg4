@@ -8,6 +8,7 @@
 
 import fs from 'fs';
 import path from 'path';
+import { REPO_ROOT } from '../util/repo_root';
 
 export interface Sector {
   /** id breve, es. "immobiliare" — usato nei nomi file <slug>_<PROV>_raw.csv. */
@@ -21,7 +22,6 @@ export interface Sector {
   queryVariants: string[];
 }
 
-const REPO_ROOT = path.resolve(__dirname, '..', '..');
 const DEFAULT_PATH = path.join(REPO_ROOT, 'data', 'reference', 'sectors.json');
 
 let cache: Sector[] | undefined;

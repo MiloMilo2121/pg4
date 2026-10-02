@@ -3,6 +3,8 @@ import type { LLMProvider, LLMCompletionRequest, LLMCompletionResult } from '../
 import { ProviderBlockError } from '../../types/providers';
 import { DEFAULTS } from '../../config/defaults';
 import { getEnv } from '../../config/env';
+import { samplingParams } from './model_capabilities';
+import { CALL_COST_EUR } from '../pricing';
 
 /**
  * OpenRouter — OpenAI-compatible gateway; lets us reach Claude (or others)
@@ -16,7 +18,7 @@ export class OpenRouterProvider implements LLMProvider {
   readonly id = 'openrouter';
   readonly family = 'llm' as const;
   readonly tier = 2;
-  readonly costPerCallEur = 0.02;
+  readonly costPerCallEur = CALL_COST_EUR.openrouter;
 
   available(): boolean {
     const e = getEnv();
@@ -48,7 +50,7 @@ export class OpenRouterProvider implements LLMProvider {
         body: JSON.stringify({
           model,
           max_tokens: req.max_tokens ?? DEFAULTS.llm.judgeMaxTokens,
-          temperature: req.temperature ?? DEFAULTS.llm.temperature,
+          ...samplingParams(model, req.temperature ?? DEFAULTS.llm.temperature),
           messages: [...(system ? [{ role: 'system', content: system }] : []), { role: 'user', content: req.prompt }],
         }),
       });

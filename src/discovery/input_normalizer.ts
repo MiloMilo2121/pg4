@@ -3,7 +3,7 @@ import type { NormalizedLead } from '../types/discovery';
 import { isPecAddress } from '../enrichment/extract/pec';
 
 /** Italian province codes (sigle automobilistiche). Used by normalizer. */
-export const PROVINCE_CODES = new Set<string>([
+const PROVINCE_CODES = new Set<string>([
   'AG','AL','AN','AO','AR','AP','AT','AV','BA','BT','BL','BN','BG','BI','BO','BZ','BS','BR',
   'CA','CL','CB','CI','CE','CT','CZ','CH','CO','CS','CR','KR','CN','EN','FM','FE','FI','FG',
   'FC','FR','GE','GO','GR','IM','IS','SP','AQ','LT','LE','LC','LI','LO','LU','MC','MN','MS',

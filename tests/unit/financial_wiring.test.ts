@@ -24,7 +24,7 @@ function emptyRouter(ledger: CostLedger) {
   return new ProviderRouter([], [], [], ledger);
 }
 
-describe('R13.1 — FinancialStage wiring (no network)', () => {
+describe('FinancialStage wiring (no network)', () => {
   it('promotes a checksum-valid input vat_code to vat_code_final with provenance', async () => {
     const r = run();
     const router = emptyRouter(new CostLedger());
@@ -99,9 +99,9 @@ describe('R13.1 — FinancialStage wiring (no network)', () => {
   });
 });
 
-describe('R13.1 — CSV columns are deterministic and append-only', () => {
-  // Schema v1 (Phase C.1) appended phone_raw/permanently_closed/_schema_version
-  // after the financial block; v2 (Phase 1 free-gold) appended instagram/
+describe('CSV columns are deterministic and append-only', () => {
+  // Schema v1 appended phone_raw/permanently_closed/_schema_version
+  // after the financial block; v2 (free-gold) appended instagram/
   // facebook/linkedin after THAT, on the enriched flavor only. So on ENRICHED
   // the financial block is the last four columns before the v1+v2 appendices.
   // The append-only guarantee (no pre-existing column moved) holds.

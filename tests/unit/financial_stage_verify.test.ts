@@ -1,5 +1,5 @@
 /**
- * R13.1 — financial_stage_verify.test.ts
+ * financial_stage_verify.test.ts
  *
  * Post-wiring audit: verifies the FinancialStage contracts and the
  * ENRICHED_CSV_COLUMNS append-only guarantee.
@@ -227,11 +227,11 @@ describe('ENRICHED_CSV_COLUMNS — append-only contract', () => {
     expect(cols).toContain('financial_notes');
   });
 
-  it('all 4 financial columns appear after all original (pre-R13) columns', () => {
+  it('all 4 financial columns appear after all original columns', () => {
     const cols = ENRICHED_CSV_COLUMNS as readonly string[];
     const finCols = ['financial_source', 'financial_confidence', 'financial_evidence_count', 'financial_notes'];
     const minFinIdx = Math.min(...finCols.map((c) => cols.indexOf(c)));
-    // "errors" is the last pre-R13 column; check it precedes financial cols
+    // "errors" is the last pre-financial column; check it precedes financial cols
     const errorsIdx = cols.indexOf('errors');
     expect(errorsIdx).toBeGreaterThanOrEqual(0);
     expect(minFinIdx).toBeGreaterThan(errorsIdx);
@@ -249,7 +249,7 @@ describe('ENRICHED_CSV_COLUMNS — append-only contract', () => {
   });
 
   it('ENRICHED_CSV_COLUMNS starts with the RAW base columns (original cols unaffected)', () => {
-    // Schema v1 (Phase C.1) + v2 (Phase 1 free-gold): RAW = RAW_BASE + V1
+    // Schema v1 + v2 (free-gold): RAW = RAW_BASE + V1
     // appendix; ENRICHED = RAW_BASE + ENRICHED_BASE + V1 + V2 (instagram/
     // facebook/linkedin). The enriched CSV starts with raw-minus-V1-appendix;
     // no pre-existing column ever moved (append-only).

@@ -4,9 +4,6 @@ import { dedupeLeads } from '../../src/discovery/deduper';
 import { computeDedupKey } from '../../src/persistence/dedup_key';
 import { leadToCompanyRow } from '../../src/persistence/tenant_db';
 import { InMemoryTenantDb } from '../../src/persistence/in_memory_tenant_db';
-import { TenantLeadSink } from '../../src/persistence/tenant_lead_sink';
-import { PgTenantDb } from '../../src/persistence/pg_tenant_db';
-import type { SqlExecutor } from '../../src/persistence/pg_tenant_db';
 import { InMemoryEnrichmentCache, cacheKey } from '../../src/persistence/enrichment_cache';
 
 const lead = (o: Partial<Lead>): Lead => ({ company_name: 'X', ...o });
@@ -58,18 +55,11 @@ describe('leadToCompanyRow', () => {
   });
 });
 
-describe('TenantLeadSink — tenant isolation (the irreversible invariant)', () => {
-  it('refuses construction without a tenant id', () => {
-    expect(() => new TenantLeadSink('', new InMemoryTenantDb())).toThrow(/tenantId/i);
-  });
-
+describe('InMemoryTenantDb — tenant isolation (the irreversible invariant)', () => {
   it('tenant A writes are NEVER visible to tenant B', async () => {
     const db = new InMemoryTenantDb();
-    const sinkA = new TenantLeadSink(TA, db);
-    const sinkB = new TenantLeadSink(TB, db);
-
-    await sinkA.write(lead({ company_name: 'Alpha', city: 'Padova', phone: '0491111111' }));
-    await sinkB.write(lead({ company_name: 'Beta', city: 'Verona', phone: '0452222222' }));
+    await db.upsertCompany(TA, lead({ company_name: 'Alpha', city: 'Padova', phone: '0491111111' }));
+    await db.upsertCompany(TB, lead({ company_name: 'Beta', city: 'Verona', phone: '0452222222' }));
 
     const aRows = await db.getCompanies(TA);
     const bRows = await db.getCompanies(TB);
@@ -85,69 +75,22 @@ describe('TenantLeadSink — tenant isolation (the irreversible invariant)', () 
   it('the SAME lead under two tenants produces two independent rows', async () => {
     const db = new InMemoryTenantDb();
     const l = lead({ company_name: 'Shared Srl', city: 'Padova', phone: '0491234567' });
-    await new TenantLeadSink(TA, db).write(l);
-    await new TenantLeadSink(TB, db).write(l);
+    await db.upsertCompany(TA, l);
+    await db.upsertCompany(TB, l);
     expect(await db.count(TA)).toBe(1);
     expect(await db.count(TB)).toBe(1);
   });
 
   it('fill-only-missing merge: re-write fills empty fields, never overwrites', async () => {
     const db = new InMemoryTenantDb();
-    const sink = new TenantLeadSink(TA, db);
-    const first = await sink.write(lead({ company_name: 'Rossi', city: 'Padova', phone: '0491234567', email_inferred: 'first@rossi.it' }));
-    const second = await sink.write(lead({ company_name: 'Rossi', city: 'Padova', phone: '0491234567', email_inferred: 'second@rossi.it', pec: 'rossi@pec.it' }));
+    const first = await db.upsertCompany(TA, lead({ company_name: 'Rossi', city: 'Padova', phone: '0491234567', email_inferred: 'first@rossi.it' }));
+    const second = await db.upsertCompany(TA, lead({ company_name: 'Rossi', city: 'Padova', phone: '0491234567', email_inferred: 'second@rossi.it', pec: 'rossi@pec.it' }));
     expect(second.merged).toBe(true);
-    expect(second.id).toBe(first.id);
+    expect(second.companyId).toBe(first.companyId);
     const rows = await db.getCompanies(TA);
     expect(rows).toHaveLength(1);
     expect(rows[0].email_inferred).toBe('first@rossi.it'); // existing wins
     expect(rows[0].pec).toBe('rossi@pec.it'); // empty field filled
-  });
-});
-
-describe('PgTenantDb — production SQL (unwired; shape verified vs a fake executor)', () => {
-  it('emits a tenant-scoped fill-only-missing UPSERT + alias inserts', async () => {
-    const calls: Array<{ sql: string; params: unknown[] }> = [];
-    const fake: SqlExecutor = {
-      async query<T>(sql: string, params: unknown[]): Promise<T[]> {
-        calls.push({ sql, params });
-        if (sql.startsWith('insert into companies')) return [{ id: 'cmp1', inserted: true } as unknown as T];
-        return [] as T[];
-      },
-    };
-    const db = new PgTenantDb(fake);
-    const res = await db.upsertCompany(TA, lead({ company_name: 'Rossi', city: 'Padova', phone: '0491234567', website: 'https://rossi.it' }));
-
-    expect(res.companyId).toBe('cmp1');
-    expect(res.merged).toBe(false); // inserted=true
-    const insert = calls.find((c) => c.sql.startsWith('insert into companies'))!;
-    expect(insert.sql).toContain('on conflict (tenant_id, dedup_key)');
-    expect(insert.sql.toLowerCase()).toContain('coalesce(companies.'); // fill-only-missing
-    // no duplicate column in the INSERT column list (the cost_eur-twice bug)
-    const colList = insert.sql.slice(insert.sql.indexOf('(') + 1, insert.sql.indexOf(')')).split(',').map((c) => c.trim());
-    expect(colList.filter((c) => c === 'cost_eur')).toHaveLength(1);
-    expect(new Set(colList).size).toBe(colList.length);
-    expect(insert.params[0]).toBe(TA); // tenant-scoped
-    // alias rows indexed (phone + name_city + host for this lead)
-    const aliasInserts = calls.filter((c) => c.sql.startsWith('insert into company_dedup_aliases'));
-    expect(aliasInserts.length).toBeGreaterThanOrEqual(2);
-    expect(aliasInserts.every((c) => c.params[0] === TA)).toBe(true);
-  });
-
-  it('getCompanies + count are tenant-scoped', async () => {
-    const calls: string[] = [];
-    const fake: SqlExecutor = {
-      async query<T>(sql: string, params: unknown[]): Promise<T[]> {
-        calls.push(sql);
-        expect(params[0]).toBe(TA);
-        if (sql.includes('count(')) return [{ n: '3' } as unknown as T];
-        return [] as T[];
-      },
-    };
-    const db = new PgTenantDb(fake);
-    await db.getCompanies(TA);
-    expect(await db.count(TA)).toBe(3);
-    expect(calls.every((s) => s.includes('where tenant_id = $1'))).toBe(true);
   });
 });
 

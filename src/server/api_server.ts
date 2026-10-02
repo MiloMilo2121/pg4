@@ -1,7 +1,9 @@
 import http from 'http';
+import type { AddressInfo } from 'net';
 import path from 'path';
 import fs from 'fs';
-import { execFile } from 'child_process';
+import { spawn } from 'child_process';
+import type { ChildProcess } from 'child_process';
 import { stringify } from 'csv-stringify/sync';
 import type { Lead } from '../types/lead';
 import { ENRICHED_CSV_COLUMNS } from '../types/lead';
@@ -10,11 +12,9 @@ import type { SeedResult } from './seed';
 import { Deduplicator } from '../discovery/deduper';
 import { DirectFetchProvider } from '../providers/http/direct_fetch';
 import { BingHtmlProvider } from '../providers/serp/bing_html';
-import { runFieldCascade } from '../enrichment/fields/run_field_cascade';
-import { FIELD_BY_NAME } from '../enrichment/fields/field_registry';
-import { deepExtractFromSite } from '../enrichment/extract/deep_pages';
-import type { BodyExtraction } from '../enrichment/extract/extract_from_body';
-import type { EnrichableField, JudgmentJobKind, SectionStatus } from '../api/types';
+import { suppressionForCommand } from '../compliance/suppression';
+import type { SuppressionList } from '../compliance/suppression';
+import type { EnrichableField, JudgmentJobKind, SectionStatus } from '../types/api';
 import type { JudgmentSection, JudgmentRecord } from '../types/judgment';
 import { runJudgment } from '../judgment/run_judgment';
 import { getActiveJudgmentConfig } from '../judgment/config';
@@ -24,9 +24,18 @@ import { buildPageFetcher } from '../judgment/harvest/page_fetcher';
 import { InMemoryEnrichmentCache } from '../persistence/enrichment_cache';
 import { buildCoverageReport } from '../coverage/coverage_engine';
 import { buildBacklog } from '../coverage/backlog';
-import { isAllowedDashboardOrigin, resolveApiHost } from './local_api_access';
+import { isAllowedDashboardOrigin, isAllowedHostHeader, resolveApiHost } from './local_api_access';
+import { readJsonBody } from './request_body';
+import { evictFinishedJobs } from './job_registry';
+import { parseScrapeRequest } from './scrape_request';
+import { newScrapeJob, runScrapeJob } from './scrape_job';
+import type { CliOutcome, IngestResult, ScrapeJob } from './scrape_job';
+import { enrichCompanyFields, FIELD_FILL_TARGETS } from './dashboard_enrich';
+import type { EnrichCell } from './dashboard_enrich';
 import { onShutdownSignal } from '../runtime/shutdown';
 import { pool } from '../runtime/pool';
+import { buildTsxCommand } from './tsx_command';
+import { REPO_ROOT } from '../util/repo_root';
 
 /**
  * pg4 dev API server — single-tenant, local, zero-cloud. Wraps the REAL engine
@@ -39,40 +48,54 @@ import { pool } from '../runtime/pool';
 
 const PORT = Number(process.env.PG4_API_PORT ?? 8787);
 const API_HOST = resolveApiHost();
-const REPO_ROOT = path.resolve(__dirname, '..', '..');
 const FETCH = new DirectFetchProvider();
 // Free SERP (Bing HTML, €0) wired into the judgment A-collector so Axis A is
 // not structurally off in dev: press/awards/patents/historic-marks are actually
-// searched. Low-yield on free search (R12 lesson) + degrades to `unknown` on
+// searched. Measured low-yield on free search + degrades to `unknown` on
 // failure — the STRONG A sources (registry/Places) stay key-gated by design.
 const SERP = new BingHtmlProvider();
 
 // ---- in-memory job registry for the async enrich-field UX (polling) ----
-type CellStatus = 'queued' | 'running' | 'filled' | 'failed' | 'not_found';
 interface EnrichJob {
   id: string;
   fields: EnrichableField[];
   status: 'running' | 'done' | 'error';
+  finishedAt?: number;
   costEur: number;
   error?: string;
-  items: Map<string, { companyId: string; cells: Record<string, { status: CellStatus; value?: string; source?: string; confidence?: number }> }>;
+  items: Map<string, { companyId: string; cells: Record<string, EnrichCell> }>;
 }
 const jobs = new Map<string, EnrichJob>();
 let jobSeq = 0;
 
+/**
+ * Cost of the jobs this server has run, by kind. Kept apart from the job
+ * registries because those evict finished jobs. `null` means a job of that kind
+ * ran with a cost this server cannot know.
+ */
+const sessionCost: { enrichEur: number; judgmentEur: number | null; scrapeEur: number } = { enrichEur: 0, judgmentEur: 0, scrapeEur: 0 };
+
 // ---- judgment-layer jobs (L2–L5) ----
 // Shared cross-button cache so re-running "judge" after "discovery" reuses the
-// already-fetched website harvest (cache-first / cost-first, the §0 principle).
+// already-fetched website harvest (cache-first / cost-first: never re-pay for a
+// harvest that is already in hand).
 const JCACHE = new InMemoryEnrichmentCache();
 interface JudgmentJob {
   id: string;
   kind: JudgmentJobKind;
   status: 'running' | 'done' | 'error';
-  costEur: number;
+  finishedAt?: number;
+  costEur: number | null;
   error?: string;
   items: Map<string, { companyId: string; sections: Partial<Record<JudgmentSection, SectionStatus>> }>;
 }
 const jJobs = new Map<string, JudgmentJob>();
+
+// Dev judgments are free-first and deterministic (no LLM). With paid harvest
+// off, no call a judgment makes can cost money, so its cost is a known 0; with
+// it on, this server has no ledger to read the cost from, so it is unknown.
+const JUDGMENT_PAID_ENABLED = false;
+const JUDGMENT_JOB_COST_EUR: number | null = JUDGMENT_PAID_ENABLED ? null : 0;
 
 /** Which record sections each button writes (independent, cumulative). */
 const KIND_SECTIONS: Record<JudgmentJobKind, JudgmentSection[]> = {
@@ -142,12 +165,12 @@ function judgmentCtx(): HarvestContext {
         return [];
       }
     },
-    paidEnabled: false, // dev: free-first, deterministic judges (no LLM)
+    paidEnabled: JUDGMENT_PAID_ENABLED,
     now: () => Date.now(),
   };
 }
 
-async function runJudgmentOnCompany(job: JudgmentJob, cid: string): Promise<void> {
+async function runJudgmentOnCompany(job: JudgmentJob, cid: string, suppression: SuppressionList): Promise<void> {
   const row = seed.db.getById(DEV_TENANT_ID, cid) as Record<string, unknown> | undefined;
   const item = job.items.get(cid)!;
   const sections = KIND_SECTIONS[job.kind];
@@ -156,8 +179,17 @@ async function runJudgmentOnCompany(job: JudgmentJob, cid: string): Promise<void
     for (const s of sections) item.sections[s] = { state: 'failed', summary: 'company not found' };
     return;
   }
+  // Same contract as `pnpm judge` (cli/judge.ts): a lead on the suppression
+  // list is never judged — judging would re-contact a do-not-contact subject
+  // via website fetch + SERP. Mark every section so the UI shows the skip.
+  if (suppression.matches(row as unknown as Lead)) {
+    for (const s of sections) item.sections[s] = { state: 'failed', summary: 'suppressed: on the do-not-contact list' };
+    return;
+  }
   try {
-    const rec = await runJudgment(row as unknown as Lead, judgmentCtx(), { config: getActiveJudgmentConfig() }, emptyBundle());
+    const lead = { ...row } as unknown as Lead;
+    suppression.dropSuppressedEmails(lead);
+    const rec = await runJudgment(lead, judgmentCtx(), { config: getActiveJudgmentConfig() }, emptyBundle());
     // persist the kind's sections onto the company row (cumulative, section-replace)
     const patch: Record<string, unknown> = {};
     for (const s of sections) {
@@ -172,9 +204,9 @@ async function runJudgmentOnCompany(job: JudgmentJob, cid: string): Promise<void
   }
 }
 
-async function runJudgmentJob(job: JudgmentJob, companyIds: string[]): Promise<void> {
+async function runJudgmentJob(job: JudgmentJob, companyIds: string[], suppression: SuppressionList): Promise<void> {
   const deadline = new Promise<'timeout'>((resolve) => setTimeout(() => resolve('timeout'), ENRICH_JOB_TIMEOUT_MS).unref?.());
-  const work = pool(companyIds, ENRICH_CONCURRENCY, (cid) => runJudgmentOnCompany(job, cid));
+  const work = pool(companyIds, ENRICH_CONCURRENCY, (cid) => runJudgmentOnCompany(job, cid, suppression));
   try {
     const r = await Promise.race([work.then(() => 'done' as const), deadline]);
     job.status = r === 'timeout' ? 'error' : 'done';
@@ -183,6 +215,7 @@ async function runJudgmentJob(job: JudgmentJob, companyIds: string[]): Promise<v
     job.status = 'error';
     job.error = (err as Error).message;
   }
+  job.finishedAt = Date.now();
 }
 
 const JUDGMENT_ROUTES: Record<string, JudgmentJobKind> = {
@@ -201,6 +234,11 @@ export const ENRICH_MAX_SELECTION = 200; // the API rejects larger selections
 
 
 let seed: SeedResult;
+let boundPort = PORT;
+
+/** Shown by the dashboard when the store is empty (Fase 5.5): a silent empty
+ *  dashboard used to look like a bug; now it points at `pnpm demo`. */
+export const SEED_EMPTY_HINT = 'Run pnpm demo to load the demo dataset';
 
 // ---------------------------------------------------------------------------
 function applyCors(req: http.IncomingMessage, res: http.ServerResponse): boolean {
@@ -214,38 +252,27 @@ function applyCors(req: http.IncomingMessage, res: http.ServerResponse): boolean
   return true;
 }
 
-function json(res: http.ServerResponse, status: number, body: unknown): void {
+function json(res: http.ServerResponse, status: number, body: unknown, headers: http.OutgoingHttpHeaders = {}): void {
   const payload = JSON.stringify(body);
   res.writeHead(status, {
+    ...headers,
     'content-type': 'application/json; charset=utf-8',
   });
   res.end(payload);
 }
 
-function readBody(req: http.IncomingMessage): Promise<unknown> {
-  return new Promise((resolve) => {
-    let raw = '';
-    req.on('data', (c) => (raw += c));
-    req.on('end', () => {
-      try {
-        resolve(raw ? JSON.parse(raw) : {});
-      } catch {
-        resolve({});
-      }
-    });
-  });
+function roundEur(eur: number | null): number | null {
+  return eur === null ? null : Math.round(eur * 1e4) / 1e4;
 }
 
-const FIELD_FILL_TARGETS: Record<string, EnrichableField> = {
-  email: 'email',
-  pec: 'pec',
-  vat: 'vat',
-  revenue: 'revenue',
-  employees: 'employees',
-  instagram: 'instagram',
-  facebook: 'facebook',
-  linkedin: 'linkedin',
-};
+/** Reads the JSON body, or answers the 400/413 itself and returns undefined. */
+async function readBodyOrReject(req: http.IncomingMessage, res: http.ServerResponse): Promise<Record<string, unknown> | undefined> {
+  const body = await readJsonBody(req);
+  if (body.ok) return body.value;
+  // An oversized body is left unread; closing the connection discards it.
+  json(res, body.status, { error: body.error }, body.status === 413 ? { connection: 'close' } : {});
+  return undefined;
+}
 
 // ---- intelligence computed from the REAL seeded data ----
 function companies(): Array<{ id: string; row: Record<string, unknown> }> {
@@ -376,24 +403,26 @@ function companiesCsv(): string {
   return stringify([[...ENRICHED_CSV_COLUMNS], ...records]);
 }
 
-/** Ingest a run's enriched JSONL into the in-memory db (upsert by dedup key).
- *  Lets a fresh scrape appear in the dashboard without a server restart. */
-async function ingestJsonlIntoDb(absPath: string): Promise<number> {
-  if (!fs.existsSync(absPath)) return 0;
+/** Ingest a run's JSONL into the in-memory db (upsert by dedup key). Lets a
+ *  fresh scrape appear in the dashboard without a server restart. */
+async function ingestJsonlIntoDb(absPath: string): Promise<IngestResult> {
+  if (!fs.existsSync(absPath)) return { rows: 0, added: 0 };
   const raw = fs.readFileSync(absPath, 'utf8');
+  let rows = 0;
   let added = 0;
   for (const line of raw.split('\n')) {
     const t = line.trim();
     if (!t) continue;
     try {
       const lead = JSON.parse(t) as Lead;
-      await seed.db.upsertCompany(DEV_TENANT_ID, lead);
-      added += 1;
+      const { merged } = await seed.db.upsertCompany(DEV_TENANT_ID, lead);
+      rows += 1;
+      if (!merged) added += 1;
     } catch {
       /* skip un-dedupable / malformed rows — never abort the ingest */
     }
   }
-  return added;
+  return { rows, added };
 }
 
 /** Real run history, file-backed from output/_runs.jsonl (falls back to the seed run). */
@@ -414,55 +443,32 @@ function readRunsFromFile(): Array<Record<string, unknown>> {
 }
 
 // ---- the live enrich-field job (free-gold body + official-data steps) ----
-async function enrichOneCompany(job: EnrichJob, cid: string): Promise<void> {
-  const row = seed.db.getById(DEV_TENANT_ID, cid) as Record<string, unknown> | undefined;
-  const item = job.items.get(cid)!;
-  for (const f of job.fields) item.cells[f] = { status: 'running' };
-
-  // Deepened free-gold extraction (B.1): fetch the firm's homepage AND a bounded
-  // set of its own contact/about pages ONCE, merged — the free tiers read it; the
-  // official-data steps (VIES/fatturatoitalia) fetch their own sources keyed on
-  // the VAT they find. ~half of IT SMB sites print the email only on /contatti,
-  // so deepening lifts email fill-rate WITHOUT lowering precision (same-domain
-  // enforced by the extractor on every page).
-  let extraction: BodyExtraction | undefined;
-  if (row?.official_website) {
-    const deep = await deepExtractFromSite(String(row.official_website), async (url) => {
-      try {
-        return (await FETCH.fetch(url, { timeoutMs: 8000 })).html;
-      } catch {
-        return undefined; // host down/slow → fields fall through to not_found/registry
-      }
-    });
-    extraction = deep.extraction;
-  }
-
-  for (const f of job.fields) {
-    const field = FIELD_FILL_TARGETS[f];
-    if (!field) {
-      item.cells[f] = { status: 'not_found' };
-      continue;
-    }
-    try {
-      const lead = { ...row } as Lead;
-      const outcome = await runFieldCascade(lead, field, { extraction });
-      if (outcome.resolved && outcome.value) {
-        const target = FIELD_BY_NAME.get(field)!.target as string;
-        seed.db.patchCompany(DEV_TENANT_ID, cid, { [target]: outcome.value });
-        item.cells[f] = { status: 'filled', value: outcome.value, source: outcome.source, confidence: outcome.confidence };
-      } else {
-        item.cells[f] = { status: 'not_found' };
-      }
-    } catch (err) {
-      // A field that throws becomes a visible failed cell, never a silent hang.
-      item.cells[f] = { status: 'failed', value: (err as Error).message.slice(0, 80) };
-    }
+async function fetchHtml(url: string): Promise<string | undefined> {
+  try {
+    return (await FETCH.fetch(url, { timeoutMs: 8000 })).html;
+  } catch {
+    return undefined; // host down/slow → fields fall through to not_found/registry
   }
 }
 
-async function runEnrichJob(job: EnrichJob, companyIds: string[]): Promise<void> {
+function enrichOneCompany(job: EnrichJob, cid: string, suppression: SuppressionList): Promise<void> {
+  const row = seed.db.getById(DEV_TENANT_ID, cid) as Record<string, unknown> | undefined;
+  const item = job.items.get(cid)!;
+  return enrichCompanyFields(row, job.fields, {
+    fetchHtml,
+    suppression,
+    setCell: (f, cell) => (item.cells[f] = cell),
+    patch: (fields) => seed.db.patchCompany(DEV_TENANT_ID, cid, fields),
+    addCost: (eur) => {
+      job.costEur += eur;
+      sessionCost.enrichEur += eur;
+    },
+  });
+}
+
+async function runEnrichJob(job: EnrichJob, companyIds: string[], suppression: SuppressionList): Promise<void> {
   const deadline = new Promise<'timeout'>((resolve) => setTimeout(() => resolve('timeout'), ENRICH_JOB_TIMEOUT_MS).unref?.());
-  const work = pool(companyIds, ENRICH_CONCURRENCY, (cid) => enrichOneCompany(job, cid));
+  const work = pool(companyIds, ENRICH_CONCURRENCY, (cid) => enrichOneCompany(job, cid, suppression));
   try {
     const r = await Promise.race([work.then(() => 'done' as const), deadline]);
     if (r === 'timeout') {
@@ -471,63 +477,95 @@ async function runEnrichJob(job: EnrichJob, companyIds: string[]): Promise<void>
       // mark any still-running cells as failed so the UI never hangs
       for (const it of job.items.values())
         for (const [f, st] of Object.entries(it.cells)) if (st.status === 'running' || st.status === 'queued') it.cells[f] = { status: 'failed' };
-      return;
+    } else {
+      job.status = 'done';
     }
-    job.status = 'done';
   } catch (err) {
     job.status = 'error';
     job.error = (err as Error).message;
   }
+  job.finishedAt = Date.now();
 }
 
-// ---- real scrape jobs: shell out to the validated CLI, reseed on completion ----
-interface ScrapeJob {
-  id: string;
-  category: string;
-  province: string;
-  status: 'running' | 'done' | 'error';
-  added?: number;
-  error?: string;
-  outBase: string;
-}
+// ---- real scrape jobs: shell out to the validated CLI, ingest as each run ends ----
 const scrapeJobs = new Map<string, ScrapeJob>();
 /** Live scrape child processes — killed on shutdown so no orphan keeps scraping. */
-const scrapeChildren = new Set<ReturnType<typeof execFile>>();
+const scrapeChildren = new Set<ChildProcess>();
+let shuttingDown = false;
 
-const SCRAPE_JOB_TIMEOUT_MS = 10 * 60 * 1000;
-/** Sanitise an operator string into a safe CLI argument (defence-in-depth even
- *  though execFile takes an argv array — no shell — so injection isn't possible). */
-function cleanArg(s: string): string {
-  return String(s).replace(/[^\p{L}\p{N}\s.,'’&/-]/gu, '').trim().slice(0, 80);
+/**
+ * Runs the validated scrape→enrich `run` CLI (argv array, no shell). Output is
+ * not buffered: the run logs to its own file, and a 12-hour run can print more
+ * than any maxBuffer, which would kill it early. Only the stderr tail is kept
+ * for the error message.
+ */
+function spawnRunCli(args: string[], timeoutMs: number): Promise<CliOutcome> {
+  return new Promise((resolve) => {
+    // Local tsx, never `npx tsx` (Fase 5.2): `args` keeps the legacy
+    // `['tsx', script, …]` shape at the seam; buildTsxCommand strips it.
+    const cmd = buildTsxCommand(REPO_ROOT, args);
+    const child = spawn(cmd.file, cmd.args, { cwd: REPO_ROOT, stdio: ['ignore', 'ignore', 'pipe'] });
+    scrapeChildren.add(child);
+    let stderrTail = '';
+    child.stderr?.setEncoding('utf8');
+    child.stderr?.on('data', (chunk: string) => (stderrTail = (stderrTail + chunk).slice(-2000)));
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      child.kill('SIGTERM');
+    }, timeoutMs);
+    timer.unref();
+    let settled = false;
+    const settle = (outcome: CliOutcome): void => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      scrapeChildren.delete(child);
+      resolve(outcome);
+    };
+    child.once('error', (err) => settle({ ok: false, timedOut: false, message: err.message.slice(0, 200) }));
+    child.once('close', (code, signal) => {
+      if (code === 0) return settle({ ok: true });
+      const lastLine = stderrTail.trim().split('\n').pop() ?? '';
+      settle({ ok: false, timedOut, message: `exit ${code ?? signal}${lastLine ? `: ${lastLine.slice(0, 200)}` : ''}` });
+    });
+  });
 }
 
-function runScrapeJob(job: ScrapeJob): void {
-  // Mirrors the MCP bridge: execFile (argv array, NO shell → injection-safe).
-  // Runs the validated scrape→enrich `run` CLI on the free tiers.
-  const args = ['tsx', 'src/cli/run.ts', '--category', cleanArg(job.category), '--province', cleanArg(job.province), '--out', job.outBase];
-  const child = execFile('npx', args, { cwd: REPO_ROOT, timeout: SCRAPE_JOB_TIMEOUT_MS, maxBuffer: 64 * 1024 * 1024 }, (err) => {
-    void (async () => {
-      if (err) {
-        job.status = 'error';
-        job.error = err.message.slice(0, 200);
-        return;
-      }
-      try {
-        job.added = await ingestJsonlIntoDb(`${job.outBase}_enriched.jsonl`);
-        job.status = 'done';
-      } catch (e) {
-        job.status = 'error';
-        job.error = (e as Error).message.slice(0, 200);
-      }
-    })();
+/** How often a running scrape's output is ingested, so the dashboard counts grow while it runs. */
+const LIVE_INGEST_MS = 2000;
+
+async function runDashboardScrape(job: ScrapeJob): Promise<void> {
+  await runScrapeJob(job, {
+    runCli: spawnRunCli,
+    ingest: ingestJsonlIntoDb,
+    isStopping: () => shuttingDown,
+    now: () => Date.now(),
+    liveIngestMs: LIVE_INGEST_MS,
   });
-  scrapeChildren.add(child);
-  child.once('exit', () => scrapeChildren.delete(child));
-  child.unref?.();
+  sessionCost.scrapeEur += job.costEur;
 }
 
 function scrapeJobView(job: ScrapeJob) {
-  return { jobId: job.id, kind: 'scrape', status: job.status, category: job.category, province: job.province, added: job.added, error: job.error };
+  return {
+    jobId: job.id,
+    kind: 'scrape',
+    status: job.status,
+    maps: job.maps,
+    added: job.added,
+    costEur: job.costEur,
+    error: job.error,
+    runs: job.runs.map(({ category, province, comuni, status, added, scraped, enriched, error }) => ({
+      category,
+      province,
+      comuni,
+      status,
+      added,
+      scraped,
+      enriched,
+      error,
+    })),
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -553,8 +591,17 @@ function jJobView(job: JudgmentJob) {
   };
 }
 
+/** Runs before each new job is registered, so the registries stay bounded. */
+function evictFinishedJobsEverywhere(): void {
+  const now = Date.now();
+  evictFinishedJobs(jobs, now);
+  evictFinishedJobs(jJobs, now);
+  evictFinishedJobs(scrapeJobs, now);
+}
+
 async function handle(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
-  const url = new URL(req.url ?? '/', `http://localhost:${PORT}`);
+  if (!isAllowedHostHeader(req.headers.host, boundPort)) return json(res, 403, { error: 'host not allowed' });
+  const url = new URL(req.url ?? '/', `http://localhost:${boundPort}`);
   const p = url.pathname;
   if (!applyCors(req, res)) return json(res, 403, { error: 'origin not allowed' });
   if (req.method === 'OPTIONS') {
@@ -564,7 +611,16 @@ async function handle(req: http.IncomingMessage, res: http.ServerResponse): Prom
   }
 
   if (p === '/api/health') {
-    return json(res, 200, { ok: true, tenant: DEV_TENANT_ID, companies: companies().length, seed: seed.sourceFile });
+    if (req.method !== 'GET' && req.method !== 'HEAD') return json(res, 405, { error: 'method not allowed' }, { allow: 'GET, HEAD' });
+    const seedEmpty = companies().length === 0;
+    return json(res, 200, {
+      ok: true,
+      tenant: DEV_TENANT_ID,
+      companies: companies().length,
+      seed: seed.sourceFile,
+      seedEmpty,
+      ...(seedEmpty ? { seedHint: SEED_EMPTY_HINT } : {}),
+    });
   }
 
   if (p === '/api/companies' && req.method === 'GET') {
@@ -626,49 +682,74 @@ async function handle(req: http.IncomingMessage, res: http.ServerResponse): Prom
   }
 
   if (p === '/api/cost' && req.method === 'GET') {
-    let live = 0;
-    for (const j of jobs.values()) live += j.costEur;
+    const { enrichEur, judgmentEur, scrapeEur } = sessionCost;
+    const live = judgmentEur === null ? null : enrichEur + judgmentEur + scrapeEur;
     return json(res, 200, {
-      seedRunCostEur: Math.round(seed.ledgerTotalEur * 1e4) / 1e4,
-      liveSessionCostEur: live,
+      // null = not measured (no ledger), never a stand-in 0.
+      seedRunCostEur: roundEur(seed.ledgerTotalEur),
+      liveSessionCostEur: roundEur(live),
+      liveSessionBreakdown: { enrichEur: roundEur(enrichEur), judgmentEur: roundEur(judgmentEur), scrapeEur: roundEur(scrapeEur) },
       ceilingEur: null,
       ceilingHit: false,
-      note: 'Free tiers only this pass — paid waterfalls disabled behind their tested ceiling.',
+      note:
+        'Free tiers only this pass — paid waterfalls disabled behind their tested ceiling.' +
+        (seed.ledgerTotalEur === null ? ' The seed has no cost ledger next to it, so its run cost is unknown.' : ''),
     });
   }
 
   if (p === '/api/jobs/enrich' && req.method === 'POST') {
-    const body = (await readBody(req)) as { companyIds?: string[]; fields?: string[] };
+    const body = (await readBodyOrReject(req, res)) as { companyIds?: string[]; fields?: string[] } | undefined;
+    if (!body) return;
     const ids = Array.isArray(body.companyIds) ? body.companyIds : [];
     const fields = (Array.isArray(body.fields) ? body.fields : []).filter((f) => f in FIELD_FILL_TARGETS) as EnrichableField[];
     if (!ids.length || !fields.length) return json(res, 422, { error: 'companyIds and fields are required' });
     if (ids.length > ENRICH_MAX_SELECTION)
       return json(res, 422, { error: `selection too large (${ids.length}); max ${ENRICH_MAX_SELECTION} per enrich job` });
+    // Same resolution as the CLI (SUPPRESSION_LIST, else output/suppression.csv),
+    // re-read per job so an edit applies without a restart. An explicit list
+    // that cannot be read fails the request: running without it is not safe.
+    let suppression: SuppressionList;
+    try {
+      suppression = suppressionForCommand({}, path.join(REPO_ROOT, 'output', 'dashboard.csv'));
+    } catch (err) {
+      return json(res, 500, { error: `suppression list unreadable: ${(err as Error).message}` });
+    }
     const job: EnrichJob = {
       id: `job_${++jobSeq}`,
       fields,
       status: 'running',
-      costEur: 0, // free-gold is €0
-      items: new Map(ids.map((cid) => [cid, { companyId: cid, cells: Object.fromEntries(fields.map((f) => [f, { status: 'queued' as CellStatus }])) }])),
+      costEur: 0,
+      items: new Map(ids.map((cid) => [cid, { companyId: cid, cells: Object.fromEntries(fields.map((f) => [f, { status: 'queued' as const }])) }])),
     };
+    evictFinishedJobsEverywhere();
     jobs.set(job.id, job);
     // fire-and-forget; the UI polls /api/jobs/:id
-    void runEnrichJob(job, ids);
+    void runEnrichJob(job, ids, suppression);
     return json(res, 202, { jobId: job.id, itemCount: ids.length });
   }
 
   // ---- judgment-layer buttons (L2–L5): discovery / collect-signals / judge / validate-export ----
   const jKind = JUDGMENT_ROUTES[p];
   if (jKind && req.method === 'POST') {
-    const body = (await readBody(req)) as { companyIds?: string[] };
+    const body = (await readBodyOrReject(req, res)) as { companyIds?: string[] } | undefined;
+    if (!body) return;
     const ids = Array.isArray(body.companyIds) ? body.companyIds : [];
     if (!ids.length) return json(res, 422, { error: 'companyIds is required' });
     if (ids.length > ENRICH_MAX_SELECTION) return json(res, 422, { error: `selection too large (${ids.length}); max ${ENRICH_MAX_SELECTION}` });
+    // Same suppression resolution as the enrich button and the CLI: re-read
+    // per job so an edit applies without a restart. An explicit list that
+    // cannot be read fails the request — running without it is not safe.
+    let suppression: SuppressionList;
+    try {
+      suppression = suppressionForCommand({}, path.join(REPO_ROOT, 'output', 'dashboard.csv'));
+    } catch (err) {
+      return json(res, 500, { error: `suppression list unreadable: ${(err as Error).message}` });
+    }
     const job: JudgmentJob = {
       id: `jjob_${++jobSeq}`,
       kind: jKind,
       status: 'running',
-      costEur: 0,
+      costEur: JUDGMENT_JOB_COST_EUR,
       items: new Map(
         ids.map((cid) => [
           cid,
@@ -676,8 +757,10 @@ async function handle(req: http.IncomingMessage, res: http.ServerResponse): Prom
         ]),
       ),
     };
+    evictFinishedJobsEverywhere();
     jJobs.set(job.id, job);
-    void runJudgmentJob(job, ids);
+    sessionCost.judgmentEur = job.costEur === null || sessionCost.judgmentEur === null ? null : sessionCost.judgmentEur + job.costEur;
+    void runJudgmentJob(job, ids, suppression);
     return json(res, 202, { jobId: job.id, kind: jKind, itemCount: ids.length });
   }
 
@@ -694,23 +777,18 @@ async function handle(req: http.IncomingMessage, res: http.ServerResponse): Prom
   }
 
   if (p === '/api/jobs/scrape' && req.method === 'POST') {
-    const body = (await readBody(req)) as { category?: string; province?: string };
-    const category = cleanArg(body.category ?? '');
-    const province = cleanArg(body.province ?? '');
-    if (!category || !province) return json(res, 422, { error: 'category and province are required' });
-    const job: ScrapeJob = {
-      id: `sjob_${++jobSeq}`,
-      category,
-      province,
-      status: 'running',
-      outBase: path.join(REPO_ROOT, 'output', `dash_${Date.now()}`),
-    };
+    const body = await readBodyOrReject(req, res);
+    if (!body) return;
+    const request = parseScrapeRequest(body);
+    if (!request.ok) return json(res, request.status, { error: request.error });
+    const job = newScrapeJob(`sjob_${++jobSeq}`, path.join(REPO_ROOT, 'output', `dash_${Date.now()}`), request.value);
+    evictFinishedJobsEverywhere();
     scrapeJobs.set(job.id, job);
-    // Real background run via the validated scrape→enrich CLI (free tiers); the
-    // dashboard polls /api/jobs/:id, and the rows are ingested on completion so
-    // they appear without a server restart. Live + best-effort (browser/network).
-    runScrapeJob(job);
-    return json(res, 202, { jobId: job.id, kind: 'scrape', category, province });
+    // Real background runs via the validated scrape→enrich CLI (free tiers); the
+    // dashboard polls /api/jobs/:id, and each run's rows are ingested as it ends
+    // so they appear without a server restart. Live + best-effort (browser/network).
+    void runDashboardScrape(job);
+    return json(res, 202, { jobId: job.id, kind: 'scrape', runs: job.runs.length, maps: job.maps });
   }
 
   if (p === '/api/runs' && req.method === 'GET') {
@@ -726,7 +804,7 @@ async function handle(req: http.IncomingMessage, res: http.ServerResponse): Prom
           status: 'ok',
           leads_out: companies().length,
           with_website: companies().filter((c) => (c.row as Record<string, unknown>).official_website).length,
-          total_cost_eur: Math.round(seed.ledgerTotalEur * 1e4) / 1e4,
+          total_cost_eur: roundEur(seed.ledgerTotalEur),
           provider_dead: seed.providerDead.map((d) => d.provider),
         },
       ],
@@ -746,17 +824,19 @@ async function autoLoadCampaignData(): Promise<number> {
     const abs = path.join(REPO_ROOT, d);
     if (!fs.existsSync(abs)) continue;
     for (const f of fs.readdirSync(abs)) {
-      if (f.endsWith('_raw.jsonl')) added += await ingestJsonlIntoDb(path.join(abs, f));
+      if (f.endsWith('_raw.jsonl')) added += (await ingestJsonlIntoDb(path.join(abs, f))).added;
     }
   }
   return added;
 }
 
-async function main(): Promise<void> {
+/** Loads the seed and listens; resolves once bound. Exported so tests can run
+ *  the real handler on an ephemeral port (port 0). */
+export async function startApiServer(opts: { port: number; host: string; seedFile?: string }): Promise<http.Server> {
   process.stderr.write('[api] loading seed dataset…\n');
-  seed = await loadSeed(REPO_ROOT, process.env.PG4_SEED_FILE);
+  seed = await loadSeed(REPO_ROOT, opts.seedFile);
   process.stderr.write(`[api] seeded ${seed.loaded} companies (${seed.rejected} rejected) from ${seed.sourceFile}\n`);
-  if (!process.env.PG4_SEED_FILE && seed.loaded === 0) {
+  if (!opts.seedFile && seed.loaded === 0) {
     const auto = await autoLoadCampaignData();
     if (auto > 0) process.stderr.write(`[api] auto-loaded ${auto} companies from campaign output (recall+veneto)\n`);
   }
@@ -766,17 +846,33 @@ async function main(): Promise<void> {
   const server = http.createServer((req, res) => {
     handle(req, res).catch((err) => json(res, 500, { error: (err as Error).message }));
   });
-  server.listen(PORT, API_HOST, () => {
-    process.stderr.write(`[api] pg4 dev API on http://${API_HOST}:${PORT} (tenant ${DEV_TENANT_ID})\n`);
+  await new Promise<void>((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(opts.port, opts.host, () => {
+      server.off('error', reject);
+      resolve();
+    });
   });
+  // The Host check compares against the port actually bound (port 0 in tests).
+  boundPort = (server.address() as AddressInfo).port;
+  return server;
+}
+
+async function main(): Promise<void> {
+  const server = await startApiServer({ port: PORT, host: API_HOST, seedFile: process.env.PG4_SEED_FILE });
+  process.stderr.write(`[api] pg4 dev API on http://${API_HOST}:${boundPort} (tenant ${DEV_TENANT_ID})\n`);
   onShutdownSignal('api', async () => {
+    shuttingDown = true;
     for (const child of scrapeChildren) child.kill('SIGTERM');
     server.closeIdleConnections();
     await new Promise<void>((resolve, reject) => server.close((err) => (err ? reject(err) : resolve())));
   });
 }
 
-main().catch((err) => {
-  process.stderr.write(`[api] fatal: ${(err as Error).message}\n`);
-  process.exit(1);
-});
+// Importing the module (tests) must not bind the real port.
+if (require.main === module) {
+  main().catch((err) => {
+    process.stderr.write(`[api] fatal: ${(err as Error).message}\n`);
+    process.exit(1);
+  });
+}

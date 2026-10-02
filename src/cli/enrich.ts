@@ -6,7 +6,7 @@ import { RunRecorder, EXIT, installInterruptHandler } from '../runtime/run_recor
 import { getNotifier } from '../runtime/notifier';
 import { runEnrichCommand } from './enrich_command';
 import { postRunValidate } from './_post_run';
-import { SuppressionList } from '../compliance/suppression';
+import { suppressionForCommand } from '../compliance/suppression';
 import { enforceRetention, resolveRetentionDays } from '../compliance/retention';
 
 /**
@@ -16,7 +16,7 @@ import { enforceRetention, resolveRetentionDays } from '../compliance/retention'
  * exit codes. The pipeline itself lives in `enrich_command.ts` so the
  * `run` command and tests can reuse it.
  *
- * Exit codes (Phase B.3): 0 ok · 1 partial (row errors) · 2 fatal ·
+ * Exit codes: 0 ok · 1 partial (row errors) · 2 fatal ·
  * 130 interrupted. Never prompts — safe for cron/launchd as-is.
  */
 async function main(): Promise<number> {
@@ -28,7 +28,7 @@ async function main(): Promise<number> {
   const input = reqString(args, 'input', 'path to raw CSV');
   const csvOut = reqString(args, 'out', 'path to enriched CSV');
 
-  // Phase A.1 — per-run log file alongside outputs (LOG_FILE env overrides).
+  // Per-run log file alongside outputs (LOG_FILE env overrides).
   const logFile = bindRunLogFile(csvOut.replace(/\.csv$/i, '') + '.log.jsonl');
 
   const ceilingArg = optString(args, 'cost-ceiling-eur');
@@ -49,13 +49,13 @@ async function main(): Promise<number> {
   });
 
   try {
-    // Phase D.2 — retention sweep (only when the operator opted in).
+    // Retention sweep (only when the operator opted in).
     const retentionDays = resolveRetentionDays(optString(args, 'retention-days'));
     if (retentionDays !== undefined) {
       enforceRetention({ outCsv: csvOut, retentionDays });
     }
-    // Phase D.1 — suppression list (flag > env > auto-discovered suppression.csv).
-    const suppression = SuppressionList.resolve({ flagPath: optString(args, 'suppression-list'), outCsv: csvOut });
+    // Suppression list (flag > env > auto-discovered suppression.csv).
+    const suppression = suppressionForCommand(args.flags, csvOut);
 
     const result = await runEnrichCommand({
       input,
@@ -80,7 +80,7 @@ async function main(): Promise<number> {
       total_cost_eur: result.totalCostEur,
     });
 
-    // Phase B.2 — automatic output validation (warn-only).
+    // Automatic output validation (warn-only).
     await postRunValidate({
       csvPath: csvOut,
       jsonlPath: result.jsonlOut,
@@ -152,7 +152,7 @@ Flags:
                                 or auto-discovered suppression.csv next to the output.
   --retention-days <n>          Delete output artifacts older than n days at run start (default: off).
 
-Observability (Phase A):
+Observability:
   LOG_FILE env                  Per-run JSONL log. Default: <out>.log.jsonl. LOG_FILE=off disables.
   NOTIFY env                    local (default) | off. Cost/completion events.
   Run history                   One record per run appended to <outdir>/_runs.jsonl.

@@ -1,10 +1,12 @@
 import type { Lead } from '../../types/lead';
 import type { Signal, SubdimKey } from '../../types/judgment';
+import type { SerpResult } from '../../types/providers';
 import { harvestSource } from '../harvest/source_harvest';
 import type { HarvestContext, HarvestBundle } from '../harvest/source_harvest';
 import { RegistrySourceAdapter } from '../harvest/adapters/registry_adapter';
 import { PlacesSourceAdapter } from '../harvest/adapters/places_adapter';
-import { companyNameMatches } from '../../enrichment/fields/field_registry';
+import { registrableDomain } from '../../util/domain';
+import { normalizeCompanyNameForKey, normalizeForKey } from '../../discovery/deduper';
 
 /**
  * L3 A-collector — Axis A signals from THIRD-PARTY sources ONLY (registry,
@@ -16,6 +18,78 @@ import { companyNameMatches } from '../../enrichment/fields/field_registry';
  */
 
 const SUBDIMS: SubdimKey[] = ['2.1', '2.2', '2.3', '2.4', '2.5', '2.6', '2.7'];
+
+const NAME_LEGAL_FORMS = new Set(['srl', 'srls', 'spa', 'snc', 'sas', 'sapa', 'ss', 'sc', 'scarl', 'scrl', 'soc', 'coop']);
+const NAME_CONNECTIVES = new Set(['del', 'dei', 'della', 'delle', 'dello', 'degli', 'per', 'con', 'and', 'the']);
+// Words that say what a company does, not which company it is: a name made
+// only of these ("Costruzioni Generali") cannot identify a search hit.
+const GENERIC_TRADE_TOKENS = new Set([
+  'immobiliare', 'immobiliari', 'agenzia', 'studio', 'servizi', 'service', 'services', 'gruppo', 'group',
+  'italia', 'italiana', 'italy', 'international', 'internazionale', 'costruzioni', 'generali', 'edilizia', 'edile',
+  'impianti', 'impresa', 'industria', 'industrie', 'industriale', 'meccanica', 'officine', 'officina', 'sistemi',
+  'tecnologie', 'tecnica', 'commerciale', 'trasporti', 'logistica', 'produzione', 'consulting', 'consulenza',
+  'casa', 'home', 'real', 'estate', 'nord', 'sud', 'centro', 'nuova', 'nuovo',
+]);
+
+function distinctiveNameTokens(name: string): string[] {
+  return normalizeCompanyNameForKey(name)
+    .split(' ')
+    .filter((t) => t.length > 2 && !NAME_LEGAL_FORMS.has(t) && !NAME_CONNECTIVES.has(t));
+}
+
+function nameMatchesHit(name: string, hitText: string): boolean {
+  const tokens = distinctiveNameTokens(name);
+  if (tokens.length === 0) return false;
+  if (!tokens.some((t) => t.length >= 4 && !GENERIC_TRADE_TOKENS.has(t))) return false;
+  const words = new Set(normalizeForKey(hitText).split(' '));
+  return tokens.every((t) => words.has(t));
+}
+
+function urlKey(url: string): string {
+  return url.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/+$/, '');
+}
+
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * When a search hit may become a `confirmed_present` A signal.
+ *
+ * The queries embed the company name, so almost every result carries it: a
+ * name match alone proves nothing (the company's own "awards" page, or a
+ * namesake in another city, both match). A hit counts only when all three hold:
+ *  1. Third-party: its registrable domain is not the company's own site and its
+ *     URL is not one of the company's own social profiles (those are owned
+ *     channels, i.e. axis B).
+ *  2. Name: every distinctive token of the name appears in the title/snippet,
+ *     and at least one of them is not a generic trade word. A single-token name
+ *     ("Blurebus") qualifies on that token alone, provided it is distinctive.
+ *  3. Corroboration: something besides the name ties the hit to this company:
+ *     its city, its province written as "(PD)", its VAT number, or its own
+ *     domain named in the text.
+ */
+function isCorroboratedThirdPartyHit(lead: Lead, hit: SerpResult): boolean {
+  const ownDomains = [lead.official_website, lead.website].map((w) => registrableDomain(w)).filter((d): d is string => !!d);
+  const hitDomain = registrableDomain(hit.url);
+  if (!hitDomain || ownDomains.includes(hitDomain)) return false;
+  const hitUrl = urlKey(hit.url);
+  const ownProfiles = [lead.instagram, lead.facebook, lead.linkedin, lead.tiktok, lead.youtube].filter((u): u is string => !!u).map(urlKey);
+  if (ownProfiles.some((p) => hitUrl === p || hitUrl.startsWith(`${p}/`))) return false;
+
+  const text = `${hit.title} ${hit.snippet}`;
+  if (!nameMatchesHit(lead.company_name ?? '', text)) return false;
+
+  const normText = ` ${normalizeForKey(text)} `;
+  const cities = [lead.city, lead.business_city].map((c) => (c ? normalizeForKey(c) : '')).filter((c) => c.length > 2);
+  if (cities.some((c) => normText.includes(` ${c} `))) return true;
+  const province = lead.province?.trim();
+  if (province && /^[a-z]{2}$/i.test(province) && new RegExp(`\\(\\s*${province}\\s*\\)`, 'i').test(text)) return true;
+  const vat = (lead.vat_code_final ?? lead.vat_code ?? '').replace(/\D/g, '');
+  if (vat.length === 11 && text.match(/(?<!\d)\d{11}(?!\d)/g)?.includes(vat)) return true;
+  const lowerText = text.toLowerCase();
+  return ownDomains.some((d) => new RegExp(`(^|[^a-z0-9.-])(www\\.)?${escapeRegExp(d)}($|[^a-z0-9-])`).test(lowerText));
+}
 
 export async function collectA(lead: Lead, ctx: HarvestContext, bundle: HarvestBundle): Promise<Signal[]> {
   const iso = new Date(ctx.now()).toISOString();
@@ -45,7 +119,7 @@ export async function collectA(lead: Lead, ctx: HarvestContext, bundle: HarvestB
       } catch {
         continue; // breaker/transport → leave this dimension to the unknown fill below
       }
-      const hit = results.find((r) => companyNameMatches(name, `${r.title} ${r.snippet}`));
+      const hit = results.find((r) => isCorroboratedThirdPartyHit(lead, r));
       if (hit) {
         out.push({ axis: 'A', key: item.dim, state: 'confirmed_present', value: item.label, evidence: [{ source: 'search', url: hit.url, excerpt: hit.title, observedAt: iso, confidence: 0.55 }], notes: `third-party: ${item.label}` });
       }

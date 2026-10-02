@@ -13,7 +13,13 @@ import path from 'node:path';
 const target = path.resolve(process.argv[2] ?? '.');
 
 function readProductionTree(directory) {
-  const raw = execFileSync('pnpm', ['list', '--prod', '--json', '--depth', 'Infinity'], {
+  // web/ is intentionally NOT a pnpm workspace member (own lockfile + CI):
+  // without --ignore-workspace, `pnpm list` run in web/ resolves the workspace
+  // root and returns an empty tree (Fase 5.4). The repo root is the workspace
+  // itself, so it keeps the plain workspace-mode invocation.
+  const args = ['list', '--prod', '--json', '--depth', 'Infinity'];
+  if (path.resolve(directory) !== path.resolve('.')) args.push('--ignore-workspace');
+  const raw = execFileSync('pnpm', args, {
     cwd: directory,
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],

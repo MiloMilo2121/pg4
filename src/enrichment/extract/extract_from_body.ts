@@ -1,7 +1,7 @@
 /**
- * Phase 1 (free-gold) — PURE extractor over an already-fetched website body.
+ * Free-gold — PURE extractor over an already-fetched website body.
  *
- * pg4 already HTTP-fetches a company's official website to VERIFY it
+ * The pipeline already HTTP-fetches a company's official website to VERIFY it
  * (direct_fetch → verify_candidates → VerifyVerdict.body on a strong
  * piva/phone match). That body is then used only for the paid-gate and
  * discarded. This module mines it for contact intelligence — email, PEC,
@@ -17,10 +17,11 @@
  * links must look like profile/company URLs, not share-intent widgets.
  */
 import * as cheerio from 'cheerio';
+import { registrableDomain } from '../../util/domain';
 import { extractVatCodesFromText } from '../financial/vat';
 import { isPecAddress } from './pec';
 
-/** The social networks pg4 extracts. Single source of truth for the field keys. */
+/** The social networks extracted here. Single source of truth for the field keys. */
 export type SocialKey = 'instagram' | 'facebook' | 'linkedin' | 'tiktok' | 'youtube';
 
 export interface BodyExtraction {
@@ -78,22 +79,6 @@ export function matchSocialUrl(href: string): { key: SocialKey; url: string } | 
     }
   }
   return undefined;
-}
-
-/**
- * Registrable domain heuristic: last two labels. Good enough for Italian
- * SMB sites (overwhelmingly `name.it` / `name.com`); intentionally simple
- * and dependency-free. Used only to decide "is this email on the firm's
- * own domain", a conservative filter — over-rejection is safe.
- */
-export function registrableDomain(hostOrUrl: string | undefined | null): string | undefined {
-  if (!hostOrUrl) return undefined;
-  let host = String(hostOrUrl).trim().toLowerCase();
-  host = host.replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0].split('?')[0].split('#')[0];
-  if (!host || !host.includes('.')) return undefined;
-  const labels = host.split('.').filter(Boolean);
-  if (labels.length < 2) return undefined;
-  return labels.slice(-2).join('.');
 }
 
 function emailDomain(email: string): string | undefined {

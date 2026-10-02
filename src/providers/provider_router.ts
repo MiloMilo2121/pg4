@@ -10,6 +10,12 @@ export interface RouteOptions {
   maxTier?: number;
   /** Cap how many providers to try in this call. */
   maxProviders?: number;
+  /**
+   * The caller's deadline. Once it has aborted the router starts no further
+   * provider call (free or paid), and a call it cuts short is not held
+   * against the provider's breaker: the caller ran out of time, the provider
+   * did not fail.
+   */
   signal?: AbortSignal;
   /**
    * Caller-supplied context attached to every CostLedger entry produced
@@ -18,7 +24,7 @@ export interface RouteOptions {
    */
   meta?: Record<string, string | number | boolean>;
   /**
-   * Phase D.2: when true, the router does not record this attempt to
+   * When true, the router does not record this attempt to
    * the circuit breaker. The cost ledger still records the call (so
    * cost accounting stays accurate) and breaker filtering still
    * applies (a tripped breaker still blocks the call). Used by
@@ -30,14 +36,14 @@ export interface RouteOptions {
    */
   bypassBreakerRecord?: boolean;
   /**
-   * Phase G — paid-call gate. When `false` (default), providers with
+   * Paid-call gate. When `false` (default), providers with
    * `costPerCallEur > 0` are filtered out — even if they're
    * registered, available, and within the tier cap. Callers must
    * explicitly opt in to paid calls AND respect remaining budgets.
    */
   paidEnabled?: boolean;
   /**
-   * Phase G — per-lead remaining budget (EUR). Providers whose
+   * Per-lead remaining budget (EUR). Providers whose
    * `costPerCallEur` exceeds this value are filtered out. The caller
    * is responsible for tracking the remaining budget per lead and
    * passing it on each call. `undefined` means "no per-lead cap"
@@ -45,14 +51,14 @@ export interface RouteOptions {
    */
   remainingLeadBudgetEur?: number;
   /**
-   * Phase G — restrict this call to a specific list of provider ids.
+   * Restrict this call to a specific list of provider ids.
    * When set, only providers whose `id` is in the list are
    * considered. Used by SerpStage to run a paid second pass that
    * targets ONLY the paid providers.
    */
   includeProviderIds?: ReadonlyArray<string>;
   /**
-   * R14 — denylist. Providers whose `id` is in this list are excluded
+   * Denylist. Providers whose `id` is in this list are excluded
    * from this call, keeping everything else. Symmetric to
    * `includeProviderIds` but additive-by-default: used by SerpStage to
    * skip low-yield free providers for a category profile without having
@@ -60,7 +66,7 @@ export interface RouteOptions {
    */
   excludeProviderIds?: ReadonlyArray<string>;
   /**
-   * Phase G fix — when true, FREE providers (`costPerCallEur === 0`)
+   * Paid-only. When true, FREE providers (`costPerCallEur === 0`)
    * are filtered OUT. Used by the SerpStage paid second pass: the
    * free pass already ran every free provider; the paid pass should
    * target ONLY paid providers, otherwise the router returns on the
@@ -69,17 +75,17 @@ export interface RouteOptions {
    */
   paidOnly?: boolean;
   /**
-   * Phase G hotfix — run-level cost ceiling (EUR). When set, the
+   * Run-level cost ceiling (EUR). When set, the
    * router compares `ledger.getTotal() + provider.costPerCallEur`
    * against this cap and filters paid providers out when the next
    * call would exceed it. Without this enforcement (the original
    * `--run-cost-ceiling-eur` was threaded through context but never
-   * gated at the router), p90 first-attempt blew past a €0.10 cap
+   * gated at the router), a first-attempt run blew past a €0.10 cap
    * to €0.229 before being killed manually.
    */
   runCostCeilingEur?: number;
   /**
-   * ENRICH-3 fix — LIVE per-lead cap (EUR). `remainingLeadBudgetEur` is a
+   * LIVE per-lead cap (EUR). `remainingLeadBudgetEur` is a
    * snapshot taken by the caller; a stage that makes several paid attempts
    * (candidates × retries, deep pages) reused the SAME snapshot for all of
    * them and blew through the lead cap. With this set and `meta.lead_id`
@@ -98,14 +104,14 @@ export interface RouteOptions {
  * registry; callers ask the router to "search/fetch/complete" and it returns
  * the first non-empty success.
  *
- * Circuit breaker (Phase 3.7) trips a provider after N consecutive failures
+ * Circuit breaker trips a provider after N consecutive failures
  * within a window — protects against crt.sh 5xx storms, Bing Cloudflare-
  * Turnstile loops, RDAP outages.
  */
 export class ProviderRouter {
   private readonly breaker: CircuitBreaker;
   /**
-   * Phase G.1 — atomic budget reservation counter. Concurrent paid
+   * Atomic budget reservation counter. Concurrent paid
    * calls must not both pass the run-cap filter when only one would
    * fit, so we reserve cost at filter time and release after the
    * call settles. JS is single-threaded, so increment + check on
@@ -117,7 +123,7 @@ export class ProviderRouter {
   /** In-flight paid reservations per lead (live per-lead cap, see `leadCostCeilingEur`). */
   private readonly reservedByLead = new Map<string, number>();
   /**
-   * Phase A.5 — one-shot run-ceiling listener. Fired the FIRST time a
+   * One-shot run-ceiling listener. Fired the FIRST time a
    * paid provider is dropped because the run cost ceiling would be
    * exceeded. Before this, hitting the cap was a silent `continue` —
    * the operator only discovered the run degraded to free-only by
@@ -133,14 +139,13 @@ export class ProviderRouter {
     private readonly ledger: CostLedger,
     breaker?: CircuitBreaker,
     /**
-     * Phase F finding — per-provider token bucket. The RateLimiter had
-     * existed on the Run since Phase 1 but acquire() had ZERO call
-     * sites: a lead set with no input websites degenerated the enrich
-     * stage into a raw SERP burst (~3.7 req/s to Bing in the Phase F
-     * smoke vs ~0.27 req/s in validated R12), and Bing soft-blocked
-     * with 185/185 empty responses — a silent failure. Unconfigured
-     * keys remain unlimited, so behavior is unchanged for providers
-     * without an explicit rate.
+     * Per-provider token bucket. The RateLimiter had
+     * ZERO call sites before this: a lead set with no input websites
+     * degenerated the enrich stage into a raw SERP burst (~3.7 req/s to
+     * Bing in a smoke test vs ~0.27 req/s in a validated run), and Bing
+     * soft-blocked with 185/185 empty responses — a silent failure.
+     * Unconfigured keys remain unlimited, so behavior is unchanged for
+     * providers without an explicit rate.
      */
     private readonly rate?: RateLimiter
   ) {
@@ -150,16 +155,18 @@ export class ProviderRouter {
   async search(query: string, opts: RouteOptions = {}) {
     const candidates = this.filter(this.serps, opts);
     for (const p of candidates) {
-      // Phase F — space out calls per provider (no-op for unconfigured keys).
+      if (opts.signal?.aborted) break;
+      // Space out calls per provider (no-op for unconfigured keys).
       if (this.rate) await this.rate.acquire(p.id);
-      // Phase G.1 — atomic budget reservation. The sync filter check
+      if (opts.signal?.aborted) break;
+      // Atomic budget reservation. The sync filter check
       // already passed, but a concurrent caller (or an earlier provider in
       // this same loop) may have spent since. Re-check right before calling.
       const release = this.tryReserve(p.costPerCallEur, opts);
       if (!release) continue; // budget no longer fits — skip this provider
       try {
         const results = await p.search(query, { signal: opts.signal });
-        // Empty result is NOT a failure — pg3 audit found 16K+ SERP_EMPTY
+        // Empty result is NOT a failure — an audit found 16K+ SERP_EMPTY
         // entries logged as ERROR per batch. Free SERP returns empty
         // frequently for small Italian businesses; we treat empty as a
         // clean miss for both the breaker AND the ledger's success
@@ -174,7 +181,7 @@ export class ProviderRouter {
       } catch (err) {
         const kind: import('../types/providers').FailureKind = err instanceof ProviderBlockError ? 'blocked' : classifyThrown(err);
         this.ledger.record(p.id, p.family, errorCostEur(err) ?? p.costPerCallEur, false, { kind, meta: opts.meta });
-        this.breaker.recordFailure(p.id, kind);
+        if (!opts.signal?.aborted) this.breaker.recordFailure(p.id, kind);
         logger.warn({ provider: p.id, kind, err: (err as Error).message }, '[Router] serp provider failed');
       } finally {
         release();
@@ -188,6 +195,7 @@ export class ProviderRouter {
     const bypassBreaker = opts.bypassBreakerRecord === true;
     let lastError: string | undefined;
     for (const p of candidates) {
+      if (opts.signal?.aborted) break;
       const release = this.tryReserve(p.costPerCallEur, opts);
       if (!release) continue;
       try {
@@ -206,12 +214,12 @@ export class ProviderRouter {
           ? classifyHttpFailure({ status: res.status, error: res.error })
           : 'other';
         this.ledger.record(p.id, p.family, res.cost_eur || p.costPerCallEur, false, { kind, meta: opts.meta });
-        if (transportLike && !bypassBreaker) this.breaker.recordFailure(p.id, kind);
+        if (transportLike && !bypassBreaker && !opts.signal?.aborted) this.breaker.recordFailure(p.id, kind);
         lastError = res.error;
       } catch (err) {
         const kind = classifyThrown(err);
         this.ledger.record(p.id, p.family, errorCostEur(err) ?? p.costPerCallEur, false, { kind, meta: opts.meta });
-        if (!bypassBreaker) this.breaker.recordFailure(p.id, kind);
+        if (!bypassBreaker && !opts.signal?.aborted) this.breaker.recordFailure(p.id, kind);
         lastError = (err as Error).message;
       } finally {
         release();
@@ -223,6 +231,7 @@ export class ProviderRouter {
   async complete(req: Parameters<LLMProvider['complete']>[0], opts: RouteOptions = {}) {
     const candidates = this.filter(this.llms, opts);
     for (const p of candidates) {
+      if (opts.signal?.aborted) break;
       const release = this.tryReserve(p.costPerCallEur, opts);
       if (!release) continue;
       try {
@@ -233,7 +242,7 @@ export class ProviderRouter {
       } catch (err) {
         const kind = classifyThrown(err);
         this.ledger.record(p.id, p.family, errorCostEur(err) ?? p.costPerCallEur, false, { kind, meta: opts.meta });
-        this.breaker.recordFailure(p.id, kind);
+        if (!opts.signal?.aborted) this.breaker.recordFailure(p.id, kind);
         logger.warn({ provider: p.id, kind, err: (err as Error).message }, '[Router] llm provider failed');
       } finally {
         release();
@@ -264,6 +273,7 @@ export class ProviderRouter {
     opts: RouteOptions = {}
   ): Promise<T | null> {
     // ---- gate pipeline (mirrors filter(), applied to a single provider) ----
+    if (opts.signal?.aborted) return null;
     if (!meta.available()) return null;
     if (!this.breaker.allow(meta.id)) return null;
     if (opts.maxTier !== undefined && meta.tier > opts.maxTier) return null;
@@ -279,6 +289,10 @@ export class ProviderRouter {
 
     // ---- per-provider rate limit (no-op for unconfigured keys) ----
     if (this.rate) await this.rate.acquire(meta.id);
+    if (opts.signal?.aborted) {
+      release();
+      return null;
+    }
 
     try {
       const res = await call(opts.signal);
@@ -294,7 +308,7 @@ export class ProviderRouter {
       // Real spend when the error knows it (e.g. a started-then-failed Apify
       // run, or a rejected start = €0); worst-case reservation otherwise.
       this.ledger.record(meta.id, meta.family, errorCostEur(err) ?? meta.costPerCallEur, false, { kind, meta: opts.meta });
-      this.breaker.recordFailure(meta.id, kind);
+      if (!opts.signal?.aborted) this.breaker.recordFailure(meta.id, kind);
       logger.warn({ provider: meta.id, kind, err: (err as Error).message }, '[Router] invoke provider failed');
       return null;
     } finally {
@@ -346,7 +360,7 @@ export class ProviderRouter {
   }
 
   /**
-   * Phase A.5 — register the run-ceiling listener (latched: fires once
+   * Register the run-ceiling listener (latched: fires once
    * per router lifetime). Call sites stay untouched; the CLI wires the
    * notifier here.
    */
@@ -388,25 +402,25 @@ export class ProviderRouter {
       .filter((p) => p.available())
       .filter((p) => this.breaker.allow(p.id))
       .filter((p) => opts.maxTier === undefined || p.tier <= opts.maxTier)
-      // Phase G — paid gate. Default-deny: any provider with
+      // Paid gate. Default-deny: any provider with
       // costPerCallEur > 0 is excluded unless `paidEnabled === true`.
       // This is the load-bearing safety: a run with cost ceiling 0
       // never accidentally hits a paid provider just because tier
       // limits drift or someone forgets to set maxTier.
       .filter((p) => p.costPerCallEur === 0 || paidEnabled)
-      // Phase G — per-lead budget gate. Filter out paid providers
+      // Per-lead budget gate. Filter out paid providers
       // whose single-call cost would exceed the remaining lead budget.
       .filter((p) => this.leadBudgetFits(p.costPerCallEur, opts))
-      // Phase G fix — paid-only second-pass mode. Filters out free
+      // Paid-only second-pass mode. Filters out free
       // providers so the SerpStage paid pass actually reaches the
       // paid SERP. Without this, the free providers (bing_html etc.)
       // satisfy the loop first and Serper is never called.
       .filter((p) => !opts.paidOnly || p.costPerCallEur > 0)
-      // Phase G hotfix — run-level cap enforcement. If the ledger
+      // Run-level cap enforcement. If the ledger
       // total + reserved + this call's cost would exceed the cap,
       // drop the paid provider. Includes `reservedEur` so concurrent
       // pipelines can't both pass when only one would fit.
-      // p90 first-attempt blew past a €0.10 cap to €0.229; this
+      // A first-attempt run once blew past a €0.10 cap to €0.229; this
       // closes the race window.
       .filter((p) => {
         if (p.costPerCallEur === 0) return true;
@@ -415,9 +429,9 @@ export class ProviderRouter {
         if (!fits) this.fireRunCeiling(opts.runCostCeilingEur);
         return fits;
       })
-      // Phase G — explicit allowlist when caller targets specific ids.
+      // Explicit allowlist when caller targets specific ids.
       .filter((p) => !opts.includeProviderIds || opts.includeProviderIds.includes(p.id))
-      // R14 — explicit denylist (category routing skips low-yield providers).
+      // Explicit denylist (category routing skips low-yield providers).
       .filter((p) => !opts.excludeProviderIds || !opts.excludeProviderIds.includes(p.id))
       // Primary order: tier ascending (free-first). Tiebreak: when the caller
       // supplied an ordered `includeProviderIds` (the RoleResolver compiles the

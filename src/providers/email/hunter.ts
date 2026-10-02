@@ -3,6 +3,7 @@ import type { CostedMeta, ProviderRole } from '../../types/providers';
 import { ProviderBlockError } from '../../types/providers';
 import { DEFAULTS } from '../../config/defaults';
 import { getEnv } from '../../config/env';
+import { HUNTER_OP_COST_EUR } from '../pricing';
 
 /**
  * Hunter.io — EMAIL_FIND / EMAIL_VERIFY / B2B_CONTACT / DECISION_MAKER. Non-router
@@ -26,7 +27,7 @@ export interface HunterEmail {
 }
 
 const ROLES: ReadonlyArray<ProviderRole> = ['EMAIL_FIND', 'EMAIL_VERIFY', 'B2B_CONTACT', 'DECISION_MAKER'];
-const COST: Record<HunterOp, number> = { find: 0.04, domain: 0.04, verify: 0.02 };
+const COST: Record<HunterOp, number> = HUNTER_OP_COST_EUR;
 
 export class HunterProvider {
   readonly id = 'hunter';

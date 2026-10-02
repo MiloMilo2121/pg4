@@ -1,7 +1,7 @@
 /**
  * Category-shape sanity check for Maps cards.
  *
- * Phase 3.7 audit: pg3 stored every Maps result with the requested
+ * An audit found that every Maps result was stored with the requested
  * category as a label, even when the card's own type tag was something
  * unrelated (`bar`, `parrucchiere`, `pizzeria` returned by a fuzzy
  * `agenzie immobiliari` search). Downstream filtering treated all of
@@ -13,6 +13,7 @@
  *
  * Maintained as a small map; extend as new categories ship.
  */
+import { stripDiacritics } from '../../util/text';
 
 const EXPECTED_TOKENS: Array<{ canonical: string; tokens: string[] }> = [
   {
@@ -38,10 +39,7 @@ const EXPECTED_TOKENS: Array<{ canonical: string; tokens: string[] }> = [
 ];
 
 function normalize(s: string): string {
-  return s
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
+  return stripDiacritics(s.toLowerCase())
     .replace(/[^a-z0-9\s]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();

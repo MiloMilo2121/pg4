@@ -252,7 +252,7 @@ Costs are €/call estimates (USD→EUR ≈ 0.92; pricing from integration specs
 | `kimi` | `KIMI_ENABLED` | `MOONSHOT_API_KEY` | `https://api.moonshot.ai/v1` + `KIMI_MODEL` (kimi-k2.5) | `llm/kimi.ts` (NEW) | `Authorization: Bearer` |
 | `vies` | `OFFICIAL_DATA_VIES_ENABLED` (default true) | — | EU VIES | `enrichment/financial/vies.ts` (exists) | none |
 | `fatturatoitalia` | `OFFICIAL_DATA_FATTURATOITALIA_ENABLED` (default true) | — | fatturatoitalia.it | `enrichment/financial/fatturato_italia_fetch.ts` (exists) | none |
-| `openapi` | `OPENAPI_ENABLED` | `OPENAPI_API_KEY` | `OPENAPI_BASE_URL` (default `https://company.openapi.com`) | `providers/openapi/openapi_client.ts` (exists) | `Authorization: Bearer` |
+| `openapi` | `OPENAPI_ENABLED` | `OPENAPI_API_KEY` | `OPENAPI_BASE_URL` (default `https://company.openapi.com`) | `providers/openapi_it/openapi_client.ts` (exists) | `Authorization: Bearer` |
 | `hunter` | `HUNTER_ENABLED` | `HUNTER_API_KEY` | `https://api.hunter.io/v2` | `providers/email/hunter.ts` (NEW) | `api_key` query / `Authorization: Bearer` |
 | `snov` | `SNOV_ENABLED` | `SNOVIO_CLIENT_ID`, `SNOVIO_CLIENT_SECRET` | `https://api.snov.io` | `providers/email/snov.ts` (NEW) | OAuth2 client_credentials → Bearer |
 | `google_places` | `GOOGLE_PLACES_ENABLED` | `GOOGLE_PLACES_API_KEY` | `https://places.googleapis.com/v1` | `judgment/harvest/adapters/places_adapter.ts` (exists — MIGRATE to New API) | `X-Goog-Api-Key` + `X-Goog-FieldMask` |
@@ -350,8 +350,10 @@ provider spanning two router families.
 ### R3 — `assertPaidSecrets` is data-driven. No hardcoded 4-provider list.
 Build the paid-candidate list from a declared `PAID_PROVIDERS` table covering EVERY paid provider
 (serper, exa, tavily, perplexity, brightdata, firecrawl, openai, openrouter, deepseek, zhipu, kimi,
-anthropic, hunter, snov, google_places, openapi, 2captcha). Enabling ANY one (flag+key) satisfies the
+anthropic, hunter, google_places, openapi, apify). Enabling ANY one (flag+key) satisfies the
 assertion; enabling one with an empty key throws the actionable error. Closes the false-negative.
+Snov and 2captcha stay out of the table until they have a client: counting their keys let
+`--enable-paid` pass while every call stayed free.
 
 ### R4 — PEC: honest free path. No fake free API.
 There is NO reliable free INI-PEC-by-VAT API (INI-PEC has no open endpoint). `pec.inipec_by_vat` STAYS

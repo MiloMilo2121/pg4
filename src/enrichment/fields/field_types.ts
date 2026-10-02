@@ -1,11 +1,11 @@
 import type { Lead } from '../../types/lead';
 import type { BodyExtraction } from '../extract/extract_from_body';
-import type { EnrichableField } from '../../api/types';
-import type { ProviderRole } from '../../types/providers';
+import type { EnrichableField } from '../../types/api';
+import type { ProviderFamily, ProviderRole } from '../../types/providers';
 
 /**
- * Per-field enrichment waterfall — the generalization of pg4's single
- * website-discovery ladder into one ordered free→paid cascade PER FIELD.
+ * Per-field enrichment waterfall — the single website-discovery ladder
+ * generalized into one ordered free→paid cascade PER FIELD.
  *
  * This is DATA, not code: a field declares its cascade of steps, a per-field
  * cost ceiling, and a stop condition. The runner (run_field_cascade.ts) is the
@@ -15,7 +15,7 @@ import type { ProviderRole } from '../../types/providers';
  * DISABLED in this pass.
  */
 
-export type Tier = 0 | 1 | 2; // 0 free-deterministic · 1 free-network · 2 paid
+type Tier = 0 | 1 | 2; // 0 free-deterministic · 1 free-network · 2 paid
 
 export interface StepResult {
   value?: string;
@@ -36,7 +36,7 @@ export interface StepResult {
 /** Inputs every step receives. The body extraction is computed ONCE (free-gold). */
 export interface FieldStepContext {
   lead: Lead;
-  /** Parsed result of the already-fetched website body (Phase 1). */
+  /** Parsed result of the already-fetched website body. */
   extraction?: BodyExtraction;
   paidEnabled: boolean;
   /**
@@ -54,6 +54,8 @@ export interface EnrichmentStep {
   costEur: number;
   /** Wired-but-disabled paid steps set this false until activated. */
   enabled: boolean;
+  /** Ledger family of a costed step's provider (defaults to 'official'). */
+  family?: ProviderFamily;
   /**
    * Resolve the field for this step. Tier-0 free steps are synchronous (they
    * read the already-fetched body); tier-1/2 network steps (VIES,

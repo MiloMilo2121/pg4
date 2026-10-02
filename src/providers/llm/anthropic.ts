@@ -3,6 +3,8 @@ import type { LLMProvider, LLMCompletionRequest, LLMCompletionResult } from '../
 import { ProviderBlockError } from '../../types/providers';
 import { DEFAULTS } from '../../config/defaults';
 import { getEnv } from '../../config/env';
+import { samplingParams } from './model_capabilities';
+import { CALL_COST_EUR } from '../pricing';
 
 /**
  * Anthropic (Claude) — the default judge LLM for the judgment layer (L4/L5).
@@ -22,7 +24,7 @@ export class AnthropicProvider implements LLMProvider {
   readonly id = 'anthropic';
   readonly family = 'llm' as const;
   readonly tier = 2;
-  readonly costPerCallEur = 0.02;
+  readonly costPerCallEur = CALL_COST_EUR.anthropic;
 
   available(): boolean {
     const e = getEnv();
@@ -55,7 +57,7 @@ export class AnthropicProvider implements LLMProvider {
         body: JSON.stringify({
           model,
           max_tokens: req.max_tokens ?? DEFAULTS.llm.judgeMaxTokens,
-          temperature: req.temperature ?? DEFAULTS.llm.temperature,
+          ...samplingParams(model, req.temperature ?? DEFAULTS.llm.temperature),
           system: system || undefined,
           messages: [{ role: 'user', content: req.prompt }],
         }),

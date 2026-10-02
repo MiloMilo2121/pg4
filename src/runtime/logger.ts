@@ -7,7 +7,7 @@ const level = (process.env.LOG_LEVEL || 'info').toLowerCase();
 const format = (process.env.LOG_FORMAT || (process.env.NODE_ENV === 'production' ? 'json' : 'pretty')).toLowerCase();
 
 /**
- * Phase A.1 — persistent per-run log file.
+ * Persistent per-run log file.
  *
  * Every CLI run mirrors its full structured log (JSONL, one pino line per
  * event) to a file alongside the outputs, so a crashed overnight run leaves
@@ -122,9 +122,4 @@ export function bindRunLogFile(filePath: string): string | null {
 /** Active run-log path (null when disabled or not yet bound). */
 export function runLogPath(): string | null {
   return runFileStream.currentPath();
-}
-
-/** Create a child logger with a stable bound context (e.g. `{ stage: 'rdap' }`). */
-export function child(bindings: Record<string, unknown>): pino.Logger {
-  return logger.child(bindings);
 }

@@ -1,10 +1,10 @@
 /**
- * R13 — EU VIES VAT validation. Types + PURE format/checksum are the
+ * EU VIES VAT validation. Types + PURE format/checksum are the
  * default surface; the live network call (`checkVatViaVies`) is present
  * but is NEVER invoked by unit tests or by the disabled financial stage.
  * It is caller-gated and exercised only by the `RUN_SMOKE=1` smoke test.
  *
- * Ported from pg3's `enricher/core/financial/vies.ts`, but:
+ * Design notes:
  *   - the Italian checksum lives in `vat.ts` (single source of truth);
  *   - no decorator-based retry, no hidden global cache;
  *   - the "provisional valid on 5xx/unreachable" heuristic is preserved
@@ -13,6 +13,8 @@
 
 import { request } from 'undici';
 import { normalizeVatCode, isItalianVatCode, validateItalianVatChecksum } from './vat';
+import { classifyHttpFailure } from '../../types/providers';
+import { publicRegistryGuard, VIES, type EndpointGuard } from '../../runtime/endpoint_guard';
 
 export interface ViesInput {
   /** Raw or normalized VAT number (country code optional). */
@@ -73,23 +75,41 @@ export function preValidateVat(raw: string | null | undefined, countryCode = 'IT
 const VIES_BASE = 'https://ec.europa.eu/taxation_customs/vies/rest-api/ms';
 
 /**
+ * `userError` values where VIES did not check the number: the member-state
+ * service is down or VIES is shedding load. The body still says
+ * `isValid: false`, which is "unknown", not "invalid".
+ */
+const VIES_UNAVAILABLE = new Set([
+  'SERVICE_UNAVAILABLE',
+  'MS_UNAVAILABLE',
+  'TIMEOUT',
+  'GLOBAL_MAX_CONCURRENT_REQ',
+  'GLOBAL_MAX_CONCURRENT_REQ_TIME',
+  'MS_MAX_CONCURRENT_REQ',
+  'MS_MAX_CONCURRENT_REQ_TIME',
+  'IP_BLOCKED',
+]);
+
+/**
  * LIVE VIES validation. **Caller-gated** — not called by default tests or
  * by the disabled stage. Always runs the pure pre-check first (free); only
- * hits the network when the checksum passes.
+ * hits the network when the checksum passes, and only through the shared
+ * VIES rate limit and circuit breaker.
  *
  * Behaviour:
  *   - checksum fails            → `{ isValid:false, source:'checksum' }` (no call)
  *   - VIES 2xx & valid          → `{ isValid:true,  source:'vies', name, address }`
  *   - VIES 2xx & invalid        → `{ isValid:false, source:'vies' }`
  *   - VIES 4xx                   → `{ isValid:false, source:'vies' }`
- *   - VIES 5xx / network (IT)   → `{ isValid:true,  source:'provisional', provisional:true }`
- *   - VIES 5xx / network (other)→ `{ isValid:false, source:'vies', note:'vies_unreachable' }`
+ *   - VIES 5xx / network / busy / breaker open (IT)
+ *                                → `{ isValid:true,  source:'provisional', provisional:true }`
+ *   - same, other countries     → `{ isValid:false, source:'vies', note:'vies_unreachable' }`
  *
  * Never throws: failures degrade to a `ViesResult`.
  */
 export async function checkVatViaVies(
   input: ViesInput,
-  opts: { timeoutMs?: number } = {},
+  opts: { timeoutMs?: number; guard?: EndpointGuard } = {},
 ): Promise<ViesResult> {
   const timeoutMs = opts.timeoutMs ?? 10_000;
   const pre = preValidateVat(input.vatNumber, input.countryCode);
@@ -97,6 +117,13 @@ export async function checkVatViaVies(
 
   const { countryCode, number } = formatVatForVies(input.vatNumber, input.countryCode);
   const url = `${VIES_BASE}/${countryCode}/vat/${number}`;
+  const unchecked = (note: string): ViesResult =>
+    countryCode === 'IT'
+      ? { isValid: true, checked: false, source: 'provisional', provisional: true, note }
+      : { isValid: false, checked: false, source: 'vies', note };
+
+  const guard = opts.guard ?? publicRegistryGuard;
+  if (!(await guard.admit(VIES))) return unchecked('vies_circuit_open');
 
   try {
     const res = await request(url, {
@@ -107,28 +134,29 @@ export async function checkVatViaVies(
     const status = res.statusCode;
 
     if (status >= 200 && status < 300) {
-      const data = (await res.body.json()) as { isValid?: boolean; name?: string; address?: string };
+      const data = (await res.body.json()) as { isValid?: boolean; userError?: string; name?: string; address?: string };
+      if (data?.userError && VIES_UNAVAILABLE.has(data.userError)) {
+        guard.failed(VIES, /CONCURRENT|BLOCKED/.test(data.userError) ? 'rate_limit' : 'transport');
+        return unchecked(`vies_${data.userError.toLowerCase()}`);
+      }
+      guard.succeeded(VIES);
       if (data?.isValid === true) {
         return { isValid: true, checked: true, source: 'vies', name: data.name, address: data.address };
       }
       return { isValid: false, checked: true, source: 'vies' };
     }
 
-    if (status >= 400 && status < 500) {
-      await res.body.text().catch(() => undefined);
+    await res.body.text().catch(() => undefined);
+    if (status >= 400 && status < 500 && status !== 429) {
+      guard.succeeded(VIES);
       return { isValid: false, checked: true, source: 'vies', note: `vies_http_${status}` };
     }
 
-    await res.body.text().catch(() => undefined);
-    // 5xx — VIES is famously flaky. Accept provisionally for IT (checksum already OK).
-    if (countryCode === 'IT') {
-      return { isValid: true, checked: false, source: 'provisional', provisional: true, note: 'vies_unavailable' };
-    }
-    return { isValid: false, checked: false, source: 'vies', note: 'vies_unavailable' };
-  } catch {
-    if (countryCode === 'IT') {
-      return { isValid: true, checked: false, source: 'provisional', provisional: true, note: 'vies_unreachable' };
-    }
-    return { isValid: false, checked: false, source: 'vies', note: 'vies_unreachable' };
+    // 429 / 5xx — VIES is famously flaky. Accept provisionally for IT (checksum already OK).
+    guard.failed(VIES, classifyHttpFailure({ status }));
+    return unchecked('vies_unavailable');
+  } catch (err) {
+    guard.failed(VIES, classifyHttpFailure({ error: (err as Error).message }));
+    return unchecked('vies_unreachable');
   }
 }

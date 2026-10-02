@@ -13,6 +13,7 @@
  */
 import { getEnv } from '../../config/env';
 import { OpenAICompatibleProvider } from './openai_compatible';
+import { CALL_COST_EUR } from '../pricing';
 
 export const OpenAIProvider = () =>
   new OpenAICompatibleProvider({
@@ -21,7 +22,7 @@ export const OpenAIProvider = () =>
     apiKey: () => getEnv().OPENAI_API_KEY,
     model: () => getEnv().OPENAI_MODEL,
     enabled: () => getEnv().OPENAI_ENABLED === true,
-    costPerCallEur: 0.01,
+    costPerCallEur: CALL_COST_EUR.openai,
     roles: ['LLM_JUDGE', 'LLM_REASON', 'LLM_CHEAP', 'EMBEDDINGS'],
   });
 
@@ -32,7 +33,7 @@ export const DeepSeekProvider = () =>
     apiKey: () => getEnv().DEEPSEEK_API_KEY,
     model: () => getEnv().DEEPSEEK_MODEL,
     enabled: () => getEnv().DEEPSEEK_ENABLED === true,
-    costPerCallEur: 0.002,
+    costPerCallEur: CALL_COST_EUR.deepseek,
     roles: ['LLM_REASON', 'LLM_CHEAP'],
   });
 
@@ -43,7 +44,7 @@ export const ZhipuGlmProvider = () =>
     apiKey: () => getEnv().ZHIPU_API_KEY,
     model: () => getEnv().ZHIPU_MODEL,
     enabled: () => getEnv().ZHIPU_ENABLED === true,
-    costPerCallEur: 0.0003,
+    costPerCallEur: CALL_COST_EUR.zhipu_glm,
     roles: ['LLM_CHEAP'],
   });
 
@@ -54,7 +55,7 @@ export const KimiProvider = () =>
     apiKey: () => getEnv().KIMI_API_KEY,
     model: () => getEnv().KIMI_MODEL,
     enabled: () => getEnv().KIMI_ENABLED === true,
-    costPerCallEur: 0.001,
+    costPerCallEur: CALL_COST_EUR.kimi,
     roles: ['LLM_CHEAP', 'LLM_REASON'],
   });
 
@@ -65,6 +66,6 @@ export const PerplexityLlmProvider = () =>
     apiKey: () => getEnv().PERPLEXITY_API_KEY,
     model: () => getEnv().PERPLEXITY_MODEL,
     enabled: () => getEnv().PERPLEXITY_ENABLED === true,
-    costPerCallEur: 0.012,
+    costPerCallEur: CALL_COST_EUR.perplexity,
     roles: ['LLM_REASON'],
   });

@@ -5,8 +5,7 @@ import { parseArgs, optString, hasHelp, reportFatal } from './_args';
 import { UserError } from '../runtime/errors';
 
 /**
- * Phase D.3 — data-subject lookup (GDPR right-to-access / right-to-deletion
- * support).
+ * Data-subject lookup (GDPR right-to-access / right-to-deletion support).
  *
  *   pnpm run lookup -- --piva 01234567897
  *   pnpm run lookup -- --phone "+39 0422 000177"

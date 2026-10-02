@@ -8,7 +8,7 @@ import type { DeadProvider } from '../runtime/provider_health';
 /**
  * Dev seed — loads REAL free-gold output into a single-tenant in-memory store.
  *
- * Honest by construction: the default seed (r12) was enriched BEFORE the Phase-1
+ * Honest by construction: the default seed was enriched before the
  * free-gold extractor existed, so it carries website + phone but email / pec /
  * vat / social are EMPTY. That is the genuine "before" state — the dashboard's
  * enrich-field action then runs free-gold LIVE on the real sites and fills those
@@ -22,7 +22,8 @@ export interface SeedResult {
   loaded: number;
   rejected: number;
   providerDead: DeadProvider[];
-  ledgerTotalEur: number;
+  /** Total of the seed run's cost ledger; null when the seed has no ledger next to it. */
+  ledgerTotalEur: number | null;
   sourceFile: string;
 }
 
@@ -55,9 +56,10 @@ export async function loadSeed(repoRoot: string, seedFile: string = DEFAULT_SEED
 
   // Provider health from the seed run's real cost ledger (if present).
   let providerDead: DeadProvider[] = [];
-  let ledgerTotalEur = 0;
+  let ledgerTotalEur: number | null = null;
   const ledgerPath = abs.replace(/\.jsonl$/, '.cost-ledger.jsonl');
   if (fs.existsSync(ledgerPath)) {
+    ledgerTotalEur = 0;
     const byProvider: Record<string, { calls: number; cost_eur: number; success_rate: number; by_kind: Record<string, number> }> = {};
     for (const line of fs.readFileSync(ledgerPath, 'utf8').split('\n').filter(Boolean)) {
       let e: { provider?: string; cost_eur?: number; success?: boolean; kind?: string };

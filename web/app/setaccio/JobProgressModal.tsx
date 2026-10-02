@@ -1,9 +1,17 @@
 'use client';
 
-import type { CSSProperties } from 'react';
+import { useId, type CSSProperties } from 'react';
 import type { ViewProps } from './ctx';
 import { useJobPolling } from './jobs';
-import type { EnrichJob, JudgmentJob } from '../../lib/api';
+import type { EnrichJob, JudgmentJob, ScrapeJob } from '../../lib/api';
+import { EMPTY } from './helpers';
+import { Button } from '../ds/components/Button';
+import { Kicker } from '../ds/components/Kicker';
+import { Dialog, CloseButton } from './ui/Dialog';
+import { Pill, type PillTone } from './ui/Pill';
+import { Stat } from './ui/Stat';
+import { Bar } from './ui/Bar';
+import { EmptyState } from './ui/Callout';
 
 const KIND_LABEL: Record<string, string> = {
   enrich: 'Arricchimento',
@@ -11,23 +19,22 @@ const KIND_LABEL: Record<string, string> = {
   discovery: 'Scoperta footprint',
   collect_signals: 'Raccolta segnali',
   judge: 'Giudizio',
-  validate_export: 'Validazione & export',
+  validate_export: 'Validazione e export',
 };
 
-const STATE_STYLE: Record<string, CSSProperties> = {
-  queued: { background: 'var(--paper-3)', color: 'var(--ink-3)' },
-  running: { background: 'var(--accent-wash)', color: 'var(--accent)' },
-  filled: { background: 'var(--accent)', color: 'var(--white)' },
-  partial: { background: 'var(--accent-wash)', color: 'var(--accent)' },
-  failed: { background: 'var(--paper-2)', color: 'var(--ink-3)' },
-  not_found: { background: 'var(--paper-2)', color: 'var(--ink-3)' },
-  not_applicable: { background: 'var(--paper-2)', color: 'var(--ink-3)' },
+/** Per-cell / per-run engine state → pill tone. Failures read in status red. */
+const STATE_TONE: Record<string, PillTone> = {
+  queued: 'muted',
+  running: 'wash',
+  filled: 'solid',
+  done: 'solid',
+  partial: 'outline',
+  failed: 'ko',
+  error: 'ko',
+  not_found: 'muted',
+  not_applicable: 'muted',
 };
-const cellStyle = (s: string): CSSProperties => ({
-  fontSize: '.62rem', fontWeight: 600, padding: '3px 8px', borderRadius: 999,
-  textTransform: 'uppercase', letterSpacing: '.04em', whiteSpace: 'nowrap',
-  ...(STATE_STYLE[s] ?? STATE_STYLE.queued),
-});
+const toneOf = (s: string): PillTone => STATE_TONE[s] ?? 'muted';
 
 /**
  * Live progress for the active job (mounted whenever st.activeJob is set, so
@@ -35,6 +42,7 @@ const cellStyle = (s: string): CSSProperties => ({
  * A single GET /api/jobs/:id drives every kind; the body shape differs by kind.
  */
 export default function JobProgressModal({ st, set }: Pick<ViewProps, 'st' | 'set'>) {
+  const titleId = useId();
   const { job, status, terminal } = useJobPolling(st.activeJob);
   const kind = st.activeJob?.kind ?? 'enrich';
   if (!st.jobModalOpen) return null; // keep polling mounted upstream; just hide UI
@@ -42,108 +50,138 @@ export default function JobProgressModal({ st, set }: Pick<ViewProps, 'st' | 'se
   const hide = () => set({ jobModalOpen: false });
   const done = () => set({ jobModalOpen: false, activeJob: null });
 
-  const statusPill = (
-    <span style={cellStyle(terminal ? (status === 'done' ? 'filled' : 'failed') : 'running')}>
-      {status === 'done' ? 'Completato' : terminal ? 'Errore' : 'In corso…'}
-    </span>
-  );
+  const statusLabel = status === 'done' ? 'Completato' : status === 'partial' ? 'Parziale' : terminal ? 'Errore' : 'In corso';
+  const statusTone: PillTone = status === 'done' ? 'solid' : status === 'partial' ? 'outline' : terminal ? 'ko' : 'wash';
 
-  // enrich/judgment carry per-item rows; scrape is an opaque CLI (no items).
+  // enrich/judgment carry per-item rows; scrape carries one row per CLI run.
   const enrich = kind === 'enrich' ? (job as EnrichJob | undefined) : undefined;
   const judg = kind !== 'enrich' && kind !== 'scrape' ? (job as JudgmentJob | undefined) : undefined;
-  const scrapeAdded = kind === 'scrape' ? (job as { added?: number } | undefined)?.added : undefined;
+  const scrape = kind === 'scrape' ? (job as ScrapeJob | undefined) : undefined;
+  const scrapeAdded = scrape?.added ?? 0;
+  const scraped = scrape?.runs?.reduce((s, r) => s + (r.scraped ?? 0), 0) ?? 0;
+  const enriched = scrape?.runs?.reduce((s, r) => s + (r.enriched ?? 0), 0) ?? 0;
+  // null = a cost this server cannot measure; show it as unknown, never as €0.
+  const jobCost = kind === 'scrape' ? scrape?.costEur : enrich ? enrich.costEur : judg?.totalCostEur;
+
+  const scrapeText = terminal
+    ? status === 'done'
+      ? `Mappatura completata: ${scrapeAdded} aziende aggiunte al database.`
+      : status === 'partial'
+        ? `Mappatura parziale: ${scrapeAdded} aziende aggiunte con i dati raccolti prima dell'interruzione.`
+        : 'La mappatura si è interrotta. Riprova dal wizard.'
+    : scraped === 0
+      ? 'Sto avviando il browser e interrogando le fonti. Le aziende compaiono nel database man mano che arrivano; puoi chiudere questa finestra, il lavoro continua.'
+      : enriched === 0
+        ? 'Raccolta in corso: le aziende trovate entrano nel database mentre leggo le pagine.'
+        : 'Arricchimento in corso: verifico il sito di ogni azienda e ne estraggo i contatti.';
 
   return (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 210, background: 'rgba(33,27,20,.34)', backdropFilter: 'blur(6px)', WebkitBackdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 32 }}>
-      <div className="agfade ag-scroll" style={{ width: '100%', maxWidth: 720, maxHeight: '86vh', overflowY: 'auto', background: 'var(--paper)', borderRadius: 18, boxShadow: 'var(--shadow-modal)', display: 'flex', flexDirection: 'column' }}>
-        {/* header */}
-        <div style={{ padding: '20px 26px', borderBottom: '1px solid var(--line)', display: 'flex', alignItems: 'center', gap: 12 }}>
-          <div style={{ flex: 1 }}>
-            <span className="kicker">Job · {st.activeJob?.id?.slice(0, 8) ?? '—'}</span>
-            <h3 style={{ fontFamily: 'var(--serif)', fontSize: '1.4rem', fontWeight: 500, margin: '4px 0 0' }}>{KIND_LABEL[kind] ?? kind}</h3>
-          </div>
-          {statusPill}
-          <button onClick={hide} title="Chiudi (il job continua)" style={{ fontSize: '1.05rem', color: 'var(--ink-3)', padding: '4px 8px', cursor: 'pointer' }}>✕</button>
+    <Dialog onClose={hide} labelledBy={titleId} width={720}>
+      <div className="sx-dialog__head">
+        <div style={{ flex: 1 }}>
+          <Kicker>{`Job · ${st.activeJob?.id?.slice(0, 8) ?? EMPTY}`}</Kicker>
+          <h2 id={titleId} className="sx-dialog__title">{KIND_LABEL[kind] ?? kind}</h2>
         </div>
-
-        {/* body */}
-        <div style={{ padding: '22px 26px', flex: 1 }}>
-          {/* SCRAPE — opaque, indeterminate */}
-          {kind === 'scrape' && (
-            <div>
-              <p style={{ fontFamily: 'var(--serif)', fontSize: '1.02rem', color: 'var(--ink-2)', lineHeight: 1.6, marginBottom: 16 }}>
-                {terminal
-                  ? status === 'done'
-                    ? `Mappatura completata — ${scrapeAdded ?? 0} aziende aggiunte al database.`
-                    : 'La mappatura si è interrotta. Riprova dal wizard.'
-                  : 'Sto avviando il browser e interrogando le fonti. Può richiedere alcuni minuti; puoi chiudere questa finestra, il lavoro continua.'}
-              </p>
-              {!terminal && (
-                <div style={{ height: 7, borderRadius: 999, background: 'var(--paper-3)', overflow: 'hidden' }}>
-                  <div className="ag-indeterminate" style={{ height: '100%', width: '40%', background: 'var(--accent)', borderRadius: 999 }} />
-                </div>
-              )}
-              {terminal && status === 'done' && (
-                <button className="btn btn-solid" onClick={() => set({ jobModalOpen: false, activeJob: null, nav: 'aziende' })} style={{ marginTop: 6 }}>
-                  <span>Vedi le nuove aziende</span><span className="gl">→</span>
-                </button>
-              )}
-            </div>
-          )}
-
-          {/* ENRICH — per-company × per-field cells */}
-          {enrich && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {(enrich.items ?? []).slice(0, 60).map((it) => (
-                <div key={it.companyId} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 10, background: 'var(--paper-2)', border: '1px solid var(--line)' }}>
-                  <span style={{ fontSize: '.72rem', color: 'var(--ink-3)', fontFamily: 'var(--mono, monospace)', flex: 'none', width: 74 }}>{it.companyId.slice(0, 8)}</span>
-                  <span style={{ display: 'flex', gap: 6, flexWrap: 'wrap', flex: 1 }}>
-                    {Object.entries(it.cells).map(([field, c]) => (
-                      <span key={field} style={cellStyle(c.status)} title={c.value ? `${field}: ${c.value}${c.source ? ` (${c.source})` : ''}` : field}>
-                        {field}
-                      </span>
-                    ))}
-                  </span>
-                </div>
-              ))}
-              {(enrich.items?.length ?? 0) === 0 && <Empty label="In coda…" />}
-            </div>
-          )}
-
-          {/* JUDGMENT — per-company × per-section chips */}
-          {judg && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {(judg.items ?? []).slice(0, 60).map((it) => (
-                <div key={it.companyId} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 10, background: 'var(--paper-2)', border: '1px solid var(--line)' }}>
-                  <span style={{ fontSize: '.72rem', color: 'var(--ink-3)', fontFamily: 'var(--mono, monospace)', flex: 'none', width: 74 }}>{it.companyId.slice(0, 8)}</span>
-                  <span style={{ display: 'flex', gap: 6, flexWrap: 'wrap', flex: 1 }}>
-                    {Object.entries(it.sections).map(([name, s]) => (
-                      <span key={name} style={cellStyle(s.state)} title={s.summary ?? name}>{name}</span>
-                    ))}
-                  </span>
-                </div>
-              ))}
-              {(judg.items?.length ?? 0) === 0 && <Empty label="In coda…" />}
-            </div>
-          )}
-        </div>
-
-        {/* footer */}
-        <div style={{ padding: '14px 26px', borderTop: '1px solid var(--line)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span style={{ fontSize: '.74rem', color: 'var(--ink-3)' }}>
-            {kind === 'scrape' ? 'CLI di scraping' : `${(job as { items?: unknown[] } | undefined)?.items?.length ?? 0} aziende`} · costo €{(((job as { costEur?: number; totalCostEur?: number } | undefined)?.costEur ?? (job as { totalCostEur?: number } | undefined)?.totalCostEur) ?? 0).toFixed(3)}
-          </span>
-          {terminal ? (
-            <button className="btn btn-solid" onClick={done}><span>Chiudi</span></button>
-          ) : (
-            <button onClick={hide} style={{ fontSize: '.86rem', fontWeight: 600, color: 'var(--ink-2)', padding: '8px 12px', cursor: 'pointer' }}>Continua in background</button>
-          )}
-        </div>
+        <span role="status" aria-live="polite"><Pill tone={statusTone}>{statusLabel}</Pill></span>
+        <CloseButton onClick={hide} label="Nascondi (il job continua)" />
       </div>
-    </div>
+
+      <div className="sx-dialog__body">
+        {/* SCRAPE: opaque, indeterminate */}
+        {kind === 'scrape' && (
+          <div className="sx-stack">
+            <p className="sx-callout__text" style={{ marginTop: 0 }} aria-live="polite">{scrapeText}</p>
+            {scraped > 0 && (
+              <div className="sx-grid sx-grid--3 sx-grid--joined">
+                <Stat variant="value-top" size="sm" value={scraped} label="trovate" />
+                <Stat variant="value-top" size="sm" value={enriched} label="arricchite" />
+                <Stat variant="value-top" size="sm" value={scrapeAdded} label="nuove nel database" />
+              </div>
+            )}
+            {(scrape?.runs?.length ?? 0) > 1 && (
+              <div className="sx-list">
+                {scrape!.runs.map((r) => (
+                  <div key={`${r.category}·${r.province}`} className="sx-list__item">
+                    <Pill tone={toneOf(r.status)}>{r.status}</Pill>
+                    <span className="sx-list__main sx-note">{r.category} · {r.province}</span>
+                    {r.added !== undefined && <span className="sx-meta num">{r.added} nuove</span>}
+                  </div>
+                ))}
+              </div>
+            )}
+            {terminal && scrape?.error && <p className="sx-meta">{scrape.error}</p>}
+            {!terminal && <Bar label="Mappatura in corso" />}
+            {terminal && (status === 'done' || (status === 'partial' && scrapeAdded > 0)) && (
+              <div>
+                <Button glyph="→" onClick={() => set({ jobModalOpen: false, activeJob: null, nav: 'aziende' })}>Vedi le nuove aziende</Button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ENRICH: per-company × per-field cells */}
+        {enrich && (
+          <JobItems
+            items={(enrich.items ?? []).map((it) => ({
+              id: it.companyId,
+              cells: Object.entries(it.cells).map(([field, c]) => ({
+                key: field,
+                state: c.status,
+                title: c.value ? `${field}: ${c.value}${c.source ? ` (${c.source})` : ''}` : `${field}: ${c.status}`,
+              })),
+            }))}
+          />
+        )}
+
+        {/* JUDGMENT: per-company × per-section chips */}
+        {judg && (
+          <JobItems
+            items={(judg.items ?? []).map((it) => ({
+              id: it.companyId,
+              cells: Object.entries(it.sections).map(([name, s]) => ({ key: name, state: s.state, title: s.summary ?? `${name}: ${s.state}` })),
+            }))}
+          />
+        )}
+      </div>
+
+      <div className="sx-dialog__foot">
+        <span className="sx-meta">
+          {kind === 'scrape' ? 'CLI di scraping' : `${(enrich ?? judg)?.items?.length ?? 0} aziende`} · costo{' '}
+          <span className="num">{/* undefined = job not polled yet; null = the server cannot measure it. Neither is €0. */}
+            {jobCost === undefined ? 'in attesa' : jobCost === null ? 'non misurato' : `€${jobCost.toFixed(3).replace('.', ',')}`}</span>
+        </span>
+        {terminal ? (
+          <Button onClick={done} data-autofocus>Chiudi</Button>
+        ) : (
+          <Button variant="ghost" onClick={hide}>Continua in background</Button>
+        )}
+      </div>
+    </Dialog>
   );
 }
 
-function Empty({ label }: { label: string }) {
-  return <div style={{ padding: '28px 0', textAlign: 'center', fontSize: '.86rem', color: 'var(--ink-3)' }}>{label}</div>;
+interface JobItem {
+  id: string;
+  cells: { key: string; state: string; title: string }[];
+}
+
+function JobItems({ items }: { items: JobItem[] }) {
+  if (items.length === 0) return <EmptyState title="In coda" />;
+  return (
+    <div className="sx-stack" style={{ '--gap': '0.5rem' } as CSSProperties}>
+      {items.slice(0, 60).map((it) => (
+        <div key={it.id} className="mm-card mm-card--raised sx-row-flex" style={{ padding: '0.55rem 0.7rem', flexWrap: 'nowrap' }}>
+          <span className="sx-meta num" style={{ width: 74, flex: 'none' }}>{it.id.slice(0, 8)}</span>
+          <span className="sx-chips" style={{ gap: '0.35rem', flex: 1 }}>
+            {it.cells.map((c) => (
+              <Pill key={c.key} tone={toneOf(c.state)} title={c.title}>
+                {c.key}
+                <span className="sr-only">: {c.state}</span>
+              </Pill>
+            ))}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
 }

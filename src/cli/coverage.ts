@@ -2,11 +2,11 @@ import fs from 'fs';
 import path from 'path';
 import { stringify } from 'csv-stringify/sync';
 import { parseArgs, reqString, optString, hasHelp, reportFatal } from './_args';
-import type { Lead } from '../types/lead';
-import { readCsvAsLeads } from '../io/csv_reader';
 import { buildCoverageReport } from '../coverage/coverage_engine';
 import type { CoverageReport, CoverageCell, RegionRollup } from '../coverage/coverage_engine';
 import { buildBacklog } from '../coverage/backlog';
+import { suppressionForCommand } from '../compliance/suppression';
+import { loadLeadFiles } from '../io/lead_files';
 
 /**
  * `pnpm run coverage -- --input output/campaign_enriched.csv --out output/coverage`
@@ -19,23 +19,6 @@ import { buildBacklog } from '../coverage/backlog';
  *
  * --input accetta CSV o JSONL (enriched), ripetibile via virgola.
  */
-
-async function loadLeads(inputs: string[]): Promise<Lead[]> {
-  const leads: Lead[] = [];
-  for (const input of inputs) {
-    if (!fs.existsSync(input)) throw new Error(`input non trovato: ${input}`);
-    if (/\.jsonl$/i.test(input)) {
-      for (const line of fs.readFileSync(input, 'utf8').split('\n')) {
-        const t = line.trim();
-        if (!t) continue;
-        try { leads.push(JSON.parse(t) as Lead); } catch { /* salta riga malformata */ }
-      }
-    } else {
-      for await (const { lead } of readCsvAsLeads(input)) leads.push(lead);
-    }
-  }
-  return leads;
-}
 
 const CELL_COLUMNS = [
   'macroArea', 'region', 'province', 'division', 'atecoLabel', 'section',
@@ -96,7 +79,10 @@ async function main(): Promise<number> {
   const msp = optString(args, 'min-sample-province');
   if (msp) configOverride.minSampleProvince = Number(msp);
 
-  const leads = await loadLeads(inputs);
+  // A suppressed company is not a lead we have: counting it would mark its
+  // cell as covered while delivery can never use it. Report-only, so the list
+  // is looked up next to the (first) enriched input rather than the report.
+  const { kept: leads, suppressed } = suppressionForCommand(args.flags, inputs[0]).apply((await loadLeadFiles(inputs)).leads);
   const report = buildCoverageReport(leads, { config: configOverride });
   const backlog = buildBacklog(report);
 
@@ -130,7 +116,7 @@ async function main(): Promise<number> {
   // sommario a video
   const s = report.summary;
   process.stdout.write([
-    `\nCoverage gap map — ${leads.length} lead letti`,
+    `\nCoverage gap map — ${leads.length} lead letti${suppressed > 0 ? ` (${suppressed} esclusi dalla suppression list)` : ''}`,
     `  in scope (Nord+classificate): ${s.inScope}  ·  fuori Nord: ${s.outOfScope}  ·  non classificate: ${s.unclassified}`,
     `  celle: ${s.cells} (universo noto ${s.cellsUniverseKnown}, ignoto ${s.cellsUniverseUnknown})`,
     s.usesSampleUniverse ? `  ⚠ universo: usa righe SAMPLE (placeholder) — sostituisci con export ISTAT reale per numeri di produzione` : `  universo: ${report.generated.universeSource}`,
@@ -154,6 +140,8 @@ Flags:
   --target-coverage <0..1>     Frazione di copertura target (default 0.6).
   --min-sample-region <n>      Soglia campione regione x divisione (default 30).
   --min-sample-province <n>    Soglia campione provincia x divisione (default 15).
+  --suppression-list <path>    CSV do-not-contact (altrimenti SUPPRESSION_LIST, poi
+                               suppression.csv accanto al primo --input): aziende escluse dal conteggio.
 `);
 }
 

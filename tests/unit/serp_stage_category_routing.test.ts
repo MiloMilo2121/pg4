@@ -1,5 +1,5 @@
 /**
- * R14 — SerpStage category routing (integration with the real ProviderRouter).
+ * SerpStage category routing (integration with the real ProviderRouter).
  *
  * Stub SERP providers all return [] so the free pass ends empty (no verify, no
  * network). We assert WHICH providers the router actually called, proving the
@@ -32,7 +32,7 @@ class StubSerp implements SerpProvider {
   }
 }
 
-// Gate-0: dns_mx + crtsh were deleted from the catalog. The remaining free
+// dns_mx + crtsh were deleted from the catalog. The remaining free
 // SERP set is ddg_lite (gated off for real-estate) + bing_html.
 function freeStubs() {
   return {
@@ -58,7 +58,7 @@ afterEach(() => {
   resetEnvCache();
 });
 
-describe('SerpStage — R14 category routing', () => {
+describe('SerpStage — category routing', () => {
   it('real-estate: does NOT call ddg_lite, DOES call bing_html', async () => {
     const s = freeStubs();
     const breaker = new CircuitBreaker();

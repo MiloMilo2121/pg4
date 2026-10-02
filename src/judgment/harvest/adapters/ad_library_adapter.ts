@@ -2,16 +2,23 @@ import type { Lead } from '../../../types/lead';
 import type { Signal } from '../../../types/judgment';
 import { getEnv } from '../../../config/env';
 import type { SourceAdapter, HarvestContext, HarvestResult } from '../source_harvest';
-import { SOURCE_TTL_DAYS } from '../routing';
+import { SOURCE_TTL_DAYS } from '../source_ttl';
 
 /**
- * Ad-library SourceAdapter — Meta Ad Library / Google Ads Transparency presence
- * (§3.11). Axis B. Disabled by default (ADLIB_ENABLED).
+ * Meta Graph API version for the Ad Library. Versions expire ~2 years after
+ * release (v21.0 expires 2027-01-21); v26.0 is the latest as of 2026-09-28.
+ * Override with META_GRAPH_API_VERSION to move without a code change.
+ */
+const GRAPH_API_VERSION = process.env.META_GRAPH_API_VERSION?.trim() || 'v26.0';
+
+/**
+ * Ad-library SourceAdapter — Meta Ad Library / Google Ads Transparency presence.
+ * Axis B. Disabled by default (ADLIB_ENABLED).
  *
  * Special three-state nuance: the public ad libraries are AUTHORITATIVE, so a
  * successful query that returns NO active ads is a legitimate `confirmed_absent`
  * (and, for a strong-product company, a key "unmonetized potential" target
- * signal — §3.11.2). Unavailable/failed query → ok:false → `unknown`.
+ * signal). Unavailable/failed query → ok:false → `unknown`.
  *
  * SHAPE STATUS: endpoint/response PENDING live verification; parses defensively.
  */
@@ -50,7 +57,7 @@ export class AdLibrarySourceAdapter implements SourceAdapter {
       limit: '25',
       access_token: e.ADLIB_API_KEY ?? '',
     });
-    const url = `https://graph.facebook.com/v21.0/ads_archive?${params.toString()}`;
+    const url = `https://graph.facebook.com/${GRAPH_API_VERSION}/ads_archive?${params.toString()}`;
     const body = await ctx.fetcher(url);
     if (body === undefined) return base;
     let count: number | undefined;

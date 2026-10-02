@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { normalizePhoneE164, normalizeLeadPhone } from '../../src/discovery/phone';
 
-describe('normalizePhoneE164 — Phase C.2', () => {
+describe('normalizePhoneE164', () => {
   it('landline with spaces → +39 keeping the leading 0', () => {
     expect(normalizePhoneE164('0422 000177')).toEqual({ e164: '+390422000177', kind: 'landline' });
   });
@@ -44,7 +44,7 @@ describe('normalizePhoneE164 — Phase C.2', () => {
   });
 });
 
-describe('normalizeLeadPhone — Phase C.2', () => {
+describe('normalizeLeadPhone', () => {
   it('moves the original to phone_raw and replaces phone with E.164', () => {
     const lead = { phone: '0422 000177' };
     normalizeLeadPhone(lead);

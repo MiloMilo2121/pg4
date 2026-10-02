@@ -77,7 +77,7 @@ describe('CircuitBreaker', () => {
     expect(cb.allow('serper')).toBe(true);
   });
 
-  it('Phase D: timeout failures count as half-weight', () => {
+  it('timeout failures count as half-weight', () => {
     // 5 timeouts × 0.5 = 2.5 (< threshold 3) → still closed.
     const cb = new CircuitBreaker({ failureThreshold: 3, windowMs: 60_000, cooldownMs: 5_000 });
     for (let i = 0; i < 5; i++) cb.recordFailure('serper', 'timeout');
@@ -87,7 +87,7 @@ describe('CircuitBreaker', () => {
     expect(cb.allow('serper')).toBe(false);
   });
 
-  it('Phase F.2: direct_fetch loose config tolerates 14 transport failures before tripping', () => {
+  it('direct_fetch loose config tolerates 14 transport failures before tripping', () => {
     // Mirror of the catalog config used in src/providers/provider_catalog.ts:
     //   failureThreshold: 15, windowMs: 60_000, cooldownMs: 30_000.
     // Default config trips at 5; the loose config should tolerate
@@ -100,7 +100,7 @@ describe('CircuitBreaker', () => {
     expect(cb.allow('direct_fetch')).toBe(false); // now tripped at 15
   });
 
-  it('Phase F.2: direct_fetch loose config recovers fast (30 s cooldown)', () => {
+  it('direct_fetch loose config recovers fast (30 s cooldown)', () => {
     let now = 1000;
     const cb = new CircuitBreaker({}, { now: () => now });
     cb.configure('direct_fetch', { failureThreshold: 5, windowMs: 60_000, cooldownMs: 30_000 });
@@ -110,7 +110,7 @@ describe('CircuitBreaker', () => {
     expect(cb.allow('direct_fetch')).toBe(true); // half_open after 30 s
   });
 
-  it('Phase D: full-weight (block / rate_limit) trips at threshold', () => {
+  it('full-weight (block / rate_limit) trips at threshold', () => {
     const cb = new CircuitBreaker({ failureThreshold: 3, windowMs: 60_000, cooldownMs: 5_000 });
     cb.recordFailure('bing', 'block');
     cb.recordFailure('bing', 'rate_limit');

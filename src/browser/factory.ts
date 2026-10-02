@@ -4,6 +4,7 @@ import type { Browser, BrowserContext, Page } from 'playwright';
 import { logger } from '../runtime/logger';
 import { DEFAULTS } from '../config/defaults';
 import { getEnv } from '../config/env';
+import { CHROME_MAJOR } from '../config/browser_versions';
 
 /**
  * Single-page Playwright session for live scraping.
@@ -13,17 +14,16 @@ import { getEnv } from '../config/env';
  * so cookies / consent state persist. The Pool is for concurrent short-
  * lived URL checks during enrichment.
  *
- * Phase 4 (live PG + Maps scraping) uses BrowserFactory; later
- * enrichment phases will compose with a separate BrowserPool.
+ * Live PG + Maps scraping uses BrowserFactory; concurrent enrichment
+ * composes with a separate BrowserPool.
  *
  * Configuration:
  *   - Italian UA / locale / timezone
- *   - Persistent storage state under `pg4/.browser-state/<id>` (or a
+ *   - Persistent storage state under `<repo>/.browser-state/<id>` (or a
  *     custom path via `stateDir`)
  *   - Proactive restart every N navigations (defends against memory
  *     creep + accumulated WAF state)
  *   - Configurable headless / timeouts via DEFAULTS / env / opts
- *   - No Patchright import unless `PATCHRIGHT_ENABLED=true` in env.
  */
 
 export interface BrowserFactoryOptions {
@@ -38,13 +38,16 @@ export interface BrowserFactoryOptions {
 }
 
 const IT_USER_AGENT =
-  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
+  `Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${CHROME_MAJOR}.0.0.0 Safari/537.36`;
 
 export class BrowserFactory {
   private browser: Browser | null = null;
   private context: BrowserContext | null = null;
   private page: Page | null = null;
+  /** Navigations in the current browser session; drives the restart cadence. */
   private navCount = 0;
+  /** Navigations across all sessions, for the run summary. */
+  private totalNavigations = 0;
   private readonly opts: Required<BrowserFactoryOptions>;
 
   constructor(opts: BrowserFactoryOptions = {}) {
@@ -63,7 +66,7 @@ export class BrowserFactory {
   /** Lazily create / reuse the Chromium context + page. */
   async getPage(): Promise<Page> {
     if (this.page && !this.page.isClosed()) {
-      if (this.navCount > 0 && this.navCount % this.opts.restartEvery === 0) {
+      if (this.navCount >= this.opts.restartEvery) {
         logger.info({ navCount: this.navCount }, '[BrowserFactory] proactive restart');
         await this.close();
       } else {
@@ -76,16 +79,18 @@ export class BrowserFactory {
   /** Mark a navigation as completed. Used by call sites to drive restarts. */
   noteNavigation(): void {
     this.navCount += 1;
+    this.totalNavigations += 1;
   }
 
   /**
    * Read-only diagnostic snapshot of the factory state. Useful for tests
    * and for the CLI to log before/after a long batch.
    */
-  describe(): { id: string; navCount: number; restartEvery: number; headless: boolean; stateDir: string } {
+  describe(): { id: string; navCount: number; totalNavigations: number; restartEvery: number; headless: boolean; stateDir: string } {
     return {
       id: this.opts.id,
       navCount: this.navCount,
+      totalNavigations: this.totalNavigations,
       restartEvery: this.opts.restartEvery,
       headless: this.opts.headless,
       stateDir: this.opts.stateDir,
@@ -110,20 +115,21 @@ export class BrowserFactory {
 
   // ---- internal ----
   private async spawn(): Promise<Page> {
-    const env = getEnv();
-    // Lazy-load playwright/patchright so the import doesn't slow down
-    // unrelated CLI commands (typecheck, fixture parse, etc).
-    const driver = env.PATCHRIGHT_ENABLED
-      ?  
-        await dynamicImport('patchright').catch(() => null)
-      : await dynamicImport('playwright');
-    if (!driver) throw new Error('BrowserFactory: playwright driver not loadable');
-    const chromium = (driver as { chromium: typeof import('playwright').chromium }).chromium;
+    // A crashed page reaches here without the proactive-restart close(), and
+    // its browser process is still alive: close it or every crash leaks one.
+    if (this.browser || this.context) await this.close();
+    // The restart cadence counts navigations of this session. Keeping the old
+    // count would leave it on a restart boundary, so while navigations keep
+    // failing (noteNavigation is never called) every getPage() would relaunch.
+    this.navCount = 0;
+    // Lazy-load playwright so the import doesn't slow down unrelated CLI
+    // commands (typecheck, fixture parse, etc).
+    const { chromium } = await import('playwright');
 
-    // Phase F finding — Playwright's default SIGINT handler closes the
-    // browser and calls process.exit(130), pre-empting pg4's graceful
+    // Playwright's default SIGINT handler closes the
+    // browser and calls process.exit(130), pre-empting the graceful
     // drain (partial outputs were never emitted, the lock was left on
-    // disk). pg4's lifecycle owns shutdown: the interrupt handler aborts
+    // disk). The pipeline lifecycle owns shutdown: the interrupt handler aborts
     // the comuni/page loops, the pipeline emits partial outputs, releases
     // the lock and exits 130 itself. handleSIGTERM is disabled for the
     // same reason; SIGHUP keeps Playwright's default (terminal close is
@@ -163,15 +169,4 @@ export class BrowserFactory {
       logger.warn({ err: (err as Error).message }, '[BrowserFactory] failed to save session state');
     }
   }
-}
-
-/**
- * Lazy-load the browser driver (playwright, or patchright when enabled) so the
- * offline paths never pay for it. A plain dynamic import: under this repo's
- * CommonJS output it compiles to `require`, which both drivers support — the
- * old `new Function('return import(s)')` trick broke under vitest's VM
- * ("A dynamic import callback was not specified").
- */
-async function dynamicImport(name: string): Promise<unknown> {
-  return import(name);
 }

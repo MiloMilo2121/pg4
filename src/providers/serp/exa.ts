@@ -3,6 +3,7 @@ import type { SerpProvider, SerpResult } from '../../types/providers';
 import { ProviderBlockError } from '../../types/providers';
 import { DEFAULTS } from '../../config/defaults';
 import { getEnv } from '../../config/env';
+import { CALL_COST_EUR } from '../pricing';
 
 /**
  * Exa — paid neural SERP fallback for discovery. Tier 2 / paid, OFF by default.
@@ -12,7 +13,7 @@ export class ExaProvider implements SerpProvider {
   readonly id = 'exa';
   readonly family = 'serp' as const;
   readonly tier = 2;
-  readonly costPerCallEur = 0.005;
+  readonly costPerCallEur = CALL_COST_EUR.exa;
 
   available(): boolean {
     const e = getEnv();

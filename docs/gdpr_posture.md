@@ -41,7 +41,7 @@ test, rests with the operator (see §5).
 
 | mechanism | how | where |
 |---|---|---|
-| **Suppression list** (do-not-contact / objection) | CSV `phone,vat,reason,date`; flag `--suppression-list`, env `SUPPRESSION_LIST`, or `suppression.csv` auto-discovered next to the output. Matching leads are DROPPED from scrape and enrich, and counted in the run record. | `src/compliance/suppression.ts` |
+| **Suppression list** (do-not-contact / objection) | CSV `phone,vat,email,reason,date`; flag `--suppression-list`, env `SUPPRESSION_LIST`, or `suppression.csv` auto-discovered next to the output (next to the input for coverage/benchmark). A phone or VAT match DROPS the company from scrape, enrich, run, judge, coverage and benchmark, counted in the run record. An email match removes that address (email, inferred email, PEC) from every output, whatever its source. | `src/compliance/suppression.ts` |
 | **Retention** | `--retention-days N` / env `RETENTION_DAYS`: at the start of a run, deletes artifacts older than N days in the output dir. Always protected: `_runs.jsonl`, `suppression.csv`, `*.lock`. Default: OFF (operator decision). | `src/compliance/retention.ts` |
 | **Record of processing (Art. 30 support)** | `_runs.jsonl`: one record per run with command, arguments, timestamp, counts, outcome. Append-only, never deleted by retention. | `src/runtime/run_record.ts` |
 | **Right-to-access / deletion lookup** | `pnpm run lookup -- --piva X | --phone Y`: scans all outputs and reports file+line where the data subject appears. Deletion stays manual BY DESIGN (silently rewriting artifacts already delivered would put them out of sync with the copies held by clients). | `src/cli/lookup.ts` |

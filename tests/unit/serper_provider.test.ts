@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { SerperProvider } from '../../src/providers/serp/serper';
 
 /**
- * Phase G — SerperProvider unit tests. No network: all tests target
+ * SerperProvider unit tests. No network: all tests target
  * the static `parseOrganic` parser and the `available()` gate.
  *
  * Live HTTP path is exercised in the smoke suite (RUN_SMOKE=1)
@@ -19,7 +19,7 @@ describe('SerperProvider — invariants', () => {
   });
 });
 
-describe('SerperProvider — Phase G.1 error classification', () => {
+describe('SerperProvider — error classification', () => {
   // We can't easily mock undici.request without DI, but the
   // observable invariant we want to pin is: parseOrganic handles all
   // shapes safely. The router-level breaker behaviour is covered by

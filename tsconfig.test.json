@@ -1,0 +1,11 @@
+{
+  // Tests run through vitest's transpile-only pipeline, which never
+  // typechecks. This config makes `pnpm typecheck` cover them too.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "rootDir": "."
+  },
+  "include": ["src/**/*", "tools/**/*", "tests/**/*"],
+  "exclude": ["node_modules", "dist"]
+}

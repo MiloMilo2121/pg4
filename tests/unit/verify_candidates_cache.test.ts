@@ -1,12 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import { verifyCandidates } from '../../src/enrichment/stages/verify_candidates';
+import { verifyCandidates } from '../../src/enrichment/website/verify_candidates';
 import { ProviderRouter } from '../../src/providers/provider_router';
 import { CostLedger } from '../../src/runtime/cost_ledger';
 import type { HttpProvider, HttpFetchResult } from '../../src/types/providers';
 import type { Lead } from '../../src/types/lead';
 
 /**
- * R6.1 — verifyCandidates per-lead fetch cache.
+ * verifyCandidates per-lead fetch cache.
  *
  * The Liviana regression in p_recal_pd_free showed PgDetailStage and
  * HyperGuesser fetching the same flaky host within seconds and both
@@ -47,7 +47,7 @@ const NORM = {
   raw: {} as Lead,
 };
 
-describe('verifyCandidates fetchCache (R6.1)', () => {
+describe('verifyCandidates fetchCache', () => {
   it('caches a SUCCESSFUL fetch — second call to same URL skips the network', async () => {
     const ledger = new CostLedger();
     const http = new CountingHttp({

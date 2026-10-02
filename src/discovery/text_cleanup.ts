@@ -1,7 +1,7 @@
 /**
  * Conservative text cleanup for parsed lead fields.
  *
- * The Phase 4.3 Belluno canary surfaced at least one address rendered as
+ * A Belluno canary surfaced at least one address rendered as
  *   "Piazza Libert��, 15"
  *   "Piazza Libert¿¿, 15"
  * — replacement-looking mojibake produced when the upstream HTML decoder

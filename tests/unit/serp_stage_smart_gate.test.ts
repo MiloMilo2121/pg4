@@ -10,11 +10,11 @@ import type {
 } from '../../src/types/providers';
 
 /**
- * R4 — SmartSerperGate × SerpStage integration.
+ * SmartSerperGate × SerpStage integration.
  *
  * The gate is the EARLIER veto layer in front of the paid pass.
  * These tests prove that when the gate denies, no paid SERP call is
- * issued — which is the load-bearing behaviour of R4 (precision
+ * issued — which is the load-bearing behaviour of the gate (precision
  * over recall, "Serper bisturi non rete da pesca").
  */
 

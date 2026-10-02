@@ -3,15 +3,16 @@ import path from 'path';
 import { logger } from '../runtime/logger';
 
 /**
- * Phase D.2 — data retention enforcement.
+ * Data retention enforcement.
  *
  * When `--retention-days N` (or env `RETENTION_DAYS`) is set, output
  * artifacts older than N days are deleted at run start. Default: UNSET —
  * nothing is ever deleted (conservative; the operator must opt in, and
  * the chosen period is a GDPR decision documented in gdpr_posture.md).
  *
- * Scope: data artifacts only (*.csv, *.jsonl, *.log.jsonl, *.checkpoint*)
- * in the OUTPUT DIRECTORY of the current run. Never touched:
+ * Scope: data artifacts only — *.csv, *.jsonl (including *.log.jsonl) and
+ * *.json (checkpoints and the coverage/completion/recovery manifests) — in the
+ * OUTPUT DIRECTORY of the current run. Never touched:
  *   - `_runs.jsonl`        (audit trail — legal record of processing)
  *   - `suppression.csv`    (do-not-contact list must outlive the data)
  *   - `*.lock`             (concurrency control)

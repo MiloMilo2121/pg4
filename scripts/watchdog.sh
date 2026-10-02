@@ -15,6 +15,12 @@ if [ "${PG4_CAFFEINATED:-}" != "1" ] && command -v caffeinate >/dev/null 2>&1; t
   exec caffeinate -i bash "${BASH_SOURCE[0]}" "$@"
 fi
 
+# DEPRECATED (Fase 5): production runs on the systemd units in deploy/
+# (Opzione A in docs/VPS_RUNBOOK.md). This script is kept for one production
+# verification cycle alongside systemd, then removed — do not point new
+# systemd units at it.
+echo "[watchdog] DEPRECATED: use deploy/pg4-campaign.service + timer instead (see docs/VPS_RUNBOOK.md)" >&2
+
 OUT="${OUTDIR:-output/recall}"; mkdir -p "$OUT"
 CHECK_EVERY="${CHECK_EVERY:-60}"
 PROVINCES=("$@"); [ ${#PROVINCES[@]} -eq 0 ] && PROVINCES=(PD VR VI VE TV RO BL)
@@ -43,7 +49,7 @@ all_cells_done() {
   local prov slug
   for prov in "${PROVINCES[@]}"; do
     for slug in "${SLUGS[@]}"; do
-      pnpm exec tsx src/scripts/verify_completion.ts "$OUT/${slug}_${prov}_raw.csv" >/dev/null 2>&1 || return 1
+      pnpm exec tsx src/cli/verify_completion.ts "$OUT/${slug}_${prov}_raw.csv" >/dev/null 2>&1 || return 1
     done
   done
   return 0

@@ -1,7 +1,7 @@
 import type { JudgmentConfig } from './types';
 
 /**
- * judgment_config v0 — the SUBSTANTIVE deliverable (plan §4bis).
+ * judgment_config v0 — the SUBSTANTIVE deliverable.
  *
  * CRETA-LOGICA: every rubric/cause/disqualifier/lever/archetype/trap below is
  * TRANSCRIBED from the internal sales-force ontology (v2, not published), each
@@ -10,13 +10,13 @@ import type { JudgmentConfig } from './types';
  *
  * CRETA-NUMERI: only `thresholds` and the `*Weights` priors are numeric. v2 is
  * non-numeric (Caveat 1); these are conservative defaults to be tuned on the
- * golden set (§15). Changing them = a new config version, NEVER a migration.
+ * golden set. Changing them = a new config version, NEVER a migration.
  */
 export const JUDGMENT_CONFIG_V0: JudgmentConfig = {
   version: '2026.06-a',
   ontologyVersion: 'v2',
 
-  // §5.1 — order of questions (A via third-party proxies → B per surface/state → GAP).
+  // Order of questions (A via third-party proxies → B per surface/state → GAP).
   questionOrder: [
     'A: quali tracce di forza esistono FUORI dai canali owned? (registro, brevetti/marchi, premi, recensioni spontanee, stampa, fiere, associazioni, distribuzione, export, anzianità, dimensione)',
     'A: differenziazione nominabile (POD)? moat (VRIO/Morningstar)? narrativa con tracce esterne? pricing power osservabile? dominanza di nicchia?',
@@ -24,27 +24,26 @@ export const JUDGMENT_CONFIG_V0: JudgmentConfig = {
     'GAP: A alto e B basso? quanto ampio rispetto alla mediana di categoria (§1.4)? traiettoria (§1.5)? causa (§4.4)? supera i disqualificatori (§4.5)? quale leva (Parte VII)?',
   ],
 
-  // §5.4 — golden rule, verbatim in the GAP prompt.
+  // Golden rule, verbatim in the GAP prompt.
   goldenRule:
     'Misura A prevalentemente con fonti terze/esterne; misura B con il patrimonio owned e i canali presidiati; ' +
     'leggi sempre rispetto alla categoria e alla traiettoria; pondera B per modello di business; cerca il GAP ' +
     '(A alto − B basso), poi qualificane la causa e applica i disqualificatori; diffida dei numeri gonfiabili e ' +
     'dei bei contenitori vuoti; non scambiare mai il silenzio digitale per debolezza di prodotto.',
 
-  // §1.4
+  // No signal is strong or weak in absolute terms — only relative to the
+  // category median. Benchmarks are category-relative, never absolute.
   categoryRelativity:
     'Nessun segnale è forte/debole in assoluto: solo rispetto alla mediana della categoria. Misura ogni azienda come ' +
     'SCARTO dal benchmark di categoria (pavimento/soffitto). Il target ideale ha A nettamente sopra la mediana e B ' +
     'nettamente sotto. La lista fornisce il benchmark gratis: le aziende mature definiscono il soffitto di B possibile.',
 
-  // §1.5
   trajectory:
     'Leggi entrambi gli assi come traiettoria, non fotografia. A: delta registro (dipendenti/fatturato/export negli anni), ' +
     'brevetti/premi recenti vs fermi. B: recency (sito/social/recensioni/ads). A-alto-stabile+B-basso = target classico; ' +
     'A-in-crescita+B-basso = alto potenziale; A-in-declino+B-basso = cautela (il silenzio può essere sintomo, non omissione).',
 
   judgeA: {
-    // §2.1–2.7
     subdims: [
       {
         dim: '2.1',
@@ -161,7 +160,6 @@ export const JUDGMENT_CONFIG_V0: JudgmentConfig = {
         thirdPartySources: ['albi premi', 'registri delle associazioni', 'archivi stampa', 'cataloghi espositori delle fiere'],
       },
     ],
-    // §2.8.1–2.8.5
     modelDeclination: [
       {
         model: 'B2B_manufacturing',
@@ -207,7 +205,6 @@ export const JUDGMENT_CONFIG_V0: JudgmentConfig = {
   },
 
   judgeB: {
-    // §3.1–3.15
     surfaces: [
       { surface: '3.1', name: 'Sito web', ref: '§3.1', excellence: 'value proposition immediata (grunt test), design coerente, prove/testimonianze, CTA e percorso di conversione, multilingua, veloce/mobile-first, aggiornato', mediocrity: 'sito esistente ma messaggio confuso/generico, gergo, prove assenti, CTA deboli, lento, contenuti datati', absence: 'nessun sito; oppure non aggiornato da anni, link rotti, copyright datato, vetrina ferma' },
       { surface: '3.2', name: 'SEO e visibilità organica', ref: '§3.2', excellence: 'presente per keyword di CATEGORIA e di brand; contenuti/risorse di valore; autorevolezza', mediocrity: 'trovabile solo per il nome esatto del brand; invisibile sulle keyword di categoria', absence: 'invisibile anche sul proprio nome; nessun contenuto indicizzabile', axisNote: 'Forte ma SEO-invisibile su keyword di categoria = classico segnale di GAP.' },
@@ -225,7 +222,7 @@ export const JUDGMENT_CONFIG_V0: JudgmentConfig = {
       { surface: '3.14', name: 'Fiere ed eventi (proiezione digitale)', ref: '§3.14', excellence: 'partecipazione a fiere di prestigio + forte proiezione digitale (pre/durante/post)', mediocrity: 'partecipazione SENZA alcuna eco digitale — firma diagnostica A alto / B basso', absence: 'né presenza fieristica né eco', axisNote: 'IBRIDO: partecipazione = A (§2.7); eco digitale = B.' },
       { surface: '3.15', name: 'Coerenza cross-canale e identità di marca', ref: '§3.15', excellence: 'identità visiva/messaggio/tono coerenti su tutti i canali; una voce riconoscibile', mediocrity: 'coerenza parziale; alcuni canali allineati, altri no', absence: 'frammentazione totale; canali che sembrano di aziende diverse' },
     ],
-    // Brief Appendice A — website rubric (two lenses, kept distinct).
+    // Website rubric — two lenses, kept distinct.
     websiteRubric: {
       ref: 'Brief Appendice A (+ §3.1)',
       validityLens: [
@@ -251,7 +248,6 @@ export const JUDGMENT_CONFIG_V0: JudgmentConfig = {
         'Funzione transattiva: presenza/qualità di e-commerce o richiesta preventivo, se pertinente',
       ],
     },
-    // §3.16
     transversalCriteria: [
       { name: 'Chiarezza', check: 'si capisce subito cosa, per chi, perché conta? (grunt test)' },
       { name: 'Distintività', check: 'è diverso e riconoscibile rispetto ai concorrenti? (POD)' },
@@ -260,7 +256,7 @@ export const JUDGMENT_CONFIG_V0: JudgmentConfig = {
       { name: 'Qualità del copy', check: 'linguaggio del cliente, evita gergo e claim vuoti?' },
       { name: 'Prova/credibilità', check: 'case study, testimonianze, dati, validazione di terzi?' },
     ],
-    // §3.0.2 priors (CRETA-NUMERI). 0..1 salience per surface key, per model.
+    // Per-model surface salience priors (CRETA-NUMERI). 0..1 per surface key.
     modelWeights: [
       { model: 'B2B_manufacturing', ref: '§3.0.2', weights: { '3.8': 1.0, '3.1': 1.0, '3.2': 0.9, '3.14': 0.9, '3.4': 0.8, '3.13': 0.8, '3.7': 0.6, '3.15': 0.6, '3.11': 0.5, '3.12': 0.5, '3.3': 0.5, '3.5': 0.4, '3.9': 0.3, '3.10': 0.3, '3.6': 0.2 } },
       { model: 'B2C_product', ref: '§3.0.2', weights: { '3.5': 1.0, '3.4': 1.0, '3.9': 0.9, '3.11': 0.9, '3.3': 0.8, '3.10': 0.8, '3.1': 0.8, '3.6': 0.7, '3.15': 0.6, '3.7': 0.6, '3.2': 0.6, '3.12': 0.5, '3.8': 0.4, '3.13': 0.4, '3.14': 0.3 } },
@@ -272,18 +268,15 @@ export const JUDGMENT_CONFIG_V0: JudgmentConfig = {
   },
 
   gap: {
-    // §4.1
     quadrants: [
       { quadrant: 'A+B+', ref: '§4.1', meaning: 'Azienda già matura: forte e ben espressa. Scarso margine — NON target.', isTarget: false },
       { quadrant: 'A+B-', ref: '§4.1', meaning: 'TARGET IDEALE: potenziale inespresso e non monetizzato; divario massimo e colmabile.', isTarget: true },
       { quadrant: 'A-B+', ref: '§4.1', meaning: '"Fuffa"/vanity: espressione brillante su prodotto debole. Falso positivo da EVITARE.', isTarget: false },
       { quadrant: 'A-B-', ref: '§4.1', meaning: 'Non interessante: né sostanza né presidio.', isTarget: false },
     ],
-    // §4.2
     gapLogic:
       'Il valore di targeting è funzione del DIVARIO A−B, non del livello assoluto. Target = massimizza (A−B) CON A alto. ' +
       'A−B≈0 copre due quadranti opposti (maturo e inerte) → il qualificatore "A alto" è essenziale. Mai fondere i due assi.',
-    // §4.4
     causes: [
       { cause: 'omission', ref: '§4.4', signature: 'assorbita dalla produzione/domanda esistente (passaparola); mai presidiato il digitale', colmability: 'high' },
       { cause: 'incompetence', ref: '§4.4', signature: 'apertura ma manca competenza interna / nessun reparto marketing', colmability: 'high' },
@@ -292,7 +285,7 @@ export const JUDGMENT_CONFIG_V0: JudgmentConfig = {
       { cause: 'constraint', ref: '§4.4', signature: 'silenzio IMPOSTO da vincoli normativi/deontologici/riservatezza B2B/esclusiva di canale', colmability: 'none' },
       { cause: 'decline', ref: '§4.4', signature: 'il silenzio accompagna un\'erosione della sostanza — trappola: sembra colmabile ma è sintomo', colmability: 'none' },
     ],
-    // §4.5 — disqualifiers applied BEFORE the gap logic; cheaplyCheckable subset feeds the Stage-0 triage (§16).
+    // Applied BEFORE the gap logic; the cheaplyCheckable subset feeds the Stage-0 triage.
     disqualifiers: [
       { id: 'commodity_in_disguise', ref: '§4.5', family: 'substance', test: 'differenziazione solo cosmetica, nessun asset proprietario, competizione solo di prezzo', cheaplyCheckable: false },
       { id: 'no_strength_proxies', ref: '§4.5', family: 'substance', test: 'prove di forza assenti su TUTTI i proxy terzi pertinenti al modello (§2.8): non è silente, è debole', cheaplyCheckable: false },
@@ -305,7 +298,7 @@ export const JUDGMENT_CONFIG_V0: JudgmentConfig = {
       { id: 'permanently_closed', ref: '§4.5', family: 'distress', test: 'attività cessata / permanently_closed (dato base già disponibile)', cheaplyCheckable: true },
       { id: 'fake_reputation', ref: '§4.5', family: 'fake_reputation', test: 'recensioni con pattern artificiali (picchi anomali, testi ripetitivi, sproporzione): trattare la reputazione sospetta come segnale ASSENTE, non positivo', cheaplyCheckable: false },
     ],
-    // Parte VI
+    // Archetypes — the pattern a company is recognised by.
     archetypes: [
       { id: 'silent_supply_chain_supplier', ref: '§6.1', quadrant: 'A+B-', signature: 'fornitore B2B di componenti a marchi finali prestigiosi; brevetti/certificazioni/export; sito fermo, niente LinkedIn, niente ads. Gap da omissione. Target di massimo valore.' },
       { id: 'territorial_artisan_excellence', ref: '§6.1', quadrant: 'A+B-', signature: 'prodotto con heritage/Made in Italy, recensioni spontanee entusiaste, pricing premium; Instagram abbandonato, recensioni mai gestite.' },
@@ -316,14 +309,14 @@ export const JUDGMENT_CONFIG_V0: JudgmentConfig = {
       { id: 'consolidated_well_communicated', ref: '§6.3', quadrant: 'A+B+', signature: 'forza reale + espressione eccellente su tutti i canali; nessun gap da colmare. Non target.' },
       { id: 'marginal_and_silent', ref: '§6.4', quadrant: 'A-B-', signature: 'né sostanza né presidio; nessun appiglio. Non target.' },
     ],
-    // Parte VII
+    // Levers — the intervention a given gap nature calls for.
     levers: [
       { kind: 'positioning', ref: '§7.1', symptom: 'A alto ma messaggio confuso/generico/assente; value proposition non leggibile; narrativa non raccontata', gapNature: 'l\'azienda NON SA DIRE ciò che è', sequence: 1 },
       { kind: 'acquisition', ref: '§7.2', symptom: 'nessuna macchina di acquisizione: niente ads, contenuti scarsi, social abbandonati, nessuna generazione di domanda', gapNature: 'l\'azienda NON SI FA TROVARE e non genera domanda', sequence: 2 },
       { kind: 'conversion_ops', ref: '§7.3', symptom: 'arriva interesse (recensioni/passaparola/richieste) ma non presidiato: recensioni non gestite, DM senza follow-up, nessun CRM, percorso rotto', gapNature: 'l\'azienda NON CATTURA né CONVERTE la domanda esistente', sequence: 3 },
       { kind: 'measurement', ref: '§7.4', symptom: 'attività esistente ma cieca: nessun tracciamento, decisioni a sensazione', gapNature: 'l\'azienda NON SA cosa funziona', sequence: 4 },
     ],
-    // §5.3 (eleven)
+    // The eleven cognitive traps.
     cognitiveTraps: [
       { id: 1, ref: '§5.3.1', rule: 'Sito brutto ≠ prodotto debole: è segnale di B basso, NON di A basso (spesso la firma del target).' },
       { id: 2, ref: '§5.3.2', rule: 'Molti follower ≠ prodotto forte: vanity metric gonfiabile; valuta engagement reale e qualità.' },

@@ -1,0 +1,13 @@
+# Fase 5.4 — supply chain: nessuna versione installata il giorno stesso in cui
+# esce (24 h di quarantena). Si applica alle installazioni del workspace root.
+# `packages: ['.']` di proposito: web/ resta un progetto indipendente con il
+# proprio lockfile e la propria CI (`pnpm --dir web install --ignore-workspace`
+# in .github/workflows/ci.yml — senza il flag, pnpm vedrebbe il workspace root
+# e non installerebbe le dipendenze di web), quindi non fa parte del workspace
+# pnpm e non ne eredita il lockfile.
+# Nota Dependabot: in questo repo non esiste .github/dependabot.yml; se mai se
+# ne aggiunge uno, allinearlo con `minimum-release-age: 1-day` sui registri.
+packages:
+  - '.'
+
+minimumReleaseAge: 1440

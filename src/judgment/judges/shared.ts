@@ -1,4 +1,4 @@
-import type { AxisLevel, Signal } from '../../types/judgment';
+import type { AxisLevel } from '../../types/judgment';
 import type { JudgmentThresholds } from '../config/types';
 import type { LLMCompletionRequest } from '../../types/providers';
 
@@ -17,19 +17,6 @@ export function levelFromScore(score: number, t: JudgmentThresholds): AxisLevel 
   if (score >= t.axisHigh) return 'high';
   if (score >= t.axisMid) return 'mid';
   return 'low';
-}
-
-/** Count present/absent/unknown across a set of signals. */
-export function coverage(signals: Signal[]): { present: number; absent: number; unknown: number; total: number } {
-  let present = 0;
-  let absent = 0;
-  let unknown = 0;
-  for (const s of signals) {
-    if (s.state === 'confirmed_present') present += 1;
-    else if (s.state === 'confirmed_absent') absent += 1;
-    else unknown += 1;
-  }
-  return { present, absent, unknown, total: signals.length };
 }
 
 /** Best-effort JSON extraction from an LLM text response (handles code fences / prose). */

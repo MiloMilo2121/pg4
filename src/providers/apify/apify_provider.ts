@@ -28,7 +28,7 @@ export type ApifyActor =
   | 'facebook'
   | 'tiktok'
   | 'registro'
-  // ENRICH-3 — real-estate portal bulk scrapers (per-province, joined offline),
+  // real-estate portal bulk scrapers (per-province, joined offline),
   // balance-sheet register, and a pluggable email verifier.
   | 'portal_immobiliare'
   | 'portal_immobiliare_ads'
@@ -103,13 +103,13 @@ export interface RegistroRecord {
   pec?: string;
   rea?: string;
   address?: string;
-  /** ENRICH-3 — amministratore/titolare when the actor exposes it (only source for DM). */
+  /** amministratore/titolare when the actor exposes it (only source for DM). */
   decision_maker_name?: string;
   decision_maker_role?: string;
 }
 
 /**
- * ENRICH-3 — registroimprese BALANCE-SHEET record (jungle_synthesizer actor).
+ * registroimprese BALANCE-SHEET record (jungle_synthesizer actor).
  * Unlike regdata's RegistroRecord, this source exposes real FATTURATO
  * (revenue), which must never be conflated with utile/net_profit.
  */
@@ -126,18 +126,18 @@ export interface BilanciRecord {
   address?: string;
 }
 
-/** ENRICH-3 — one email's deliverability verdict from the pluggable verifier actor. */
+/** one email's deliverability verdict from the pluggable verifier actor. */
 export interface EmailVerifyResult {
   email?: string;
   status: 'deliverable' | 'catch_all' | 'invalid' | 'unknown';
 }
 
 /**
- * ENRICH-3 — single place encoding the bilanci actor's input shape (a
+ * single place encoding the bilanci actor's input shape (a
  * probe-validated guess: the actor has never run here). If the probe shows a
  * different schema, fix it HERE only.
  */
-export function buildBilanciInput(vat: string): Record<string, unknown> {
+function buildBilanciInput(vat: string): Record<string, unknown> {
   return { query: vat, searchQuery: vat, maxResults: 1 };
 }
 
@@ -337,7 +337,7 @@ export class ApifyProvider {
   }
 
   /**
-   * ENRICH-3 — asynchronous actor run for BULK jobs that exceed the ~300s
+   * asynchronous actor run for BULK jobs that exceed the ~300s
    * run-sync window (per-province portal scrapes, chunked register lookups).
    * Start run → poll status → download dataset items.
    *
@@ -526,7 +526,7 @@ export class ApifyProvider {
   }
 
   /**
-   * ENRICH-3 — balance-sheet register lookup for ONE company by P.IVA.
+   * balance-sheet register lookup for ONE company by P.IVA.
    * Input shape is a probe-validated guess (`buildBilanciInput` is the single
    * place to fix if the actor's schema differs); result entity-guarded by the
    * calling stage. Uses run-sync (single company is fast).
@@ -552,7 +552,7 @@ export class ApifyProvider {
   static parseRegistroItem(raw: unknown): RegistroRecord {
     const it = (raw ?? {}) as Record<string, unknown>;
     const ateco = [str(it.atecoCode), str(it.atecoDescription)].filter(Boolean).join(' — ') || undefined;
-    // ENRICH-3 — the amministratore/titolare surfaces under different keys per
+    // the amministratore/titolare surfaces under different keys per
     // company form; also as the first entry of an `esponenti`-style array.
     let dmName = str(it.amministratore) ?? str(it.titolare) ?? str(it.legaleRappresentante) ?? str(it.rappresentante);
     let dmRole = dmName ? (str(it.caricaAmministratore) ?? (it.amministratore ? 'amministratore' : it.titolare ? 'titolare' : 'legale rappresentante')) : undefined;

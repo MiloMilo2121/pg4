@@ -1,41 +1,40 @@
 import { api } from '../../../lib/api';
-
-const SECTION = { padding: '34px 36px 60px', maxWidth: 1180, margin: '0 auto' } as const;
+import { PageSection, PageHeader } from '../ui/Page';
+import { Pill } from '../ui/Pill';
+import { Card } from '../../ds/components/Card';
+import { Icon } from '../../ds/components/Icon';
 
 const LISTE = [
-  { nome: 'Metalmecc. VI · 5–30M', territorio: 'Vicenza', count: '620', data: '2 giorni fa', tags: ['Tier A', 'decisore', 'fatturato'] },
-  { nome: 'Serramenti VR · alta priorità', territorio: 'Verona', count: '410', data: '6 giorni fa', tags: ['Tier A+B', 'sito'] },
-  { nome: 'Edili PD · da arricchire', territorio: 'Padova', count: '980', data: '12 giorni fa', tags: ['grezze', 'no fatt.'] },
-  { nome: 'Hospitality VE · pilota', territorio: 'Venezia', count: '240', data: '20 giorni fa', tags: ['test'] },
+  { nome: 'SaaS B2B MI · 5–30M', territorio: 'Milano', count: '410', data: '2 giorni fa', tags: ['Tier A', 'decisore', 'fatturato'] },
+  { nome: 'Deeptech TN · alta priorità', territorio: 'Trento', count: '96', data: '6 giorni fa', tags: ['Tier A+B', 'sito'] },
+  { nome: 'Biotech PD · da arricchire', territorio: 'Padova', count: '214', data: '12 giorni fa', tags: ['grezze', 'no fatt.'] },
+  { nome: 'Cybersecurity TO · pilota', territorio: 'Torino', count: '58', data: '20 giorni fa', tags: ['test'] },
 ];
 
 export default function Liste() {
   return (
-    <section className="agfade" style={SECTION}>
-      <div style={{ marginBottom: 8 }}><span className="kicker">Output</span></div>
-      <h1 style={{ fontSize: '1.95rem', fontWeight: 500, letterSpacing: '-.02em', marginBottom: 22 }}>Liste finali</h1>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 16 }}>
+    <PageSection>
+      <PageHeader kicker="Output" number="05" title="Liste finali" />
+      <div className="sx-grid sx-grid--2 sx-grid--joined">
         {LISTE.map((l) => (
-          <div key={l.nome} className="ag-card-h" style={{ background: 'var(--paper)', border: '1px solid var(--line)', borderRadius: 15, padding: '22px 24px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14 }}>
+          <Card key={l.nome} as="article" className="sx-list-card">
+            <div className="sx-list-card__top">
               <div>
-                <div style={{ fontFamily: 'var(--serif)', fontSize: '1.2rem', fontWeight: 500 }}>{l.nome}</div>
-                <div style={{ fontSize: '.8rem', color: 'var(--ink-3)', marginTop: 3 }}>{l.territorio}</div>
+                <h2 className="sx-list-card__title">{l.nome}</h2>
+                <span className="sx-meta">{l.territorio}</span>
               </div>
-              <span style={{ fontFamily: 'var(--serif)', fontSize: '1.7rem', fontWeight: 500, color: 'var(--accent)' }}>{l.count}</span>
+              <span className="sx-stat__value" aria-label={`${l.count} aziende`}>{l.count}</span>
             </div>
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 14 }}>
-              {l.tags.map((t) => (
-                <span key={t} style={{ fontSize: '.72rem', padding: '4px 10px', borderRadius: 999, background: 'var(--accent-wash)', color: 'var(--accent)', fontWeight: 600 }}>{t}</span>
-              ))}
+            <div className="sx-chips" style={{ gap: '0.4rem' }}>
+              {l.tags.map((t) => <Pill key={t} tone="wash">{t}</Pill>)}
             </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '.76rem', color: 'var(--ink-3)' }}>
+            <div className="sx-list-card__foot sx-meta">
               <span>creata {l.data}</span>
-              <a href={api.companiesCsvUrl()} download className="link-u" style={{ textDecoration: 'none' }}>Esporta CSV →</a>
+              <a href={api.companiesCsvUrl()} download className="mm-link sx-iconlink"><Icon name="export" size={13} />Esporta CSV</a>
             </div>
-          </div>
+          </Card>
         ))}
       </div>
-    </section>
+    </PageSection>
   );
 }

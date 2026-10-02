@@ -4,7 +4,7 @@ import { CostLedger } from '../../src/runtime/cost_ledger';
 import type { SerpProvider } from '../../src/types/providers';
 
 /**
- * Phase A.5 — the router fires the run-ceiling listener exactly once,
+ * The router fires the run-ceiling listener exactly once,
  * the first time a paid provider is dropped because the run cap would
  * be exceeded. Previously this was a silent `continue`.
  */
@@ -20,7 +20,7 @@ function paidSerp(id: string, costPerCallEur: number): SerpProvider {
   } as unknown as SerpProvider;
 }
 
-describe('ProviderRouter run-ceiling event — Phase A.5', () => {
+describe('ProviderRouter run-ceiling event', () => {
   it('fires once when the cap filters a paid provider, not on subsequent drops', async () => {
     const ledger = new CostLedger();
     const router = new ProviderRouter([paidSerp('paid1', 0.5)], [], [], ledger);

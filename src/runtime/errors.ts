@@ -1,6 +1,6 @@
 import { ReasonCode } from '../types/output';
 
-export class Pg4Error extends Error {
+class Pg4Error extends Error {
   public readonly reasonCode: ReasonCode;
   public readonly stage?: string;
   public readonly provider?: string;

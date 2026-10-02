@@ -1,9 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Lead } from '../../../src/types/lead';
 import { InMemoryEnrichmentCache } from '../../../src/persistence/enrichment_cache';
-import { InMemoryTenantDb } from '../../../src/persistence/in_memory_tenant_db';
-import { ControlPlane } from '../../../src/api/control_plane';
-import type { TenantContext } from '../../../src/api/types';
 import { getActiveJudgmentConfig } from '../../../src/judgment/config';
 import { harvestSource, emptyBundle } from '../../../src/judgment/harvest/source_harvest';
 import type { HarvestContext, PageFetcher } from '../../../src/judgment/harvest/source_harvest';
@@ -16,7 +13,7 @@ const config = getActiveJudgmentConfig();
 const lead = (o: Partial<Lead>): Lead => ({ company_name: 'Acme Srl', ...o });
 const HTML = '<html lang="it"><h1>Acme</h1><footer>© 2025</footer></html>';
 
-describe('SourceHarvest is cache-first (cost principle §0)', () => {
+describe('SourceHarvest is cache-first (one fetch per source, then cache)', () => {
   it('fetches a source ONCE, then serves the cache (cross-button reuse)', async () => {
     let fetches = 0;
     const fetcher: PageFetcher = async () => {
@@ -36,7 +33,7 @@ describe('SourceHarvest is cache-first (cost principle §0)', () => {
   });
 });
 
-describe('category benchmark two-pass (§17 ⟂ §1.4)', () => {
+describe('category benchmark two-pass (presence rates + provisional thin cohorts)', () => {
   it('computes presence rates and flags a thin cohort provisional', () => {
     const items = [
       { segnali_B: [{ axis: 'B' as const, key: '3.1', state: 'confirmed_present' as const, value: ['x'], evidence: [] }] },
@@ -49,7 +46,7 @@ describe('category benchmark two-pass (§17 ⟂ §1.4)', () => {
   });
 });
 
-describe('eval harness (§15) — precision/recall + separate A/B agreement', () => {
+describe('eval harness — precision/recall + separate A/B agreement', () => {
   it('scores the target verdict and per-axis agreement', () => {
     const golden: GoldenItem[] = [
       { id: 'a', expectedTarget: 'yes', expectedALevel: 'high', expectedBLevel: 'low' },
@@ -65,7 +62,7 @@ describe('eval harness (§15) — precision/recall + separate A/B agreement', ()
     expect(report.aAgreement).toBe(1);
   });
 
-  it('evaluateByCategory groups PER BLOCK and never pools (§1.4) — a block can be 1.0 while another is 0', () => {
+  it('evaluateByCategory groups PER BLOCK and never pools — a block can be 1.0 while another is 0', () => {
     const golden: GoldenItem[] = [
       // block "resto": the judge gets it right (target yes ↔ yes)
       { id: 'r1', categoria: 'resto', expectedTarget: 'yes' },
@@ -82,25 +79,5 @@ describe('eval harness (§15) — precision/recall + separate A/B agreement', ()
     expect(blocks.dental.target.recall).toBe(0); // dental: missed — visible, not averaged away
     expect(blocks.resto.n).toBe(1);
     expect(blocks.dental.n).toBe(1);
-  });
-});
-
-describe('judgment job creation is tenant-scoped (control plane)', () => {
-  const TA = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
-  const TB = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb';
-  const ctx = (t: string, role: TenantContext['role'] = 'admin'): TenantContext => ({ tenantId: t, userId: `u_${t.slice(0, 4)}`, role });
-
-  it('creates a discovery job for own companies and 404s on cross-tenant ids', async () => {
-    const cp = new ControlPlane(new InMemoryTenantDb());
-    const imp = await cp.importCompanies(ctx(TA), { rows: [lead({ company_name: 'Rossi', city: 'Padova', phone: '0491234567' })] });
-    const id = imp.companyIds[0];
-    const job = await cp.createDiscoveryJob(ctx(TA), { companyIds: [id] });
-    expect(job.itemCount).toBe(1);
-    await expect(cp.createJudgeJob(ctx(TB), { companyIds: [id] })).rejects.toMatchObject({ status: 404 });
-  });
-
-  it('viewer role cannot create a judge job (403)', async () => {
-    const cp = new ControlPlane(new InMemoryTenantDb());
-    await expect(cp.createJudgeJob(ctx(TA, 'viewer'), { companyIds: ['x'] })).rejects.toMatchObject({ status: 403 });
   });
 });

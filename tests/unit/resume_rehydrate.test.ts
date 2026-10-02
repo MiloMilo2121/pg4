@@ -8,7 +8,7 @@ import { JsonlWriter, readJsonlAsLeads } from '../../src/io/jsonl_writer';
 import type { Lead } from '../../src/types/lead';
 
 /**
- * Phase 4.1 regression: validates the resume contract end-to-end without
+ * Resume contract: validates the resume flow end-to-end without
  * touching the network. Simulates two runs:
  *   Run A — scrapes Belluno, writes JSONL + checkpoint marks p1 done.
  *   Run B — re-launches, the checkpoint says p1 is already done so the
@@ -40,7 +40,7 @@ async function rehydrate(jsonlPath: string, dedup: Deduplicator, sink: Lead[]): 
   return loaded;
 }
 
-describe('Phase 4.1 resume contract', () => {
+describe('resume contract', () => {
   it('Run B rehydrates the lead set from Run A JSONL when checkpoint marks pages done', async () => {
     const dir = tmpDir();
     const jsonl = path.join(dir, 'raw.jsonl');

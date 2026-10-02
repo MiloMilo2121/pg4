@@ -19,7 +19,7 @@ export class OutputManager {
   }
 
   async write(lead: Lead, debug?: Record<string, unknown>): Promise<void> {
-    // Phase C.1 — stamp the schema version on every row (CSV column +
+    // Stamp the schema version on every row (CSV column +
     // JSONL field) so downstream consumers detect capability programmatically.
     lead._schema_version ??= SCHEMA_VERSION;
     await Promise.all([this.csv.write(lead), this.jsonl.write({ ...lead, _debug: debug })]);

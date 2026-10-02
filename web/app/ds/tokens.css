@@ -1,0 +1,283 @@
+/* ============================================================================
+   Design System v2 "Grafite" (Marco Milanello): tokens.
+   Source: design-system-v2/tokens/{colors,typography,spacing}.css, copied
+   verbatim. Two local changes, both marked "Setaccio:":
+   - the font families read the next/font variables set in ds/fonts.ts
+     (self-hosted, no Google Fonts @import);
+   - a dashboard addendum at the end (fixed UI type scale, scrim, chrome sizes).
+   To update: re-copy the three source files, then re-apply the two changes.
+   ========================================================================== */
+
+/* ============================================================
+   Marco Milanello · COLOR TOKENS (v2 Grafite)
+   Graphite on warm paper, alternating with "night" sections.
+   Almost monochrome: the pencil drawings set the palette.
+   Sand (--accent-2) is the only warm note, used sparingly.
+   ============================================================ */
+:root {
+  /* ---- Paper / surfaces (warm neutral, three steps) ---- */
+  --paper:    #F5F3EE;   /* page background */
+  --paper-2:  #ECE9E2;   /* raised / alt section */
+  --paper-3:  #E4E0D6;   /* deepest band */
+  --paper-hi: #FAF8F4;   /* brightest highlight (Milo face, chips) */
+  --paper-shot: #F2EFE8; /* screenshot backdrop */
+  --white:    #FFFFFF;
+
+  /* ---- Ink (warm near-black, never pure grey) ---- */
+  --ink:      #1C1B19;   /* headings, primary text */
+  --ink-2:    #4D4A45;   /* body copy */
+  --ink-3:    #7D7972;   /* captions, labels, meta */
+  --ink-max:  #000000;   /* deepest hover on ink fills */
+
+  /* ---- Accent (graphite) + sand ---- */
+  --accent:      #3B3833; /* primary mark: buttons, sketches, links */
+  --accent-2:    #A08868; /* sand: emphasis words, small warm marks */
+  --accent-deep: #161513; /* hover / pressed solid */
+  --accent-tint: #E2D6C3; /* soft text on accent tiles */
+  --on-accent:   #FFFFFF; /* text on accent fills */
+  --milo-coat:   #2E2B27; /* Milo's jacket */
+
+  /* ---- RGB triplets for alpha variants: rgba(var(--x-rgb), a) ---- */
+  --paper-rgb: 245,243,238;        /* @kind other */
+  --paper-hi-rgb: 250,248,244;     /* @kind other */
+  --ink-rgb: 28,27,25;             /* @kind other */
+  --accent-rgb: 59,56,51;          /* @kind other */
+  --accent-deep-rgb: 22,21,19;     /* @kind other */
+
+  /* ---- Lines (ink at low alpha) ---- */
+  --line:      rgba(var(--ink-rgb),0.12);
+  --line-soft: rgba(var(--ink-rgb),0.07);
+
+  /* ---- Accent washes ---- */
+  --accent-wash:   rgba(var(--accent-rgb),0.05);
+  --accent-wash-2: rgba(var(--accent-rgb),0.10);
+  --accent-line:   rgba(var(--accent-rgb),0.35);
+  --select:        rgba(var(--accent-rgb),0.18);
+
+  /* ---- Status (sparingly) ---- */
+  --ok: #4A8F5E; --ok-rgb: 74,143,94; --ok-bg: #EEF4EA; --ok-line: #C9DCC3;
+  --ko: #93402F; --ko-bg: #F7E9E4; --ko-line: #E6C6BC;
+  --error: #B3422F;
+
+  /* ---- Semantic ---- */
+  --bg:            var(--paper);
+  --bg-raised:     var(--paper-2);
+  --bg-sunken:     var(--paper-3);
+  --surface-card:  var(--paper);
+  --text-heading:  var(--ink);
+  --text-body:     var(--ink-2);
+  --text-muted:    var(--ink-3);
+  --text-accent:   var(--accent);
+  --text-emphasis: var(--accent-2);
+  --border:        var(--line);
+  --border-soft:   var(--line-soft);
+  --border-accent: var(--accent-line);
+  --focus-ring:    var(--accent);
+  --shadow-ink:    var(--ink-rgb);  /* @kind other */
+}
+
+/* ---- Night: a dark section scope. Put .night on any section, header or footer.
+   Every token flips, so components inside need no changes. ---- */
+.night, [data-theme="night"] {
+  --paper:    #1A1917;
+  --paper-2:  #23221F;
+  --paper-3:  #2B2926;
+  --paper-hi: #22211E;
+  --paper-shot: #22211E;
+  --ink:      #F1EEE8;
+  --ink-2:    #BDB8AF;
+  --ink-3:    #8E897F;
+  --ink-max:  #FFFFFF;
+  --accent:      #E8E3DA;
+  --accent-2:    #B39B78;
+  --accent-deep: #FFFFFF;
+  --accent-tint: #3A3630;
+  --on-accent:   #1A1917;
+  --milo-coat:   #3A3630;
+  --paper-rgb: 26,25,23;
+  --paper-hi-rgb: 34,33,30;
+  --ink-rgb: 241,238,232;
+  --accent-rgb: 232,227,218;
+  --accent-deep-rgb: 255,255,255;
+  --line:      rgba(241,238,232,0.14);
+  --line-soft: rgba(241,238,232,0.08);
+  --accent-wash:   rgba(232,227,218,0.05);
+  --accent-wash-2: rgba(232,227,218,0.10);
+  --accent-line:   rgba(232,227,218,0.35);
+  --select:        rgba(232,227,218,0.18);
+  --shadow-ink: 0,0,0; /* @kind other */
+  background-color: var(--paper);
+  color: var(--ink);
+}
+
+/* ============================================================
+   Marco Milanello · TYPOGRAPHY TOKENS (v2 Grafite)
+   Archivo carries display, headings and body.
+   DM Mono carries the technical layer: labels, numbers, dates.
+   ============================================================ */
+:root {
+  /* ---- Families ---- */
+  /* Setaccio: families come from next/font (ds/fonts.ts). */
+  --display: var(--font-archivo), 'Archivo', system-ui, sans-serif;     /* @kind font */
+  --mono:    var(--font-dm-mono), 'DM Mono', ui-monospace, monospace;   /* @kind font */
+  /* v1 aliases kept so older markup still renders in v2 */
+  --serif:   var(--display);                       /* @kind font */
+  --sans:    var(--font-archivo), 'Archivo', system-ui, -apple-system, sans-serif; /* @kind font */
+
+  --font-display: var(--display); /* @kind font */
+  --font-heading: var(--display); /* @kind font */
+  --font-body:    var(--sans);    /* @kind font */
+  --font-lead:    var(--sans);    /* @kind font */
+  --font-ui:      var(--sans);    /* @kind font */
+  --font-label:   var(--mono);    /* @kind font */
+  --font-num:     var(--mono);    /* @kind font */
+
+  /* ---- Weights ---- */
+  --w-regular: 400; /* @kind font */
+  --w-medium:  500; /* @kind font */
+  --w-semi:    600; /* @kind font */
+  --w-bold:    700; /* @kind font */
+  --display-weight: 600; /* @kind font */
+
+  /* ---- Fluid type scale ---- */
+  --fs-display: clamp(2.6rem, 6.5vw, 4.6rem); /* @kind font */
+  --fs-h1:      clamp(2rem, 4.6vw, 3.3rem);   /* @kind font */
+  --fs-h2:      clamp(1.7rem, 3.4vw, 2.4rem); /* @kind font */
+  --fs-h3:      1.3rem;                        /* @kind font */
+  --fs-lead:    clamp(1.15rem, 1.6vw, 1.4rem);/* @kind font */
+  --fs-body:    1rem;                          /* @kind font */
+  --fs-body-lg: 1.08rem;                       /* @kind font */
+  --fs-sm:      0.92rem;                       /* @kind font */
+  --fs-xs:      0.82rem;                       /* @kind font */
+  --fs-label:   0.72rem;                       /* @kind font */
+
+  /* ---- Line heights ---- */
+  --lh-tight:   1.1;  /* @kind font */
+  --lh-display: 1.02; /* @kind font */
+  --lh-snug:    1.3;  /* @kind font */
+  --lh-body:    1.6;  /* @kind font */
+  --lh-prose:   1.75; /* @kind font */
+
+  /* ---- Letter-spacing ---- */
+  --ls-display: -0.025em; /* @kind font */
+  --ls-head:    -0.025em; /* @kind font */
+  --ls-label:   0.03em;   /* @kind font */
+  --ls-label-2: 0.03em;   /* @kind font */
+  --display-track: -0.025em; /* @kind font */
+  --mono-track:    0.03em;   /* @kind font */
+}
+
+/* ============================================================
+   Marco Milanello · SPACING, RADII, SHADOW & MOTION TOKENS
+   Soft 14–16px corners · hairline 1px borders · light, diffuse
+   shadows · gentle fade+slide motion. No ambient loops.
+   ============================================================ */
+:root {
+  /* ---- Layout ---- */
+  --maxw:    1080px;   /* @kind spacing */
+  --measure: 680px;    /* @kind spacing */
+  --gutter:  clamp(1.4rem, 5vw, 3rem); /* @kind spacing */
+
+  /* ---- Spacing scale ---- */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.7rem;
+  --space-4: 1rem;
+  --space-5: 1.4rem;
+  --space-6: 1.6rem;
+  --space-8: 2rem;
+  --space-10: 2.6rem;
+  --space-12: 3.2rem;
+  --section-y: clamp(3.25rem, 6.5vw, 5.5rem); /* @kind spacing */
+
+  /* ---- Radii (soft, never sharp; pills for actions) ---- */
+  --r-xs:   6px;    /* chips, small labels */
+  --r-sm:   10px;   /* index cards */
+  --r-md:   11px;   /* inputs, list options */
+  --r-lg:   14px;   /* default card */
+  --r-xl:   16px;   /* large panels, dialogs */
+  --r-pill: 999px;  /* buttons, toggles, badges */
+
+  /* ---- Borders ---- */
+  --bw: 1px;          /* @kind spacing */
+  --bw-2: 1.6px;      /* @kind spacing */
+
+  /* ---- Shadows (warm ink, low alpha, large soft spread) ---- */
+  --shadow-sm:     0 2px 6px -4px rgba(var(--shadow-ink),0.15);
+  --shadow-card:   0 14px 30px -22px rgba(var(--shadow-ink),0.40), 0 2px 6px -4px rgba(var(--shadow-ink),0.15);
+  --shadow-lift:   0 18px 40px -28px rgba(var(--shadow-ink),0.40);
+  --shadow-pop:    0 22px 48px -32px rgba(var(--shadow-ink),0.45);
+  --shadow-modal:  0 30px 70px -30px rgba(var(--shadow-ink),0.55);
+  --shadow-accent: 0 8px 22px -12px rgba(var(--shadow-ink),0.55);  /* on solid buttons */
+
+  /* ---- Motion (delicate fade+slide, slight bounce; never looping) ---- */
+  --ease-out:    cubic-bezier(0.16, 1, 0.3, 1);   /* @kind other */
+  --ease-bounce: cubic-bezier(0.34, 1.4, 0.64, 1); /* @kind other */
+  --ease-draw:   cubic-bezier(0.45, 0, 0.2, 1);   /* @kind other */
+  --dur-fast:  0.2s;  /* @kind other */
+  --dur-mid:   0.35s; /* @kind other */
+  --dur-slow:  0.7s;  /* @kind other */
+  --reveal-y:  16px;   /* @kind spacing */
+  --lift-y:   -3px;    /* @kind spacing */
+}
+
+/* ============================================================
+   Setaccio: dashboard addendum (not in the DS source).
+   The DS scales are fluid and tuned for a reading site; a dense
+   app needs a fixed UI scale. Values sit on the DS rhythm.
+   ============================================================ */
+:root {
+  --fs-ui-2xs: 0.6875rem; /* 11px: mono labels, axis ticks   @kind font */
+  --fs-ui-xs:  0.75rem;   /* 12px: meta, captions             @kind font */
+  --fs-ui-sm:  0.8125rem; /* 13px: table cells, secondary     @kind font */
+  --fs-ui-md:  0.875rem;  /* 14px: default UI text            @kind font */
+  --fs-ui-lg:  1rem;      /* 16px: lead in panels             @kind font */
+  --fs-ui-xl:  1.25rem;   /* 20px: panel titles               @kind font */
+  --fs-ui-2xl: 1.75rem;   /* 28px: KPI values                 @kind font */
+  --fs-page:   clamp(1.5rem, 2vw, 1.85rem); /* page title    @kind font */
+
+  /* Overlay scrim. Fixed ink, so it reads the same under night chrome. */
+  --scrim: rgba(28,27,25,0.32); /* @kind other */
+
+  --sidebar-w: 248px; /* @kind spacing */
+  --topbar-h:  64px;  /* @kind spacing */
+  --content-w: 1180px; /* @kind spacing */
+}
+
+/* ============================================================
+   Setaccio: "Grafite / app" variant (not in the DS source).
+   Same palette and type as the site; the geometry of an
+   instrument instead of an editorial page. Panels are square,
+   controls get a 2px edge, nothing floats: hairlines carry the
+   structure, not shadows. Candidate to become a DS section.
+   ============================================================ */
+:root {
+  --r-xs:   2px;  /* @kind spacing */
+  --r-sm:   2px;  /* @kind spacing */
+  --r-md:   2px;  /* @kind spacing */
+  --r-lg:   0;    /* @kind spacing */
+  --r-xl:   0;    /* @kind spacing */
+  --r-pill: 2px;  /* @kind spacing */
+  --r-node: 50%;  /* nodes stay round: they are the DS motif  @kind spacing */
+
+  --line:      rgba(var(--ink-rgb),0.16);
+  --line-soft: rgba(var(--ink-rgb),0.09);
+  --line-strong: rgba(var(--ink-rgb),0.32);
+
+  --shadow-sm:     none;
+  --shadow-card:   none;
+  --shadow-lift:   none;
+  --shadow-accent: none;
+  --shadow-pop:    0 10px 24px -18px rgba(var(--shadow-ink),0.45);
+  --shadow-modal:  0 24px 48px -28px rgba(var(--shadow-ink),0.55);
+
+  --lift-y: 0px; /* @kind spacing */
+  --grid-dot: rgba(var(--accent-rgb),0.11); /* @kind other */
+  --statusbar-h: 28px; /* @kind spacing */
+}
+.night, [data-theme="night"] {
+  --line:      rgba(241,238,232,0.16);
+  --line-soft: rgba(241,238,232,0.09);
+  --line-strong: rgba(241,238,232,0.34);
+  --grid-dot: rgba(232,227,218,0.07);
+}

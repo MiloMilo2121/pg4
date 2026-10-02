@@ -13,6 +13,8 @@
  * unchanged.
  */
 
+import { CHROME_MAJOR, FIREFOX_MAJOR } from '../config/browser_versions';
+
 export interface Fingerprint {
   userAgent: string;
   headers: Record<string, string>;
@@ -25,31 +27,33 @@ interface UaEntry {
   brands: string;
 }
 
+const CLIENT_HINT_BRANDS = `"Chromium";v="${CHROME_MAJOR}", "Google Chrome";v="${CHROME_MAJOR}", "Not.A/Brand";v="24"`;
+
 const UAS: ReadonlyArray<UaEntry> = [
   {
-    ua: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+    ua: `Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${CHROME_MAJOR}.0.0.0 Safari/537.36`,
     platform: '"macOS"',
-    brands: '"Chromium";v="125", "Google Chrome";v="125", "Not.A/Brand";v="24"',
+    brands: CLIENT_HINT_BRANDS,
   },
   {
-    ua: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+    ua: `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${CHROME_MAJOR}.0.0.0 Safari/537.36`,
     platform: '"Windows"',
-    brands: '"Chromium";v="125", "Google Chrome";v="125", "Not.A/Brand";v="24"',
+    brands: CLIENT_HINT_BRANDS,
   },
   {
-    ua: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:126.0) Gecko/20100101 Firefox/126.0',
+    ua: `Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:${FIREFOX_MAJOR}.0) Gecko/20100101 Firefox/${FIREFOX_MAJOR}.0`,
     platform: '"Windows"',
     brands: '',
   },
   {
-    ua: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:126.0) Gecko/20100101 Firefox/126.0',
+    ua: `Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:${FIREFOX_MAJOR}.0) Gecko/20100101 Firefox/${FIREFOX_MAJOR}.0`,
     platform: '"macOS"',
     brands: '',
   },
   {
-    ua: 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+    ua: `Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${CHROME_MAJOR}.0.0.0 Safari/537.36`,
     platform: '"Linux"',
-    brands: '"Chromium";v="124", "Google Chrome";v="124", "Not.A/Brand";v="24"',
+    brands: CLIENT_HINT_BRANDS,
   },
 ];
 

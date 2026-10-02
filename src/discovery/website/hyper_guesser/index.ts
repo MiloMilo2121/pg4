@@ -15,8 +15,7 @@ export interface HyperGuess {
  *
  * No AI. No HTTP fetch. No PreVerifyGate. The pipeline calls those next.
  *
- * Adapted from pg3/enricher/core/discovery/hyperguesser_vx (generator + resolver only).
- * AI triage + semantic matcher + validator stay deferred until after Phase 5
+ * AI triage + semantic matcher + validator stay deferred until a
  * benchmark proves their incremental value.
  */
 export class HyperGuesser {
@@ -31,7 +30,3 @@ export class HyperGuesser {
       .sort((a, b) => a.generation_rank - b.generation_rank);
   }
 }
-
-export { HyperGuesserGenerator } from './generator';
-export { HyperGuesserResolver } from './resolver';
-export { ItalianNerParser } from './italian_ner_parser';

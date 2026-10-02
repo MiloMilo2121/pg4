@@ -8,7 +8,7 @@ import type { Lead } from '../types/lead';
  * lines are skipped silently (callers can compare `out.length` against
  * the file's line count if they need a strict check).
  *
- * Phase 4.1: used by the live scraper to rebuild the deduper state on
+ * Used by the live scraper to rebuild the deduper state on
  * resume — checkpoint counters alone are not enough to reconstruct the
  * lead set, but the JSONL is the lossless record of what was emitted.
  */

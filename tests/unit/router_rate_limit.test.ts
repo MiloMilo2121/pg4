@@ -5,8 +5,8 @@ import { RateLimiter } from '../../src/runtime/rate_limiter';
 import type { SerpProvider } from '../../src/types/providers';
 
 /**
- * Phase F finding — the RateLimiter existed on the Run since Phase 1 but
- * acquire() had no call sites; the smoke run's SERP burst (~3.7 req/s)
+ * The RateLimiter existed on the Run from the start but acquire() had no
+ * call sites; the smoke run's SERP burst (~3.7 req/s)
  * got soft-blocked by Bing with 185/185 empty. These tests pin the fix:
  * the router now paces per-provider via the injected RateLimiter.
  */
@@ -25,7 +25,7 @@ function freeSerp(id: string, calls: number[]): SerpProvider {
   } as unknown as SerpProvider;
 }
 
-describe('ProviderRouter rate limiting — Phase F', () => {
+describe('ProviderRouter rate limiting', () => {
   it('spaces consecutive calls to a configured provider', async () => {
     const calls: number[] = [];
     const rate = new RateLimiter();

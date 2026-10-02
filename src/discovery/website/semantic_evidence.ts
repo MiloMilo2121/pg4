@@ -1,12 +1,13 @@
 import type { NormalizedLead } from '../../types/discovery';
 import { ItalianNerParser } from './hyper_guesser/italian_ner_parser';
+import { stripDiacritics } from '../../util/text';
 
 /**
- * Pure semantic-evidence helpers used by `PreVerifyGate` (Phase D).
+ * Pure semantic-evidence helpers used by `PreVerifyGate`.
  *
- * The Phase C free-enrichment audit showed the looser
- * Phase 4.2 gate accepted ~50% wrong matches. The helpers here
- * surface the deterministic signals the gate now requires:
+ * An audit of free enrichment showed the looser gate accepted ~50% wrong
+ * matches. The helpers here surface the deterministic signals the gate
+ * requires:
  *
  *   - distinctive token extraction (post descriptor strip, ≥4 chars)
  *   - common bare-stem denylist (audit-observed Italian common words)
@@ -23,7 +24,7 @@ import { ItalianNerParser } from './hyper_guesser/italian_ner_parser';
  * "La Mia Casa" → ["mia"] (then dropped by ≥4 filter), not ["la","mia","casa"].
  *
  * ItalianNerParser already strips a similar set; this list is broader
- * to catch what the audit revealed (see Phase D recommendations §D-2).
+ * to catch what the audit revealed.
  */
 const DESCRIPTORS = new Set<string>([
   // legal forms
@@ -43,7 +44,7 @@ const DESCRIPTORS = new Set<string>([
 /**
  * Bare-stem common words that must NEVER be accepted as a brand
  * identity match without external corroboration (RDAP / PIVA / phone).
- * Each entry was observed during the Phase C audit producing a
+ * Each entry was observed in audit producing a
  * false positive. Keep this list small — too aggressive a denylist
  * also rejects legit short-brand TPs.
  */
@@ -59,32 +60,32 @@ const COMMON_BARE_STEMS = new Set<string>([
   // Italian micro-region / mountain-area generics. These match BL leads
   // whose brand is just the region name, but the resulting domain is
   // almost always a tourism / vacation-rental portal, not the firm.
-  // Phase D.1 manual check: comelico.com is "Famiglia De Martin
+  // Manual check: comelico.com is "Famiglia De Martin
   // Topranin" vacation rentals (not Comelico Immobiliare).
   'comelico',
-  // Phase D.2 TV audit (p61): "Immobiliare Europa" matched europa.eu,
+  // TV audit: "Immobiliare Europa" matched europa.eu,
   // which is the EU's official institutional portal — unambiguous FP.
   // The compactFull.includes(domainStem) Layer-A direction lets a
   // long company-name compact swallow a 6-char generic suffix like
   // "europa". Adding the bare stem to the denylist is the cheapest
   // surgical fix; broader rule-rework left as followup.
   'europa',
-  // Phase D.4 TV audit (p64): "Studio Master Immobiliare" → master.it.
+  // TV audit: "Studio Master Immobiliare" → master.it.
   // master.it is "Master S.r.l. Divisione Elettrica", an electrical
   // materials manufacturer in Este (PD). Manually verified via
   // WebFetch; unambiguous FP. "master" is also a generic English
   // brand-noise stem.
   'master',
-  // Phase D.5 TV audit (p65): manually verified false-positive
-  // single-token brand stems matching well-known third-party domains.
-  // Each verified individually via WebFetch — see
-  // the Phase D.5 TV suspect audit (internal report) for the per-case evidence.
-  'broker',     // p65: "Broker S.r.l." (Montebelluna) → broker.eu = Belgian real-estate broker (Oostende)
-  'contea',     // p65: "Contea S.r.l." (Montebelluna) → contea.com = Spaceship.com domain marketplace listing
-  'galileo',    // p65: "Immobiliare Galileo S.r.l." → galileo.it = Italian e-learning platform
-  'sinergia',   // p65: "Sinergia S.r.l." (Castelfranco) → sinergia.it = "Sinergia Consulenze" management consulting (Pesaro)
-  'solarsystem', // p65: "Solar System S.r.l." → solarsystem.it = "Rappazzo Sistemi" solar panels (Sicily)
-  // p66: "Immobiliare Possagno" (Treviso) → possagno.it = "coming soon"
+  // Manually verified false-positive single-token brand stems matching
+  // well-known third-party domains. Each verified individually via
+  // WebFetch — see the TV suspect audit (internal report) for the
+  // per-case evidence.
+  'broker',     // "Broker S.r.l." (Montebelluna) → broker.eu = Belgian real-estate broker (Oostende)
+  'contea',     // "Contea S.r.l." (Montebelluna) → contea.com = Spaceship.com domain marketplace listing
+  'galileo',    // "Immobiliare Galileo S.r.l." → galileo.it = Italian e-learning platform
+  'sinergia',   // "Sinergia S.r.l." (Castelfranco) → sinergia.it = "Sinergia Consulenze" management consulting (Pesaro)
+  'solarsystem', // "Solar System S.r.l." → solarsystem.it = "Rappazzo Sistemi" solar panels (Sicily)
+  // "Immobiliare Possagno" (Treviso) → possagno.it = "coming soon"
   // placeholder. The lead's brand IS the town name (Possagno is a real
   // comune in TV); pg4's bare-city rule only blocks when leadCityCompact
   // matches the distinctive token, but here the lead's city is Treviso,
@@ -92,37 +93,36 @@ const COMMON_BARE_STEMS = new Set<string>([
   // either the comune's own portal or a placeholder. Same family as
   // `comelico`. Manual WebFetch verified placeholder state.
   'possagno',
-  // Phase E (p71 VR audit) — manually verified single-token brand stems
+  // Manually verified single-token brand stems
   // matching well-known third-party domains. Per-case evidence in
-  // the Phase E VR audit (internal report).
-  'palace',     // p71: "Palace Immobiliare" (Montagnana) → palace.it = Palace Merano medical spa (BZ)
-  'domino',     // p71: "Domino S.r.l." (Lazise) → domino.it = digital marketing agency (Turin/Venice)
-  'camelot',    // p71: "Camelot Sas" (Villafranca VR) → camelot.it = e-voting platform (Ivrea)
-  'liberta',    // p71: "Libertà Immobiliare" (Legnago) → liberta.eu = Nameshift.com domain marketplace (NL)
-  'alfaomega',  // p71: "Alfa Omega Immobiliare" (Verona) → alfaomega.it = pharma/nutraceutical (Monza)
-  // Phase F (p81 PD audit) — manually verified single-token brand stems
+  // the VR audit (internal report).
+  'palace',     // "Palace Immobiliare" (Montagnana) → palace.it = Palace Merano medical spa (BZ)
+  'domino',     // "Domino S.r.l." (Lazise) → domino.it = digital marketing agency (Turin/Venice)
+  'camelot',    // "Camelot Sas" (Villafranca VR) → camelot.it = e-voting platform (Ivrea)
+  'liberta',    // "Libertà Immobiliare" (Legnago) → liberta.eu = Nameshift.com domain marketplace (NL)
+  'alfaomega',  // "Alfa Omega Immobiliare" (Verona) → alfaomega.it = pharma/nutraceutical (Monza)
+  // Manually verified single-token brand stems
   // matching well-known third-party domains. Per-case evidence in
-  // the Phase F PD audit (internal report).
-  'americanino', // p81: "Americanino" (Padova) → americanino.eu = clothing/footwear brand (Sport Commerce Italia)
-  'raffaello',   // p81: "Raffaello S.r.l." (Limena) → raffaello.it = Ferrero confectionery brand
-  'cantele',     // p81: "Cantele S.r.l." (Padova) → cantele.it = Cantele Vini wine producer (Guagnano LE)
-  'gemini',      // p81: "Immobiliare Gemini" → gemini.it = condominium management software (also generic word)
-  'fusion',      // p81: "Fusion S.a.s." (Albignasego) → fusion.org = redirected to synergytech buy-domain (parked)
-  'myhome',      // p81: "My Home S.r.l." (Padova) → myhome.com = US Williston Financial real-estate tech
-  'orchidea',    // p81: "Immobiliare Orchidea" (Mestrino) → orchidea.it = Orchidea Milano furniture retail (Corsico)
-  'ypsilon',     // p81: "Ypsilon S.r.l." (Albignasego) → ypsilon.net = Ypsilon.Net AG travel tech (PCI / ISO)
-  'alessandra',  // p81: "Alessandra S.r.l." (Padova) → alessandra.com = Dr. Tony Alessandra US business consultant
-  // Phase F.1 (p82 PD suspect audit) — manually verified single-token
+  // the PD audit (internal report).
+  'americanino', // "Americanino" (Padova) → americanino.eu = clothing/footwear brand (Sport Commerce Italia)
+  'raffaello',   // "Raffaello S.r.l." (Limena) → raffaello.it = Ferrero confectionery brand
+  'cantele',     // "Cantele S.r.l." (Padova) → cantele.it = Cantele Vini wine producer (Guagnano LE)
+  'gemini',      // "Immobiliare Gemini" → gemini.it = condominium management software (also generic word)
+  'fusion',      // "Fusion S.a.s." (Albignasego) → fusion.org = redirected to synergytech buy-domain (parked)
+  'myhome',      // "My Home S.r.l." (Padova) → myhome.com = US Williston Financial real-estate tech
+  'orchidea',    // "Immobiliare Orchidea" (Mestrino) → orchidea.it = Orchidea Milano furniture retail (Corsico)
+  'ypsilon',     // "Ypsilon S.r.l." (Albignasego) → ypsilon.net = Ypsilon.Net AG travel tech (PCI / ISO)
+  'alessandra',  // "Alessandra S.r.l." (Padova) → alessandra.com = Dr. Tony Alessandra US business consultant
+  // Manually verified single-token
   // brand stems matching well-known third-party domains. Per-case
-  // evidence in the Phase F.1 PD suspect audit (internal report).
-  'franca',     // p82: "Franca Immobiliare" (Albignasego) → franca.it = Residence Franca tourist residence (Arco TN, Lago di Garda)
-  'sartori',    // p82: "Immobiliare Sartori" (Casalserugo) → sartori.it = Sartori Studio Legale law firm (Trento)
-  'colonna',    // p82: "Studio Immobiliare Colonna" (Montegrotto) → colonna.net = Wittmann family personal site (US / Germany)
-  'chemello',   // p82: "Immobiliare Chemello" (Sandrigo VI) → chemello.it = Chemello Metalworking (same town, funeral-art metalwork, NOT real estate)
-  // Phase F.3 (p84 PD pre-Serper sanity audit) — see
-  // the Phase F.3 pre-Serper sanity audit (internal report).
-  'academy',    // p84: "Academy S.r.l." (Rovigo) → academy.it = The British Academy English-language school (Cassino/Sora, Lazio)
-  'giemme',     // p84: "Giemme S.r.l." (Albignasego) → giemme.org = Gi. Emme Macchine Utensili machine tools (same town, different sector — same family pattern as Chemello)
+  // evidence in the PD suspect audit (internal report).
+  'franca',     // "Franca Immobiliare" (Albignasego) → franca.it = Residence Franca tourist residence (Arco TN, Lago di Garda)
+  'sartori',    // "Immobiliare Sartori" (Casalserugo) → sartori.it = Sartori Studio Legale law firm (Trento)
+  'colonna',    // "Studio Immobiliare Colonna" (Montegrotto) → colonna.net = Wittmann family personal site (US / Germany)
+  'chemello',   // "Immobiliare Chemello" (Sandrigo VI) → chemello.it = Chemello Metalworking (same town, funeral-art metalwork, NOT real estate)
+  // See the pre-Serper sanity audit (internal report).
+  'academy',    // "Academy S.r.l." (Rovigo) → academy.it = The British Academy English-language school (Cassino/Sora, Lazio)
+  'giemme',     // "Giemme S.r.l." (Albignasego) → giemme.org = Gi. Emme Macchine Utensili machine tools (same town, different sector — same family pattern as Chemello)
   // generic single-token Italian brand-noise:
   'futuro', 'ambiente', 'qualita', 'prestigio', 'centro', 'punto',
 ]);
@@ -244,7 +244,7 @@ export function hasSectorEvidence(html: string, category?: string): {
 
 /**
  * Tiny-or-parked detection. Triggers if:
- *   - HTML body is shorter than 800 useful bytes (Phase D §9), OR
+ *   - HTML body is shorter than 800 useful bytes, OR
  *   - title contains parking markers ("for sale", "domain parked",
  *     "this premium domain", "coming soon", domain-marketplace
  *     listings), OR
@@ -253,7 +253,7 @@ export function hasSectorEvidence(html: string, category?: string): {
  * Does NOT trigger on the substring "for sale" elsewhere in body — Italian
  * real-estate pages legitimately advertise "case in vendita / for sale".
  *
- * Phase D.5 audit: extended for two TV-found classes:
+ * Extended for two TV-found classes:
  *   - `contea.com` had `<title>contea.com for sale | Spaceship.com</title>`
  *     and full marketplace HTML > 800 bytes. The original markers
  *     missed `spaceship.com` and the `<domain> for sale | <market>`
@@ -271,9 +271,9 @@ export function isTinyOrParked(html: string): boolean {
   const titleParkingMarkers = [
     'domain for sale', 'this premium', '- for sale', '— for sale', 'parked',
     'this domain is for sale', 'buy this domain', 'questo dominio',
-    // Phase D.5: domain-marketplace listings ("contea.com for sale | Spaceship.com")
+    // domain-marketplace listings ("contea.com for sale | Spaceship.com")
     ' for sale | ', 'spaceship.com', 'sav.com', 'afternic',
-    // Phase D.5: under-construction / placeholder titles ("possagno.it")
+    // under-construction / placeholder titles ("possagno.it")
     'coming soon', 'in costruzione', 'sito in costruzione', 'website coming',
   ];
   if (title && titleParkingMarkers.some((m) => title.includes(m))) return true;
@@ -282,7 +282,7 @@ export function isTinyOrParked(html: string): boolean {
     'is available for purchase', 'domain parked', 'sedo.com', 'dan.com',
     'huge domains', 'godaddy auctions', 'questo dominio è in vendita',
     'acquista questo dominio',
-    // Phase D.5: marketplace + placeholder body markers
+    // marketplace + placeholder body markers
     'this domain is coming soon', 'domain is coming soon', 'sito in costruzione',
     'website is coming', 'spaceship.com',
   ];
@@ -342,11 +342,8 @@ export function evaluateSemanticEvidence(
   // — that pattern (e.g. "Studio Belluno SRL" → belluno.eu) is almost
   // always a generic city portal, not the firm's site. Belluno-run found
   // 5 such FPs (belluno.eu, feltre.com, vittorio.com, valdobbiadene.com,
-  // tambre.org) — Phase D follow-up to the audit.
-  const leadCityCompact = (normalized.city ?? '')
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
+  // tambre.org) — confirmed by a follow-up audit.
+  const leadCityCompact = stripDiacritics((normalized.city ?? '').toLowerCase())
     .replace(/[^a-z0-9]/g, '');
   // Reject when (a) the only brand token equals the lead city AND (b) the
   // domain itself is just the city (or the first word of a multi-word
@@ -360,7 +357,7 @@ export function evaluateSemanticEvidence(
     leadCityCompact.includes(distinctiveTokens[0]) &&
     domainStem.length >= 4 &&
     leadCityCompact.includes(domainStem);
-  // Phase D.5 — also flag when the COMPACT stripped brand (multi-token
+  // Also flag when the COMPACT stripped brand (multi-token
   // brand joined into one string) is itself a denylisted stem. This
   // catches "Solar System" → compactStripped="solarsystem" matching
   // the manually-verified `solarsystem.it` (Rappazzo Sistemi solar
@@ -394,7 +391,7 @@ export function evaluateSemanticEvidence(
   // compactFull (≥ 14) provides the specificity that a short acronym
   // alone could not.
   //
-  // Phase D.1 audit-cleanup: Pb Properties → pbproperties.com used to
+  // Audit cleanup: Pb Properties → pbproperties.com would otherwise
   // pass Layer B because "pb" qualified as a short acronym and
   // "properties" got stripped as a descriptor, leaving a domain match
   // on a generic ("acronym + English real-estate noun") pattern. Layer
@@ -406,7 +403,7 @@ export function evaluateSemanticEvidence(
 
   // Domain-stem floor: 6 chars. Without this, 2-3 char acronym domains
   // (am.com, ca.com, az.com) coincidentally substring-match into long
-  // company-name compacts and pass the layer. Audit Phase D follow-up.
+  // company-name compacts and pass the layer. Audit follow-up.
   const domainStemLongEnough = domainStem.length >= 6;
 
   const layerAFullName =

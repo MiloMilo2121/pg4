@@ -2,17 +2,17 @@ import type { Lead } from '../types/lead';
 import type { JudgmentConfig } from './config/types';
 
 /**
- * §16 two-stage funnel — Stage-0 cheap triage. DETERMINISTIC, uses ONLY data
+ * Two-stage funnel — Stage-0 cheap triage. DETERMINISTIC, uses ONLY data
  * already on the lead (no scraping, no LLM). Drops companies that are near-certain
  * non-targets BEFORE the expensive L3 collection + L4 judging. Applies the
- * §4.5 disqualifier subset marked `cheaplyCheckable`. CONSERVATIVE: a drop must
+ * disqualifier subset marked `cheaplyCheckable`. CONSERVATIVE: a drop must
  * be a clear knock-out, never a borderline judgment (else it re-creates the
  * single-axis false-negative the system exists to avoid).
  */
 
 export interface TriageResult {
   pass: boolean;
-  /** disqualifier id from §4.5 when dropped */
+  /** the disqualifier id that caused the drop */
   disqualifier?: string;
   reason?: string;
 }

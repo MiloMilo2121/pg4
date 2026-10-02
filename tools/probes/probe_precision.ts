@@ -25,7 +25,8 @@ import fs from 'fs';
 import path from 'path';
 import { parseArgs, optString } from '../../src/cli/_args';
 import { DirectFetchProvider } from '../../src/providers/http/direct_fetch';
-import { extractFromBody, registrableDomain } from '../../src/enrichment/extract/extract_from_body';
+import { extractFromBody } from '../../src/enrichment/extract/extract_from_body';
+import { registrableDomain } from '../../src/util/domain';
 import { checkVatViaVies } from '../../src/enrichment/financial/vies';
 import { normalizeCompanyNameForKey } from '../../src/discovery/deduper';
 

@@ -1,6 +1,6 @@
 import type { Lead } from '../../types/lead';
 import type { NormalizedLead } from '../../types/discovery';
-import type { PerLeadContext, Stage } from '../../types/enrichment';
+import type { PerLeadContext, Stage, StageRunOptions } from '../../types/enrichment';
 import type { StageOutcome } from '../../types/output';
 import { ReasonCode as RC, DiscoveryMethod } from '../../types/output';
 import { RdapValidator } from '../../discovery/website/rdap_validator';
@@ -14,13 +14,13 @@ import { DEFAULTS } from '../../config/defaults';
 export class RdapBoostStage implements Stage {
   readonly name = 'rdap';
 
-  async run(_ctx: PerLeadContext, lead: Lead, normalized: NormalizedLead): Promise<StageOutcome> {
+  async run(_ctx: PerLeadContext, lead: Lead, normalized: NormalizedLead, opts: StageRunOptions = {}): Promise<StageOutcome> {
     const start = Date.now();
     const target = normalized.website || lead.official_website;
     if (!target) {
       return { stage: this.name, status: 'skipped', duration_ms: 0, detail: 'no_target_domain' };
     }
-    const ev = await RdapValidator.checkDomainOwnership(target, normalized);
+    const ev = await RdapValidator.checkDomainOwnership(target, normalized, { signal: opts.signal });
     if (ev.confidence >= 0.8) {
       lead.official_website = lead.official_website ?? target;
       lead.website_discovery_method = DiscoveryMethod.RDAP_BINGO;

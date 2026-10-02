@@ -1,8 +1,5 @@
 import crypto from 'crypto';
 import { CostLedger } from './cost_ledger';
-import { MemoryCache } from './cache';
-import { Backpressure } from './backpressure';
-import { RateLimiter } from './rate_limiter';
 import { getConfig } from '../config/env';
 import type { ResolvedConfig } from '../config/env';
 import type { PerLeadContext, RunContext } from '../types/enrichment';
@@ -13,22 +10,22 @@ export interface RunOptions {
   /** Override the per-lead cost ceiling from config/env. */
   costCeilingEur?: number;
   /**
-   * Phase G — when true, stages may run paid providers within the
+   * When true, stages may run paid providers within the
    * per-lead and per-run budgets. Default false. Default-deny is
    * the load-bearing safety: a misconfigured ceiling cannot
    * accidentally enable paid calls.
    */
   paidEnabled?: boolean;
-  /** Phase G — run-level cost cap. `undefined` = no aggregate cap. */
+  /** Run-level cost cap. `undefined` = no aggregate cap. */
   runCostCeilingEur?: number;
   /**
-   * Phase B.1 — externally supplied run id. The `run` command generates
+   * Externally supplied run id. The `run` command generates
    * one id and threads it through scrape + enrich so the run record,
    * ledger, and log file all correlate. Default: generated.
    */
   runId?: string;
   /**
-   * Phase B.5 — externally supplied abort signal (SIGINT/SIGTERM →
+   * Externally supplied abort signal (SIGINT/SIGTERM →
    * graceful drain). Default: a never-aborting signal.
    */
   abortSignal?: AbortSignal;
@@ -42,21 +39,12 @@ export interface Run {
   ctx: RunContext;
   cfg: ResolvedConfig;
   ledger: CostLedger;
-  cache: MemoryCache;
-  backpressure: Backpressure;
-  rate: RateLimiter;
 }
 
 export function createRun(opts: RunOptions = {}): Run {
   const cfg = getConfig();
   const runId = opts.runId ?? `run-${Date.now()}-${crypto.randomBytes(2).toString('hex')}`;
   const ledger = new CostLedger({ jsonlPath: opts.ledgerJsonlPath, runId });
-  const cache = new MemoryCache({ maxEntries: 10_000 });
-  const backpressure = new Backpressure({
-    initialConcurrency: cfg.pipeline.concurrency,
-    maxConcurrency: cfg.pipeline.concurrency * 2,
-  });
-  const rate = new RateLimiter();
   const ctx: RunContext = {
     runId,
     startedAt: Date.now(),
@@ -65,7 +53,7 @@ export function createRun(opts: RunOptions = {}): Run {
     paidEnabled: opts.paidEnabled === true,
     runCostCeilingEur: opts.runCostCeilingEur,
   };
-  return { ctx, cfg, ledger, cache, backpressure, rate };
+  return { ctx, cfg, ledger };
 }
 
 export function createPerLeadContext(run: Run): PerLeadContext {

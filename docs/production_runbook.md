@@ -23,7 +23,7 @@ Evidence supporting this assessment:
   before paid is promoted to routine.
 - The `run` command (end-to-end scrape → enrich in one call) is a stub. Use
   `scrape` + `enrich` separately for all production runs until it is wired.
-- The `validate_output` script (`src/scripts/validate_output.ts`) exists and is
+- The `validate_output` script (`src/cli/validate_output.ts`) exists and is
   runnable via `tsx`; a `pnpm validate:output` convenience script is being added
   in this same sprint — reference the `tsx` invocation below until the script
   entry appears in `package.json`.
@@ -172,12 +172,12 @@ invoke the validator directly:
 
 ```bash
 # Raw scrape output
-tsx src/scripts/validate_output.ts \
+tsx src/cli/validate_output.ts \
   --csv  output/run_pd_maps_full.csv \
   --jsonl output/run_pd_maps_full.jsonl
 
 # Enriched output with ledger check and cost cap assertion
-tsx src/scripts/validate_output.ts \
+tsx src/cli/validate_output.ts \
   --csv    output/run_pd_maps_full_paid.csv \
   --jsonl  output/run_pd_maps_full_paid.jsonl \
   --ledger output/run_pd_maps_full_paid.cost-ledger.jsonl \
@@ -188,7 +188,7 @@ Exits 0 on pass, 1 on any failure. Stdout is a JSON summary with `ok`, counts,
 and an `errors` array. Pipe through `jq` for readability:
 
 ```bash
-tsx src/scripts/validate_output.ts \
+tsx src/cli/validate_output.ts \
   --csv output/run_pd_maps_full_paid.csv \
   --jsonl output/run_pd_maps_full_paid.jsonl \
   --ledger output/run_pd_maps_full_paid.cost-ledger.jsonl \
@@ -209,7 +209,7 @@ require `RUN_SMOKE=1 pnpm run test:smoke` and are excluded from CI by default.
 
 ## 5. Go / No-Go Checks
 
-Run `tsx src/scripts/validate_output.ts` (see §4.5) after every scrape and every
+Run `tsx src/cli/validate_output.ts` (see §4.5) after every scrape and every
 enrich. The validator enforces items 1–4; items 5–7 require manual inspection.
 
 ### 5.1 CSV/JSONL row alignment
@@ -461,7 +461,7 @@ Run this checklist before each new province or category campaign.
 
 ### Post-scrape
 
-- [ ] `tsx src/scripts/validate_output.ts --csv <out>.csv --jsonl <out>.jsonl`
+- [ ] `tsx src/cli/validate_output.ts --csv <out>.csv --jsonl <out>.jsonl`
   exits 0
 - [ ] `csv_rows` equals `jsonl_rows` in validator output
 - [ ] No mojibake errors in validator output
@@ -470,7 +470,7 @@ Run this checklist before each new province or category campaign.
 
 ### Post-enrich
 
-- [ ] `tsx src/scripts/validate_output.ts --csv <out>.csv --jsonl <out>.jsonl
+- [ ] `tsx src/cli/validate_output.ts --csv <out>.csv --jsonl <out>.jsonl
   --ledger <out>.cost-ledger.jsonl --max-cost <cap>` exits 0
 - [ ] `ledger_summaries === 1`
 - [ ] `run_ids` has exactly one entry

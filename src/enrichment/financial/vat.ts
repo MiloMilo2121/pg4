@@ -1,8 +1,7 @@
 /**
- * R13 — Italian VAT (Partita IVA) utilities. PURE: no network, no I/O.
+ * Italian VAT (Partita IVA) utilities. PURE: no network, no I/O.
  *
- * Ported from pg3's `enricher/core/financial/vies.ts` checksum and
- * `patterns.ts` VAT regexes, re-expressed as standalone pure functions so
+ * The checksum and VAT regexes are standalone pure functions so
  * they can be unit-tested with zero network and reused by the parser and
  * the (disabled) financial stage.
  *

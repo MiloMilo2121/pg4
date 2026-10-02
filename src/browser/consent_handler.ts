@@ -4,9 +4,10 @@ import { logger } from '../runtime/logger';
 /**
  * Best-effort cookie / consent acceptance.
  *
- * pg3 logged a line per attempted button; with thousands of navigations
- * that buried the actual signal. pg4 keeps a single in-process counter
- * per (domain, outcome) and flushes a summary on demand.
+ * Logging a line per attempted button buries the actual signal: with
+ * thousands of navigations the log is all consent noise. So the module keeps
+ * a single in-process counter per (domain, outcome) and flushes a summary
+ * on demand.
  *
  * The handler is safe to call before/after navigation. A "miss" (no
  * known button) is fine — many navigations land directly on the result
@@ -28,14 +29,15 @@ const counters: Record<`${Domain}:${Outcome}`, number> = {
   'generic:failed': 0,
 };
 
+// Listed in priority order. `button#onetrust-accept-btn-handler` and
+// `button:has-text("ACCETTA")` are not repeated: the id already matches the
+// button, and `:has-text` is a case-insensitive substring match.
 const PG_SELECTORS = [
   '#onetrust-accept-btn-handler',
-  'button#onetrust-accept-btn-handler',
   'button[aria-label="Accetta"]',
   'button[aria-label*="cookie" i]',
   'button:has-text("Accetta")',
   'button:has-text("Accetto")',
-  'button:has-text("ACCETTA")',
 ];
 
 const MAPS_SELECTORS = [
@@ -55,25 +57,44 @@ const GENERIC_SELECTORS = [
   'button:has-text("OK")',
 ];
 
-export async function acceptConsent(page: Page, domain: Domain, opts: { perButtonTimeoutMs?: number } = {}): Promise<Outcome> {
+/**
+ * Once consent is stored there is no banner, and that is the common case. A
+ * sequential click per selector waited the full timeout for each of them
+ * (about 10 s per PG comune), so the handler first waits once for any of the
+ * selectors to become visible and returns when none does. Only then does it
+ * click, walking the list in priority order rather than DOM order so a
+ * generic "cookie" button never wins over the dedicated accept button.
+ */
+export async function acceptConsent(page: Page, domain: Domain, opts: { timeoutMs?: number } = {}): Promise<Outcome> {
   const selectors =
     domain === 'pg' ? PG_SELECTORS : domain === 'maps' ? MAPS_SELECTORS : GENERIC_SELECTORS;
-  const timeout = opts.perButtonTimeoutMs ?? 1500;
+  const timeout = opts.timeoutMs ?? 1500;
+  try {
+    const anyBanner = selectors
+      .map((sel) => page.locator(sel))
+      .reduce((combined, next) => combined.or(next));
+    await anyBanner.first().waitFor({ state: 'visible', timeout });
+  } catch {
+    counters[`${domain}:not_present`] += 1;
+    return 'not_present';
+  }
   for (const sel of selectors) {
     try {
-      const locator = page.locator(sel).first();
-      await locator.click({ timeout });
+      const button = page.locator(sel).first();
+      if (!(await button.isVisible())) continue;
+      await button.click({ timeout });
       counters[`${domain}:accepted`] += 1;
       // Allow the page to settle after consent — usually the consent
       // overlay re-renders content. Short, bounded.
       await page.waitForTimeout(400);
       return 'accepted';
     } catch {
-      // selector not present / not clickable / timed out — try next
+      // detached or not clickable — try the next selector
     }
   }
-  counters[`${domain}:not_present`] += 1;
-  return 'not_present';
+  // A banner was visible but none of its buttons could be clicked.
+  counters[`${domain}:failed`] += 1;
+  return 'failed';
 }
 
 /** Flush accumulated counters as a single structured log line. */

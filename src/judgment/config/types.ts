@@ -1,10 +1,10 @@
 import type { BusinessModel, GapCause, LeverKind, Quadrant, SubdimKey } from '../../types/judgment';
 
 /**
- * The `judgment_config` schema — the home of ALL judgment LOGIC (plan §0
- * "cemento vs creta"). NOTHING here lives in the DB schema or in queries.
+ * The `judgment_config` schema — the home of ALL judgment LOGIC ("cemento vs creta").
+ * NOTHING here lives in the DB schema or in queries.
  *
- * Two strata, kept conceptually distinct (§0):
+ * Two strata, kept conceptually distinct:
  *  - CRETA-LOGICA: rubrics, taxonomies, traps, levers, causes, archetypes —
  *    TRANSCRIBED from the v2 ontology, never invented. Every entry carries a
  *    `ref` to its v2 section so fidelity is auditable (a test enforces this).
@@ -17,11 +17,11 @@ import type { BusinessModel, GapCause, LeverKind, Quadrant, SubdimKey } from '..
  * by code.
  */
 
-/** Axis-A subdimension rubric (§2.1–2.7). */
-export interface SubdimRubric {
+/** Axis-A subdimension rubric. */
+interface SubdimRubric {
   dim: SubdimKey;
   name: string;
-  ref: string; // v2 section, e.g. '§2.1'
+  ref: string; // the v2 ontology section this was transcribed from
   definition: string;
   strengthSignals: string[];
   weaknessSignals: string[];
@@ -29,10 +29,10 @@ export interface SubdimRubric {
   thirdPartySources: string[];
 }
 
-/** Axis-A declension per business model (§2.8). */
-export interface ModelDeclination {
+/** Axis-A declension per business model. */
+interface ModelDeclination {
   model: BusinessModel;
-  ref: string; // §2.8.x
+  ref: string; // the v2 ontology section, per-model variant
   whereStrengthLives: string;
   privilegedProxies: string[];
   /** per-subdimension salience priors for this model (CRETA-NUMERI). */
@@ -40,20 +40,20 @@ export interface ModelDeclination {
   caveat?: string;
 }
 
-/** Axis-B surface rubric, three states (§3.1–3.15). */
-export interface SurfaceRubric {
+/** Axis-B surface rubric, three states. */
+interface SurfaceRubric {
   surface: string; // '3.1'..'3.15'
   name: string;
   ref: string;
   excellence: string;
   mediocrity: string;
   absence: string;
-  /** hybrid-source note: which part is A vs B (§3.4/§3.13/§3.14) */
+  /** hybrid-source note: which part is A vs B */
   axisNote?: string;
 }
 
 /** Website rubric — the two lenses from the brief's Appendix A. */
-export interface WebsiteRubric {
+interface WebsiteRubric {
   ref: string;
   /** Lens 1 — validity/ownership: is it really their official site? */
   validityLens: string[];
@@ -61,22 +61,22 @@ export interface WebsiteRubric {
   qualityLens: string[];
 }
 
-/** Per-model surface weighting priors (§3.0.2) — CRETA-NUMERI. */
-export interface ModelSurfaceWeights {
+/** Per-model surface weighting priors — CRETA-NUMERI. */
+interface ModelSurfaceWeights {
   model: BusinessModel;
   ref: string;
   /** surface key → weight prior (0..1) */
   weights: Record<string, number>;
 }
 
-/** §3.16 transversal brand/messaging criteria. */
-export interface TransversalCriterion {
+/** Transversal brand/messaging criteria. */
+interface TransversalCriterion {
   name: string;
   check: string;
 }
 
-/** §4.4 gap-cause taxonomy. */
-export interface GapCauseDef {
+/** The taxonomy of causes a gap can have. */
+interface GapCauseDef {
   cause: GapCause;
   ref: string;
   signature: string;
@@ -84,43 +84,43 @@ export interface GapCauseDef {
   colmability: 'high' | 'medium' | 'low' | 'none';
 }
 
-/** §4.5 disqualifier / red-flag. */
-export interface DisqualifierDef {
+/** A disqualifier / red-flag that rules a lead out. */
+interface DisqualifierDef {
   id: string;
   ref: string;
   family: 'substance' | 'economic' | 'stage' | 'compliance' | 'distress' | 'fake_reputation';
   test: string;
-  /** true → checkable in the cheap Stage-0 triage (§16) before paid collection */
+  /** true → checkable in the cheap Stage-0 triage before paid collection */
   cheaplyCheckable: boolean;
 }
 
-/** Parte VI archetype attractor. */
-export interface ArchetypeDef {
+/** An archetype attractor — the pattern a company is recognised by. */
+interface ArchetypeDef {
   id: string;
   ref: string;
   quadrant: Quadrant;
   signature: string;
 }
 
-/** Parte VII gap→lever. */
-export interface LeverDef {
+/** A gap→lever mapping: the symptom it presents with and what it really is. */
+interface LeverDef {
   kind: LeverKind;
   ref: string;
   symptom: string;
   gapNature: string;
-  /** default ordering in the intervention sequence (§7.5) */
+  /** default ordering in the intervention sequence */
   sequence: number;
 }
 
-/** §5.3 cognitive trap (DO-NOT rule). */
-export interface CognitiveTrap {
+/** A cognitive trap (DO-NOT rule). */
+interface CognitiveTrap {
   id: number;
   ref: string;
   rule: string;
 }
 
-/** Quadrant definition (§4.1). */
-export interface QuadrantDef {
+/** Quadrant definition. */
+interface QuadrantDef {
   quadrant: Quadrant;
   ref: string;
   meaning: string;
@@ -129,7 +129,7 @@ export interface QuadrantDef {
 
 /**
  * The ONLY free numbers (CRETA-NUMERI). v2 is non-numeric (Caveat 1); these are
- * conservative system defaults, tuned on the golden set (§15). They are read by
+ * conservative system defaults, tuned on the golden set. They are read by
  * deterministic code, NEVER baked into SQL.
  */
 export interface JudgmentThresholds {
@@ -153,7 +153,7 @@ export interface JudgmentThresholds {
 }
 
 /** System-prompt preambles (role + hard rules). The rubric BODY is rendered from the structured fields. */
-export interface JudgmentPrompts {
+interface JudgmentPrompts {
   judgeA: string;
   judgeB: string;
   gap: string;
@@ -163,13 +163,13 @@ export interface JudgmentPrompts {
 export interface JudgmentConfig {
   version: string;
   ontologyVersion: string;
-  /** §5.1 — the order of questions the GAP reasoner asks. */
+  /** The order of questions the GAP reasoner asks. */
   questionOrder: string[];
-  /** §5.4 — golden rule, embedded verbatim in the GAP prompt. */
+  /** Golden rule, embedded verbatim in the GAP prompt. */
   goldenRule: string;
-  /** §1.4 — relativity-of-category instruction. */
+  /** Relativity-of-category instruction. */
   categoryRelativity: string;
-  /** §1.5 — trajectory instruction. */
+  /** Trajectory instruction. */
   trajectory: string;
   judgeA: {
     subdims: SubdimRubric[];

@@ -8,8 +8,7 @@ type CheerioCard = cheerio.Cheerio<AnyNode>;
 /**
  * Pure parser for PagineGialle search-result HTML pages.
  *
- * Selectors are derived from the canonical pg3 implementation
- * (`pg3/src/scraper/runner.ts`):
+ * Selectors:
  *   - `.search-itm`           → result card root
  *   - `.search-itm__rag`      → company name (ragione sociale)
  *   - `.search-itm__adr`      → address ("Via X, 12345 Comune (PV)")
@@ -115,7 +114,7 @@ function parseCard($card: CheerioCard, opts: PageGialleParseOptions): Lead | und
       lead.business_city = lead.city;
     }
   }
-  // Phase 4.4: strip U+FFFD replacement runs that PG occasionally produces
+  // Strip U+FFFD replacement runs that PG occasionally produces
   // when its CMS serves latin-1-encoded bytes (`Piazza Libert\xe0` →
   // `Piazza Libert��`). Conservative: drop the corrupted run only,
   // preserve valid accented characters elsewhere.

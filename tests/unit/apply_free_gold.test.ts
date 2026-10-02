@@ -7,7 +7,7 @@ import type { Lead } from '../../src/types/lead';
 const FIX = path.join(__dirname, '..', 'fixtures', 'extract');
 const load = (name: string): string => fs.readFileSync(path.join(FIX, name), 'utf8');
 
-describe('applyFreeGoldExtraction — Phase 1', () => {
+describe('applyFreeGoldExtraction', () => {
   it('no body → no-op (not applied)', () => {
     const lead: Lead = { company_name: 'X', official_website: 'https://x.it' };
     const r = applyFreeGoldExtraction(lead, undefined);

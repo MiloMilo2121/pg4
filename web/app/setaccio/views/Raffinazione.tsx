@@ -1,26 +1,37 @@
-import type { CSSProperties } from 'react';
-import { RAFF } from '../data';
+import { useId } from 'react';
+import { RAFF, UNIVERSO } from '../data';
 import { useEnrichFields, useCompanies, ENRICH_KEY_TO_API } from '../queries';
 import { useEnrichJob } from '../jobs';
-import { fmt, tabStyle, prioPillStyle } from '../helpers';
+import { fmt } from '../helpers';
 import type { ViewProps } from '../ctx';
+import { PageSection, PageHeader } from '../ui/Page';
+import { Tabs, TabPanel } from '../ui/Tabs';
+import { Table } from '../ui/Table';
+import { MiniBar } from '../ui/Bar';
+import { Check } from '../ui/Choice';
+import { Pill } from '../ui/Pill';
+import { Stat } from '../ui/Stat';
+import { Funnel } from '../ui/Funnel';
+import { Callout } from '../ui/Callout';
+import { Card } from '../../ds/components/Card';
+import { Button } from '../../ds/components/Button';
+import { cx } from '../../ds/components/cx';
 
 const ENRICH_MAX = 200; // server caps a job at 200 companies
 
-const SECTION = { padding: '30px 36px 60px', maxWidth: 1180, margin: '0 auto' } as const;
-const TABS: [ViewProps['st']['raffTab'], string][] = [
+const TABS = [
   ['enrichment', 'Enrichment Center'], ['imbuto', 'Imbuto'], ['viste', 'Viste salvate'],
-];
-const ENRICH_COLS = '1.6fr 1.3fr 1fr 1fr .8fr';
-const UNIVERSO = 18420;
+] as const;
+const ENRICH_COLS = [1.6, 1.3, 1, 1, 0.8];
 
 const SAVED = [
-  { nome: 'Metalmecc. 5–30M', count: '1.340', desc: 'fascia fatturato media, sito verificato' },
-  { nome: 'Alta priorità VI', count: '620', desc: 'Tier A, decisore presente' },
-  { nome: 'Da arricchire', count: '2.840', desc: 'dominio sì, fatturato no' },
+  { nome: 'SaaS 5–30M', count: '640', desc: 'fascia fatturato media, sito verificato' },
+  { nome: 'Alta priorità MI', count: '410', desc: 'Tier A, decisore presente' },
+  { nome: 'Da arricchire', count: '1.260', desc: 'dominio sì, fatturato no' },
 ];
 
 export default function Raffinazione({ st, set }: Pick<ViewProps, 'st' | 'set'>) {
+  const tabsId = useId();
   const ENRICH = useEnrichFields();
   const { ids } = useCompanies();
   const enrichJob = useEnrichJob();
@@ -41,158 +52,131 @@ export default function Raffinazione({ st, set }: Pick<ViewProps, 'st' | 'set'>)
       { onSuccess: (r) => set({ activeJob: { id: r.jobId, kind: 'enrich' }, jobModalOpen: true }) },
     );
   };
+  const toggleField = (k: string) => set({ enrich: { ...st.enrich, [k]: !st.enrich[k] } });
 
   // imbuto
   const totalRemoved = RAFF.reduce((s, f) => s + (st.filters[f.k] ? f.removed : 0), 0);
   const raffFinal = UNIVERSO - totalRemoved;
-  const vizStages: { label: string; val: number }[] = [{ label: 'Universo', val: UNIVERSO }];
+  const vizStages: { label: string; value: number }[] = [{ label: 'Universo', value: UNIVERSO }];
   let acc = UNIVERSO;
   RAFF.forEach((f) => {
     if (st.filters[f.k]) {
       acc -= f.removed;
-      vizStages.push({ label: f.label, val: acc });
+      vizStages.push({ label: f.label, value: acc });
     }
   });
 
   return (
-    <section className="agfade" style={SECTION}>
-      <div style={{ marginBottom: 8 }}><span className="kicker">Raffinazione</span></div>
-      <h1 style={{ fontSize: '1.95rem', fontWeight: 500, letterSpacing: '-.02em', marginBottom: 18 }}>Dal grezzo alla lista utile</h1>
-      <div style={{ display: 'flex', gap: 6, marginBottom: 26, borderBottom: '1px solid var(--line)' }}>
-        {TABS.map(([id, label]) => (
-          <button key={id} onClick={() => set({ raffTab: id })} style={tabStyle(st.raffTab === id)}>{label}</button>
-        ))}
-      </div>
+    <PageSection>
+      <PageHeader kicker="Raffinazione" number="03" title="Dal grezzo alla lista utile" />
+      <Tabs items={TABS} value={st.raffTab} onChange={(id) => set({ raffTab: id })} label="Raffinazione" idBase={tabsId} />
 
-      {/* Enrichment Center */}
-      {st.raffTab === 'enrichment' && (
-        <div className="agfade" style={{ display: 'grid', gridTemplateColumns: '1fr 300px', gap: 26, alignItems: 'start' }}>
-          <div>
-            <p style={{ fontSize: '.92rem', color: 'var(--ink-2)', marginBottom: 18 }}>
-              Scegli cosa aggiungere solo dopo aver visto quanto manca, quanto costa e quali segmenti abilita. Seleziona i campi da arricchire.
-            </p>
-            <div style={{ background: 'var(--paper)', border: '1px solid var(--line)', borderRadius: 14, overflow: 'hidden' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: ENRICH_COLS, gap: 10, padding: '12px 18px', borderBottom: '1px solid var(--line)', fontSize: '.66rem', fontWeight: 600, letterSpacing: '.1em', textTransform: 'uppercase', color: 'var(--ink-3)' }}>
-                <span>Campo</span><span>Copertura</span><span>Da arricchire</span><span>Costo</span><span>Priorità</span>
-              </div>
-              {ENRICH.map((f) => {
-                const sel = !!st.enrich[f.k];
-                const rowStyle: CSSProperties = { width: '100%', textAlign: 'left', display: 'grid', gridTemplateColumns: ENRICH_COLS, gap: 10, padding: '13px 18px', borderBottom: '1px solid var(--line-soft)', alignItems: 'center', fontSize: '.86rem', background: sel ? 'var(--accent-wash)' : 'transparent', transition: 'background .2s' };
-                const checkStyle: CSSProperties = { width: 18, height: 18, borderRadius: 5, border: '1.5px solid ' + (sel ? 'var(--accent)' : 'var(--line)'), background: sel ? 'var(--accent)' : 'transparent', color: 'var(--white)', fontSize: '.7rem', display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 'none' };
-                return (
-                  <button key={f.k} className="ag-row" onClick={() => set({ enrich: { ...st.enrich, [f.k]: !st.enrich[f.k] } })} style={rowStyle}>
-                    <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                      <span style={checkStyle}>{sel ? '✓' : ''}</span>
-                      <span style={{ fontWeight: 600, color: 'var(--ink)' }}>{f.label}</span>
-                    </span>
-                    <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <span style={{ width: 54, height: 5, borderRadius: 999, background: 'var(--paper-3)', overflow: 'hidden' }}>
-                        <span style={{ display: 'block', height: '100%', width: f.cov + '%', background: 'var(--accent)' }} />
-                      </span>
-                      <span style={{ fontSize: '.78rem', color: 'var(--ink-2)' }}>{f.cov}%</span>
-                    </span>
-                    <span style={{ color: 'var(--ink-2)', fontSize: '.86rem' }}>{fmt(f.toArr)}</span>
-                    <span style={{ color: 'var(--ink-2)', fontSize: '.86rem' }}>{f.cost}</span>
-                    <span style={prioPillStyle(f.prio)}>{f.prio}</span>
-                  </button>
-                );
-              })}
+      <TabPanel idBase={tabsId} value={st.raffTab}>
+        {/* Enrichment Center */}
+        {st.raffTab === 'enrichment' && (
+          <div className="sx-split">
+            <div>
+              <p className="sx-note" style={{ marginBottom: '1rem' }}>
+                Scegli cosa aggiungere solo dopo aver visto quanto manca, quanto costa e quali segmenti abilita. Seleziona i campi da arricchire.
+              </p>
+              <Card pad="flush">
+                <Table cols={ENRICH_COLS} head={['Campo', 'Copertura', 'Da arricchire', 'Costo', 'Priorità']} minWidth={620} label="Campi da arricchire">
+                  {ENRICH.map((f) => {
+                    const sel = !!st.enrich[f.k];
+                    return (
+                      <tr key={f.k} className={cx('sx-tr--action', sel && 'sx-tr--selected')} onClick={() => toggleField(f.k)}>
+                        <td>
+                          <button type="button" className="sx-rowbtn" aria-pressed={sel} onClick={(e) => { e.stopPropagation(); toggleField(f.k); }}>
+                            <Check on={sel} />
+                            {f.label}
+                          </button>
+                        </td>
+                        <td><MiniBar value={f.cov} text={`${f.cov}%`} /></td>
+                        <td className="sx-cell-num">{fmt(f.toArr)}</td>
+                        <td className="sx-cell-num">{f.cost}</td>
+                        <td><Pill tone={f.prio === 'Alta' ? 'wash' : 'muted'}>{f.prio}</Pill></td>
+                      </tr>
+                    );
+                  })}
+                </Table>
+              </Card>
             </div>
-          </div>
-          <div style={{ position: 'sticky', top: 0 }}>
-            <div style={{ background: 'var(--paper)', border: '1px solid var(--accent-line)', borderRadius: 14, padding: 20, boxShadow: 'var(--shadow-card)' }}>
-              <span className="kicker">Anteprima costo</span>
-              <div style={{ fontFamily: 'var(--serif)', fontSize: '2.2rem', fontWeight: 500, color: 'var(--accent)', margin: '10px 0 2px', lineHeight: 1 }}>€ {fmt(enrichN)}</div>
-              <div style={{ fontSize: '.76rem', color: 'var(--ink-3)', marginBottom: 16 }}>{selFields.length} campi · {fmt(enrichTargets)} aziende</div>
-              <div style={{ background: 'var(--accent-wash)', borderRadius: 11, padding: '13px 14px', marginBottom: 16 }}>
-                <div style={{ fontSize: '.82rem', color: 'var(--ink-2)', lineHeight: 1.5 }}>
-                  {apiFields.length
-                    ? `Arricchisco ${fmt(targetIds.length)} aziende sui campi gratuiti selezionati${ids.length > ENRICH_MAX ? ` (primo lotto di ${ENRICH_MAX})` : ''}.`
-                    : "Seleziona almeno un campo arricchibile (P.IVA, fatturato, dipendenti, email, PEC, social)."}
+            <div className="sx-sticky">
+              <Card emphasis className="sx-stack">
+                <Stat boxed={false} variant="hero" label="Anteprima costo" value={`€ ${fmt(enrichN)}`} sub={`${selFields.length} campi · ${fmt(enrichTargets)} aziende`} />
+                <Callout tone="quiet">
+                  <span aria-live="polite">
+                    {apiFields.length
+                      ? `Arricchisco ${fmt(targetIds.length)} aziende sui campi gratuiti selezionati${ids.length > ENRICH_MAX ? ` (primo lotto di ${ENRICH_MAX})` : ''}.`
+                      : 'Seleziona almeno un campo arricchibile (P.IVA, fatturato, dipendenti, email, PEC, social).'}
+                  </span>
                   {unmappable.length > 0 && (
-                    <span style={{ display: 'block', marginTop: 6, color: 'var(--ink-3)' }}>
-                      {unmappable.join(', ')}: non arricchibili gratis in questa versione — verranno ignorati.
+                    <span style={{ display: 'block', marginTop: '0.4rem' }}>
+                      {unmappable.join(', ')}: non arricchibili gratis in questa versione, verranno ignorati.
                     </span>
                   )}
+                </Callout>
+                <Button glyph="→" block onClick={runEnrich} disabled={!canEnrich}>{enrichJob.isPending ? 'Avvio' : 'Arricchisci'}</Button>
+              </Card>
+            </div>
+          </div>
+        )}
+
+        {/* Imbuto */}
+        {st.raffTab === 'imbuto' && (
+          <div className="sx-split sx-split--aside-left">
+            <div>
+              <p className="sx-note" style={{ marginBottom: '1rem' }}>Attiva o disattiva ogni filtro: la lista finale si ricalcola in tempo reale.</p>
+              <Card pad="tight">
+                <div className="sx-dl__row sx-filter-row">
+                  <span className="sx-cell-strong">Universo iniziale</span>
+                  <span className="sx-cell-num">{fmt(UNIVERSO)}</span>
                 </div>
-              </div>
-              <button
-                className="btn btn-solid"
-                onClick={runEnrich}
-                disabled={!canEnrich}
-                style={{ width: '100%', justifyContent: 'center', opacity: canEnrich ? 1 : 0.5, cursor: canEnrich ? 'pointer' : 'not-allowed' }}
-              >
-                <span>{enrichJob.isPending ? 'Avvio…' : 'Arricchisci'}</span><span className="gl">→</span>
-              </button>
+                <div role="group" aria-label="Filtri">
+                  {RAFF.map((f) => {
+                    const active = !!st.filters[f.k];
+                    return (
+                      <button
+                        key={f.k}
+                        type="button"
+                        className="sx-filter"
+                        aria-pressed={active}
+                        onClick={() => set({ filters: { ...st.filters, [f.k]: !st.filters[f.k] } })}
+                      >
+                        <Check on={active} />
+                        <span className="sx-filter__label">{f.label}</span>
+                        <span className="sx-cell-num">{active ? '−' + fmt(f.removed) : 'off'}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="sx-dl__row sx-filter-total">
+                  <span className="sx-cell-strong">Lista finale</span>
+                  <span className="sx-stat__value" aria-live="polite" style={{ fontSize: 'var(--fs-ui-xl)' }}>{fmt(raffFinal)}</span>
+                </div>
+              </Card>
             </div>
-          </div>
-        </div>
-      )}
-
-      {/* Imbuto */}
-      {st.raffTab === 'imbuto' && (
-        <div className="agfade" style={{ display: 'grid', gridTemplateColumns: '340px 1fr', gap: 30, alignItems: 'start' }}>
-          <div>
-            <p style={{ fontSize: '.88rem', color: 'var(--ink-2)', marginBottom: 16 }}>Attiva o disattiva ogni filtro: la lista finale si ricalcola in tempo reale.</p>
-            <div style={{ background: 'var(--paper)', border: '1px solid var(--line)', borderRadius: 14, padding: 8 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 14px' }}>
-                <span style={{ fontWeight: 600 }}>Universo iniziale</span>
-                <span style={{ fontFamily: 'var(--serif)', fontSize: '1.05rem' }}>{fmt(UNIVERSO)}</span>
-              </div>
-              {RAFF.map((f) => {
-                const active = !!st.filters[f.k];
-                return (
-                  <button key={f.k} className="ag-row" onClick={() => set({ filters: { ...st.filters, [f.k]: !st.filters[f.k] } })} style={{ width: '100%', textAlign: 'left', display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '11px 14px', borderRadius: 9, background: 'transparent' }}>
-                    <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                      <span style={{ width: 9, height: 9, borderRadius: 3, background: active ? 'var(--accent)' : 'var(--line)', flex: 'none' }} />
-                      <span style={{ fontSize: '.86rem', color: active ? 'var(--ink)' : 'var(--ink-3)', textDecoration: active ? 'none' : 'line-through' }}>{f.label}</span>
-                    </span>
-                    <span style={{ fontSize: '.84rem', color: active ? 'var(--accent)' : 'var(--ink-3)', fontWeight: 600 }}>{active ? '−' + fmt(f.removed) : 'off'}</span>
-                  </button>
-                );
-              })}
-              <div style={{ display: 'flex', justifyContent: 'space-between', padding: 14, marginTop: 6, borderTop: '1.6px solid var(--accent-line)', background: 'var(--accent-wash)', borderRadius: 11 }}>
-                <span style={{ fontWeight: 700, color: 'var(--accent)' }}>Lista finale</span>
-                <span style={{ fontFamily: 'var(--serif)', fontSize: '1.4rem', fontWeight: 500, color: 'var(--accent)' }}>{fmt(raffFinal)}</span>
-              </div>
-            </div>
-          </div>
-          <div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'center', marginBottom: 24 }}>
-              {vizStages.map((v, i) => {
-                const last = i === vizStages.length - 1;
-                return (
-                  <div key={v.label + i} style={{ width: 40 + (v.val / UNIVERSO) * 60 + '%', transition: 'width .55s cubic-bezier(.16,1,.3,1)' }}>
-                    <div style={{ background: last ? 'var(--accent)' : 'var(--accent-wash)', border: '1px solid var(--accent-line)', borderRadius: 9, padding: '13px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ fontSize: '.82rem', fontWeight: 600, color: last ? 'var(--white)' : 'var(--ink)' }}>{v.label}</span>
-                      <span style={{ fontFamily: 'var(--serif)', fontSize: '1.05rem', color: last ? 'var(--white)' : 'var(--ink)' }}>{fmt(v.val)}</span>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-            <div style={{ background: 'var(--accent-wash)', border: '1px solid var(--accent-line)', borderRadius: 13, padding: '18px 20px' }}>
-              <span className="kicker">Insight</span>
-              <p style={{ fontFamily: 'var(--serif)', fontSize: '1.05rem', color: 'var(--ink)', lineHeight: 1.5, marginTop: 8 }}>
+            <div className="sx-stack" style={{ gap: '1.5rem' }}>
+              <Funnel steps={vizStages} base={UNIVERSO} minPct={40} deltas={false} label="Imbuto di raffinazione" />
+              <Callout kicker="Insight">
                 Il filtro fatturato elimina il 62% del mercato, mentre il giudizio solo il 14%. Il principale discriminante è dimensionale, non qualitativo.
-              </p>
+              </Callout>
             </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* Viste salvate */}
-      {st.raffTab === 'viste' && (
-        <div className="agfade" style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 16 }}>
-          {SAVED.map((v) => (
-            <div key={v.nome} className="ag-card-h" style={{ background: 'var(--paper)', border: '1px solid var(--line)', borderRadius: 14, padding: 20 }}>
-              <div style={{ fontFamily: 'var(--serif)', fontSize: '1.1rem', fontWeight: 500, marginBottom: 8 }}>{v.nome}</div>
-              <div style={{ fontFamily: 'var(--serif)', fontSize: '1.6rem', color: 'var(--accent)' }}>{v.count}</div>
-              <div style={{ fontSize: '.74rem', color: 'var(--ink-3)', marginTop: 8 }}>{v.desc}</div>
-            </div>
-          ))}
-        </div>
-      )}
-    </section>
+        {/* Viste salvate */}
+        {st.raffTab === 'viste' && (
+          <div className="sx-grid sx-grid--3 sx-grid--joined">
+            {SAVED.map((v) => (
+              <Card key={v.nome} as="article">
+                <h2 className="sx-list-card__title">{v.nome}</h2>
+                <Stat boxed={false} variant="value-top" value={v.count} label="aziende" sub={v.desc} />
+              </Card>
+            ))}
+          </div>
+        )}
+      </TabPanel>
+    </PageSection>
   );
 }

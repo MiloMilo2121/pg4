@@ -10,9 +10,10 @@ import type {
 } from '../../src/types/providers';
 
 /**
- * R7.0 — paid SERP semantic-only veto.
+ * Paid SERP semantic-only veto.
  *
- * Same precision rule R6.1 introduced for PgDetailStage now applies
+ * The same precision rule the per-lead fetch cache introduced for
+ * PgDetailStage now applies
  * to the paid pass: only `verdict.method === 'piva' | 'phone'` may
  * set `official_website` with method=SERP_PAID. A semantic-only
  * match is rejected and the lead ends NOT_FOUND with no website
@@ -73,7 +74,7 @@ class StubHttp implements HttpProvider {
 
 const deadDns = async () => Promise.reject(new Error('ENOTFOUND'));
 
-describe('SerpStage paid pass — R7.0 semantic-only veto', () => {
+describe('SerpStage paid pass — semantic-only veto', () => {
   it('rejects SERP_PAID candidate when verify accepts only via semantic match', async () => {
     const run = createRun({ paidEnabled: true, costCeilingEur: 1.0, runCostCeilingEur: 0.20 });
 
@@ -115,7 +116,7 @@ describe('SerpStage paid pass — R7.0 semantic-only veto', () => {
     // Gate allows (vat + phone signals present, brand multi-token).
     expect(paid.callCount).toBeGreaterThanOrEqual(1);
 
-    // R7.0 invariant: rejected, no website, NOT_FOUND.
+    // Invariant: rejected, no website, NOT_FOUND.
     expect(r.lead.official_website).toBeUndefined();
     expect(r.lead.website_discovery_method).toBeUndefined();
     expect(r.lead.website_confidence).toBeUndefined();
@@ -125,7 +126,7 @@ describe('SerpStage paid pass — R7.0 semantic-only veto', () => {
   it('ACCEPTS SERP_PAID when verify hits piva on the candidate site', async () => {
     const run = createRun({ paidEnabled: true, costCeilingEur: 1.0, runCostCeilingEur: 0.20 });
     const longBrand = 'Pierobon Estimo Immobiliare';
-    // R9: page must clear sector-density ≥3 in addition to piva match.
+    // The page must clear sector-density ≥3 in addition to piva match.
     const realPage =
       `<html><body><h1>${longBrand}</h1>` +
       `<p>Agenzia immobiliare a Padova. Compravendita immobili, locazione ` +

@@ -10,8 +10,9 @@
 import fs from 'fs';
 import path from 'path';
 import { parse } from 'csv-parse/sync';
-import { normProvince } from './geo_regions';
+import { normProvince } from '../geo/regions';
 import { atecoDivisionOf } from './ateco';
+import { REPO_ROOT } from '../util/repo_root';
 
 export type UniverseProvenance = 'istat-asia' | 'sample' | string;
 
@@ -31,7 +32,6 @@ export interface UniverseSource {
   readonly label: string;
 }
 
-const REPO_ROOT = path.resolve(__dirname, '..', '..');
 const DEFAULT_PATH = path.join(REPO_ROOT, 'data', 'reference', 'istat_asia_universe.csv');
 
 interface Row {

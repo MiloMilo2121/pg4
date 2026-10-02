@@ -17,9 +17,9 @@ export interface RehydrateInput {
   dedup: Deduplicator;
   sink: Lead[];
   /**
-   * Phase 4.2.1: when the checkpoint shows done entries but the JSONL is
-   * missing, the resulting CSV would silently miss every lead from those
-   * pages. We treat that as a HARD ERROR by default. Operator must pass
+   * When the checkpoint shows done entries but the JSONL is missing, the
+   * resulting CSV would silently miss every lead from those pages. We
+   * treat that as a HARD ERROR by default. Operator must pass
    * `--allow-missing-jsonl` (or `--fresh` upstream) to proceed.
    */
   allowMissingJsonl?: boolean;
@@ -48,7 +48,7 @@ export class MissingPriorJsonlError extends Error {
  *
  * Throws `MissingPriorJsonlError` when the checkpoint has done entries
  * but the JSONL is missing, unless `allowMissingJsonl: true`. Hard-stop
- * is the Phase 4.2.1 contract — see `docs/legacy_failure_taxonomy.md`
+ * is the contract — see `docs/legacy_failure_taxonomy.md`
  * for why a silent partial CSV is worse than a stop.
  */
 export async function rehydrateFromPriorRun(args: RehydrateInput): Promise<number> {

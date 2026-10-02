@@ -1,5 +1,5 @@
 /**
- * ENRICH-3 — PURE parsers for the real-estate portal actors' dataset items.
+ * PURE parsers for the real-estate portal actors' dataset items.
  *
  * These marketplace actors (azzouzana~immobiliare-agencies-scraper,
  * saregaa~immobiliareit-scraper, stealth_mode~wikicasa-agency-search-scraper)
@@ -165,7 +165,7 @@ export function parseImmobiliareAdsItem(raw: unknown): PortalAgencyRecord | unde
 
 /**
  * stealth_mode~wikicasa-agency-search-scraper — website + premium/#ads.
- * Real shape (probe R1): `company_name` (legal name), `name`, `city_name`,
+ * Real shape: `company_name` (legal name), `name`, `city_name`,
  * `website`, `active_real_estates`, `premium`, and NO usable phone —
  * `hidden_display_phone` is TRUNCATED (e.g. "041531") and `io_vox_phone` is
  * the portal's tracking line, so wikicasa records join by name+city only

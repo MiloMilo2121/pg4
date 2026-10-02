@@ -1,0 +1,24 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "entry": [
+    "src/cli/*.ts!",
+    "src/server/api_server.ts!",
+    "src/server/mcp_server.ts!",
+    "scripts/*.{ts,mjs,js}!",
+    "tools/**/*.ts!"
+  ],
+  "project": [
+    "src/**/*.ts!",
+    "scripts/**/*.{ts,mjs,js}!",
+    "tools/**/*.ts!",
+    "tests/**/*.ts"
+  ],
+  "ignore": [
+    "src/providers/role_registry.ts",
+    "src/providers/role_resolver.ts",
+    "web/**"
+  ],
+  "ignoreBinaries": [
+    "osascript"
+  ]
+}

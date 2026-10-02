@@ -1,5 +1,5 @@
 import type { EnrichmentFieldDescriptor, EnrichmentStep, StepResult, FieldStepContext } from './field_types';
-import { registrableDomain } from '../extract/extract_from_body';
+import { registrableDomain } from '../../util/domain';
 import { normalizeVatCode, validateItalianVatChecksum } from '../financial/vat';
 import { checkVatViaVies } from '../financial/vies';
 import { fetchFatturatoItalia } from '../financial/fatturato_italia_fetch';
@@ -44,8 +44,8 @@ const pecFromBody: EnrichmentStep = {
  * EMAIL_FIND paid escalation — Hunter domain-search. SHIPPED DISABLED (enabled=false):
  * activates only when the operator flips it on (the field runner's triple-gate then
  * applies: paidEnabled + per-field ceiling + the ledger records the credit). Reuses the
- * Hunter adapter; €0.04/credit (addendum R7). Reached only when the free body step
- * produced nothing. Replaces the old `disabled('email.finder_api')` placeholder.
+ * Hunter adapter; €0.04/credit. Reached only when the free body step
+ * produced nothing.
  */
 const hunter = new HunterProvider();
 function hunterEmailStep(enabled: boolean): EnrichmentStep {
@@ -53,6 +53,7 @@ function hunterEmailStep(enabled: boolean): EnrichmentStep {
     id: 'email.hunter',
     tier: 2,
     costEur: 0.04,
+    family: 'email',
     enabled,
     run: async (ctx: FieldStepContext): Promise<StepResult> => {
       const site = (ctx.lead.website as string | undefined) ?? (ctx.lead as Record<string, unknown>).official_website as string | undefined;
@@ -129,11 +130,14 @@ export function companyNameMatches(a: string | undefined, b: string | undefined)
  * EVERY VAT-keyed firmographic step MUST call this before trusting the fetched data:
  * the registered name the source returns for the VAT must match the lead, else the VAT
  * belongs to a DIFFERENT legal entity (franchisor / accountant / sister company) and its
- * data must be refused. Returns true when MISMATCHED. When the source returns no name we
- * cannot verify → returns false (don't block — no worse than not having the guard).
+ * data must be refused. Returns true when the data must be REFUSED.
+ *
+ * Fails closed: when either name is missing the match cannot be verified, and an
+ * unverified VAT is exactly how a franchisor's €58M landed on a local agency. Refusing
+ * costs one field; accepting attaches another company's numbers to the lead.
  */
 export function isWrongEntity(fetchedRegisteredName: string | undefined, leadCompanyName: string | undefined): boolean {
-  if (!fetchedRegisteredName || !leadCompanyName) return false;
+  if (!fetchedRegisteredName || !leadCompanyName) return true;
   return !companyNameMatches(fetchedRegisteredName, leadCompanyName);
 }
 
@@ -158,7 +162,7 @@ const decisionMakerFromBody: EnrichmentStep = {
 // ---- wired-but-disabled steps (tier 1 registry / tier 2 paid) ----
 // Each is a real placeholder: it declares its tier + cost + source, but
 // `enabled: false` so the runner skips it. Activation = flip enabled + provide
-// the provider (Phase 3 official-data spine / paid catalog).
+// the provider (official-data spine / paid catalog).
 
 const disabled = (id: string, tier: 0 | 1 | 2, costEur: number, source: string): EnrichmentStep => ({
   id,
@@ -168,7 +172,7 @@ const disabled = (id: string, tier: 0 | 1 | 2, costEur: number, source: string):
   run: (): StepResult => ({ confidence: 0, source, costEur, skippedReason: 'disabled' }),
 });
 
-// ---- official-data steps (Phase 3 — FREE, network; the VAT-as-master-key spine) ----
+// ---- official-data steps (FREE, network; the VAT-as-master-key spine) ----
 // Enabled by default (VIES + fatturatoitalia are free public sources); each is
 // toggleable via an env flag so a deployment can pin them off.
 
@@ -177,7 +181,7 @@ function flagOn(name: string): boolean {
   return v === undefined || v === '' || v === '1' || v.toLowerCase() === 'true';
 }
 
-/** Like flagOn but DEFAULT-OFF — for gates that must be opted into (Gate-A email). */
+/** Like flagOn but DEFAULT-OFF — for gates that must be opted into (the email gate). */
 function flagOnDefaultOff(name: string): boolean {
   const v = process.env[name];
   return v === '1' || (typeof v === 'string' && v.toLowerCase() === 'true');
@@ -199,8 +203,8 @@ function buildEmailInferenceStep() {
  * The VAT a field step keys on, WITH its provenance. A VAT scraped from the
  * firm's OWN page (vat_code_final / footer) is trustworthy; a VAT from the
  * INPUT scrape (lead.vat_code) is unverified — a mis-scraped-but-checksum-valid
- * input VAT would fetch the WRONG company's firmographics silently (the A.1
- * risk). Callers must VIES-gate an 'input' VAT before trusting it.
+ * input VAT would fetch the WRONG company's firmographics silently.
+ * Callers must VIES-gate an 'input' VAT before trusting it.
  */
 export type ResolvedVat = { vat: string; provenance: 'site' | 'input' };
 function checksumOk(raw: string | undefined): string | undefined {
@@ -215,7 +219,7 @@ export function resolveVat(ctx: FieldStepContext): ResolvedVat | undefined {
   return undefined;
 }
 
-// VAT precision step (A.2 finding: the footer VAT[0] is the company's own only
+// VAT precision step (the footer VAT[0] is the company's own only
 // ~62% of the verifiable time — the rest cite the accountant's/partner's VAT).
 // Resolve the COMPANY'S VAT: VIES each candidate, and pick the one whose official
 // name matches the company. Confirmed → 0.95. VIES privacy (no name disclosed,
@@ -244,7 +248,7 @@ const vatResolve: EnrichmentStep = {
 
     // VIES only covers VATs registered for INTRA-EU trade. Most domestic-only Italian
     // SMBs are NOT in VIES (no name) even though their VAT is valid. THREE-WAY on the
-    // returned name (not binary — a binary match/skip over-rejects, the bug#3 lesson):
+    // returned name (not binary — a binary match/skip over-rejects):
     //   ≥2 shared tokens (companyNameMatches) → CONFIRM 0.95
     //   exactly 1 shared token → AMBIGUOUS (brand collision OR legit descriptor-drop) →
     //     keep at 0.6 unconfirmed, do NOT refuse (the fatturato entity-guard, which needs
@@ -280,10 +284,10 @@ const fatturatoItaliaStep = (field: 'revenue' | 'employees', confFloor: number):
     const rv = resolveVat(ctx);
     if (!rv) return { confidence: 0, source: 'fatturatoitalia', costEur: 0, skippedReason: 'no_input' };
 
-    // A.1 — an UNVERIFIED input VAT must be VIES-checked before we trust it to
+    // An UNVERIFIED input VAT must be VIES-checked before we trust it to
     // fetch a company's firmographics; otherwise a mis-scraped (but checksum-
     // valid) VAT silently returns the WRONG company's revenue.
-    // B.2 — CONFIDENCE INHERITANCE: a downstream firmographic is only as trustworthy
+    // CONFIDENCE INHERITANCE: a downstream firmographic is only as trustworthy
     // as the VAT KEY that fetched it (a wrong key = the wrong company's revenue). So
     // `confCap` carries the key's trust into the value's confidence:
     //   own-page VAT (site) → 0.9 · VIES-confirmed input → 0.95 · VIES-down input → 0.5.
@@ -340,20 +344,20 @@ export const FIELD_REGISTRY: EnrichmentFieldDescriptor[] = [
   },
   {
     field: 'email',
-    // B.1: emailFromBody now reads a DEEPENED extraction (homepage + contact/about
+    // emailFromBody reads a DEEPENED extraction (homepage + contact/about
     // pages, merged by deep_pages.ts) — same-domain precision preserved, fill-rate
     // lifted for the ~half of IT SMB sites that hide the email off the homepage.
     // The pattern-guess tier (info@domain) is wired-but-DISABLED on purpose: with
     // dns_mx removed (0%-useful) an unverified guess is a precision risk on the
-    // verified base — exactly what Phase A fought. Activate only with a real
+    // verified base. Activate only with a real
     // verifier (SMTP/finder API), and tag it as a distinct low-confidence source.
     target: 'email_inferred',
     role: 'EMAIL_FIND',
     cascade: [
       emailFromBody,
-      // Pattern inference + MX/SMTP handshake — the "real verifier" the old
-      // disabled('email.pattern_guess') placeholder waited for. FREE, default-OFF
-      // (Gate-A: EMAIL_INFERENCE_MX_ENABLED). Fills only a verified-deliverable,
+      // Pattern inference + MX/SMTP handshake — a "real verifier" for this field.
+      // FREE, default-OFF (EMAIL_INFERENCE_MX_ENABLED). Fills only a
+      // verified-deliverable,
       // non-catch-all address. Runs AFTER emailFromBody (a real body email wins).
       buildEmailInferenceStep(),
       hunterEmailStep(false), // real Hunter step, shipped DISABLED (flip to activate)
@@ -424,5 +428,3 @@ export function fieldHasFreeTier(field: string): boolean {
   const d = FIELD_BY_NAME.get(field as never);
   return !!d && d.cascade.some((s) => s.tier === 0 && s.enabled);
 }
-
-export { registrableDomain };

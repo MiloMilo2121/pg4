@@ -1,11 +1,11 @@
 /**
- * R14 — free SERP routing policy.
+ * Free SERP routing policy.
  *
  * Decides which free SERP providers a category should use. Pure and
  * side-effect-free: the caller (SerpStage) supplies the category and the
  * expanded-free flag; this module returns the provider ids to exclude.
  *
- * Evidence (R12 PD full free enrich, 1,492 leads, category "agenzie
+ * Evidence (PD full free enrich, 1,492 leads, category "agenzie
  * immobiliari"): the free SERP tier produced ZERO final-website conversions
  * (0 `SERP_COMPANY`). All 536 websites came from INPUT_SEMANTIC / HYPER_GUESSER
  * / PG_PHONE_SOURCE_TRUST, verified via direct_fetch. dns_mx (0/956) and crtsh
@@ -14,20 +14,27 @@
  * candidate was rejected at verify (709 SERP_DIRECTORY_ONLY + 34
  * SERP_REJECTED_BY_VERIFY) — 0 conversions.
  *
- * Gate-0 update: `dns_mx` and `crtsh` were DELETED from the catalog (0
+ * `dns_mx` and `crtsh` were DELETED from the catalog (0
  * successes in 12,728 calls each — see provider_catalog.ts). What remains
  * of the low-yield set is `ddg_lite`, which returns ad-junk that never
  * verifies on the real-estate profile but is non-zero elsewhere, so it is
  * kept and merely GATED OFF for `italian_real_estate` (restored by the
  * expanded-free override). bing_html stays as the single legitimate free
  * SERP for this profile.
+ *
+ * Caveat on that evidence: at the time, bing_html returned Bing's `/ck/a`
+ * click-tracker URLs undecoded (every candidate looked like a bing.com page,
+ * hence SERP_DIRECTORY_ONLY), accepted pages of results unrelated to the
+ * query, and ddg_lite kept sponsored results. All three are fixed in the
+ * parsers, so the yield numbers above need re-measuring before this gate is
+ * trusted or lifted.
  */
 
 export type SerpProfile = 'default' | 'italian_real_estate';
 
 /**
- * Free SERP providers gated off on the real-estate profile (R12). dns_mx +
- * crtsh were deleted outright (Gate-0); only ddg_lite remains to gate.
+ * Free SERP providers gated off on the real-estate profile. dns_mx +
+ * crtsh were deleted outright; only ddg_lite remains to gate.
  */
 export const LOW_YIELD_REAL_ESTATE_SERP: ReadonlyArray<string> = ['ddg_lite'];
 

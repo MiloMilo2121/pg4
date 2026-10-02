@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { verifyCandidates, routeFromLeadContext } from '../../src/enrichment/stages/verify_candidates';
+import { verifyCandidates, routeFromLeadContext } from '../../src/enrichment/website/verify_candidates';
 import { ProviderRouter, type RouteOptions } from '../../src/providers/provider_router';
 import { CostLedger } from '../../src/runtime/cost_ledger';
 import type { HttpFetchResult, HttpProvider } from '../../src/types/providers';
@@ -92,7 +92,7 @@ describe('verify_candidates — per-lead cap holds across candidates × retries 
       available: () => true,
       fetch: async (): Promise<HttpFetchResult> => {
         paidCalls += 1;
-        return { status: 503, error: 'upstream 503', duration_ms: 1, cost_eur: 0.01 };
+        return { status: 503, error: 'upstream 503', duration_ms: 1, cost_eur: 0.01, provider: 'paid_render' };
       },
     };
     const ledger = new CostLedger();

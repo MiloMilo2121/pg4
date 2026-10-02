@@ -41,8 +41,8 @@ export class CsvWriter {
     // CSV serialization rules:
     //   - `sources[]` (Lead union of contributing sources) is rendered as
     //     `PG+MAPS` so the column is human-readable. The JSONL keeps the
-    //     structured array. This bridges Phase 3.7 §9 — provenance stays
-    //     lossless across the two output formats.
+    //     structured array. Keeping the CSV human-readable this way means
+    //     provenance stays lossless across the two output formats.
     //   - everything else is rendered as the JS value, with object/array
     //     fallback to JSON.stringify by csv-stringify.
     for (const col of this.columns) {

@@ -6,7 +6,8 @@ import { type JudgeLLM, levelFromScore, parseJsonLoose, clamp01 } from './shared
  * Judge A — intrinsic product/narrative strength (Axis A). Consumes ONLY
  * segnali_A (third-party). Enforced by signature: there is no parameter through
  * which a B signal could enter. Runs deterministically offline; refines with an
- * LLM when provided. Per subdimension §2.1–2.7, declined by model §2.8.
+ * LLM when provided. Per subdimension, declined by business model. The LLM
+ * only re-grades subdimensions that carry an observed signal.
  */
 
 const SUBDIMS: SubdimKey[] = ['2.1', '2.2', '2.3', '2.4', '2.5', '2.6', '2.7'];
@@ -60,8 +61,13 @@ export async function judgeA(segnaliA: SegnaliA, model: BusinessModel, categoryP
     if (parsed?.subdims?.length) {
       const byDim = new Map(parsed.subdims.map((s) => [s.dim, s]));
       subdims = SUBDIMS.map((dim) => {
-        const llmSd = byDim.get(dim);
         const base = subdims.find((s) => s.dim === dim)!;
+        // FIREWALL, same rule as Judge B: a subdimension with no observed
+        // signal stays 'insufficient_evidence'. The LLM re-grades evidence, it
+        // cannot supply it, so its level and citations for an unobserved
+        // subdimension are dropped.
+        if (base.level === 'insufficient_evidence') return base;
+        const llmSd = byDim.get(dim);
         const level = isStrength(llmSd?.level) ? (llmSd!.level as StrengthLevel) : base.level;
         return { dim, level, confidence: base.confidence, citations: llmSd?.citations?.length ? llmSd.citations : base.citations, rationale: llmSd?.rationale ?? base.rationale };
       });
@@ -89,7 +95,7 @@ function isStrength(v: unknown): v is StrengthLevel {
   return v === 'strong' || v === 'moderate' || v === 'weak' || v === 'insufficient_evidence';
 }
 
-export function renderJudgeAPrompt(segnaliA: SegnaliA, model: BusinessModel, categoryProfile: CategoryProfile | undefined, config: JudgmentConfig): string {
+function renderJudgeAPrompt(segnaliA: SegnaliA, model: BusinessModel, categoryProfile: CategoryProfile | undefined, config: JudgmentConfig): string {
   const rubrics = config.judgeA.subdims.map((s) => `- ${s.dim} ${s.name} (${s.ref}): ${s.definition}\n  forza: ${s.strengthSignals.join('; ')}\n  debolezza: ${s.weaknessSignals.join('; ')}`).join('\n');
   const decl = config.judgeA.modelDeclination.find((d) => d.model === model);
   const declTxt = decl ? `Modello ${model} (${decl.ref}): proxy privilegiati ${decl.privilegedProxies.join(', ')}. ${decl.caveat ?? ''}` : `Modello ${model}.`;
@@ -105,7 +111,7 @@ export function renderJudgeAPrompt(segnaliA: SegnaliA, model: BusinessModel, cat
   ].join('\n');
 }
 
-export const JUDGE_A_SCHEMA = {
+const JUDGE_A_SCHEMA = {
   type: 'object',
   properties: {
     subdims: {

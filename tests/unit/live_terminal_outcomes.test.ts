@@ -6,7 +6,7 @@ import type { BrowserFactory } from '../../src/browser/factory';
 import { Checkpoint } from '../../src/runtime/checkpoint';
 import { runLiveMode } from '../../src/discovery/scrape_pipeline';
 import { hasVerifiedMapsEmptyResults, scrapeMapsLocation } from '../../src/discovery/sources/maps_live';
-import { scrapePgLocation } from '../../src/discovery/sources/pg_live';
+import { scrapePgLocation } from '../../src/discovery/sources/pagine_gialle_live';
 
 const dirs: string[] = [];
 afterEach(() => dirs.splice(0).forEach((dir) => fs.rmSync(dir, { recursive: true, force: true })));

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { verifyCandidates } from '../../src/enrichment/stages/verify_candidates';
+import { verifyCandidates } from '../../src/enrichment/website/verify_candidates';
 import { normalizeLead } from '../../src/discovery/input_normalizer';
 import type { Lead } from '../../src/types/lead';
 import { ProviderRouter } from '../../src/providers/provider_router';
@@ -8,8 +8,8 @@ import { CostLedger } from '../../src/runtime/cost_ledger';
 import type { HttpFetchResult } from '../../src/types/providers';
 
 /**
- * Phase D.2 — single retry on transport flap (pianon.eu / ECONNREFUSED).
- * Phase D.3 — scheduled multi-retry [300, 1000, 3000]ms with jitter,
+ * Single retry on transport flap (pianon.eu / ECONNREFUSED), and the
+ * scheduled multi-retry [300, 1000, 3000]ms with jitter,
  *             extended to 502/503/504; per-candidate budget cap;
  *             ledger logs every attempt; breaker not amplified.
  *
@@ -78,7 +78,7 @@ const baseOpts = {
   sleep: async (_: number) => {},
 };
 
-describe('verifyCandidates — Phase D.2 single retry (legacy invariants)', () => {
+describe('verifyCandidates — single retry (legacy invariants)', () => {
   it('retries once on ECONNREFUSED and accepts on the second try (200)', async () => {
     const router = fakeRouter([
       { status: 0, error: 'ECONNREFUSED 167.235.73.251' },
@@ -176,7 +176,7 @@ describe('verifyCandidates — Phase D.2 single retry (legacy invariants)', () =
   });
 });
 
-describe('verifyCandidates — Phase D.3 scheduled multi-retry', () => {
+describe('verifyCandidates — scheduled multi-retry', () => {
   it('two transport fails then 200 → matched (2 retries used out of 3 max)', async () => {
     const router = fakeRouter([
       { status: 0, error: 'ECONNREFUSED' },
@@ -242,7 +242,7 @@ describe('verifyCandidates — Phase D.3 scheduled multi-retry', () => {
   it('all retry attempts go through the router and are recorded by ledger', async () => {
     // The router fake counts every fetch — proxy for "the ledger sees
     // every attempt", since the real router records to ledger on each
-    // call. Phase D.3 invariant: retries must NOT bypass ledger.
+    // call. Retries must NOT bypass the ledger.
     const router = fakeRouter([
       { status: 0, error: 'ECONNREFUSED' },
       { status: 0, error: 'ECONNREFUSED' },
@@ -279,7 +279,7 @@ describe('verifyCandidates — Phase D.3 scheduled multi-retry', () => {
     // D.4: HyperGuesserStage gives `weak` candidates `retryDelaysMs: []`
     // so a flapping homonym does not eat the per-stage budget. Strong
     // candidates inherit the global default schedule.
-    const { verifyPlannedCandidates } = await import('../../src/enrichment/stages/verify_candidates');
+    const { verifyPlannedCandidates } = await import('../../src/enrichment/website/verify_candidates.js');
     const plan = [
       { url: 'https://weak-homonym.com', retryDelaysMs: [] as number[], retryBudgetMs: 0 }, // weak: no retry
       { url: 'https://pianon.eu' }, // strong: default schedule, lead-matching domain
@@ -300,7 +300,7 @@ describe('verifyCandidates — Phase D.3 scheduled multi-retry', () => {
     expect(router.fetchCalls()).toBe(3); // weak: 1, strong: 2 (1 + 1 retry)
   });
 
-  it('Phase G hotfix — directory / registry URL is rejected before fetch', async () => {
+  it('directory / registry URL is rejected before any fetch happens', async () => {
     // The pg4 SerpDeduplicator's registry-pivot logic kept paginegialle.it
     // around for a hypothetical pivot, but pg4 has no pivot stage. Such
     // URLs must NEVER reach verify let alone become official_website.

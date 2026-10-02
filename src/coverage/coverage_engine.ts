@@ -22,9 +22,9 @@ import {
   regionForProvince,
   macroForProvince,
   isNordProvince,
-} from './geo_regions';
+} from '../geo/regions';
 import { provinceForComune } from '../geo/comune_lookup';
-import type { MacroArea } from './geo_regions';
+import type { MacroArea } from '../geo/regions';
 import {
   DEFAULT_COVERAGE_CONFIG,
   directoryFactorForSection,
@@ -32,7 +32,7 @@ import {
 import type { CoverageConfig } from './config';
 
 /** "Core" enrichment fields on which we measure data completeness. */
-export interface EnrichmentFillRates {
+interface EnrichmentFillRates {
   website: number; // %
   phone: number;
   email: number;
@@ -40,7 +40,7 @@ export interface EnrichmentFillRates {
   vat: number;
 }
 
-export interface CellEnrichment {
+interface CellEnrichment {
   /** % of the cell's companies with the field populated (0..100). */
   fillRates: EnrichmentFillRates;
   /** Mean of the core fill rates (0..100) — data completeness of the cell. */
@@ -97,7 +97,7 @@ export interface RegionRollup {
   usesSampleUniverse: boolean;
 }
 
-export interface CoverageBucketSample {
+interface CoverageBucketSample {
   company_name: string;
   category?: string;
   province?: string;

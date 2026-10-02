@@ -1,6 +1,6 @@
 import type { Lead } from '../../types/lead';
 import type { Footprint, ChannelFootprint, FootprintChannel, EvidenceState } from '../../types/judgment';
-import { registrableDomain } from '../../enrichment/extract/extract_from_body';
+import { registrableDomain } from '../../util/domain';
 import { classifyBusinessModel } from '../business_model';
 import { harvestSource, emptyBundle } from '../harvest/source_harvest';
 import type { HarvestContext, HarvestResult, HarvestBundle } from '../harvest/source_harvest';
@@ -13,7 +13,7 @@ import { AdLibrarySourceAdapter } from '../harvest/adapters/ad_library_adapter';
  * L2 — Discovery refinement. Produces a structured Digital Footprint with a
  * THREE-STATE status per surface.
  *
- * CARDINAL RULE (the §5.3.5 firewall, enforced here): a channel is
+ * CARDINAL RULE (the absence firewall, enforced here): a channel is
  * `confirmed_absent` ONLY when `searchedSeriously === true`. A fetch/search that
  * failed, was skipped, or was unavailable yields `unknown_not_found` — NEVER
  * `confirmed_absent`, so a discovery failure can never become a "B low" signal.

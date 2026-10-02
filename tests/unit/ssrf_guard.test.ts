@@ -94,7 +94,7 @@ describe('DirectFetchProvider — SSRF + body cap (local server)', () => {
 
 describe('SMTP dialer — never dials a non-public MX', () => {
   it('rejects an IP-literal private MX before connecting', async () => {
-    const { defaultDialer } = await import('../../src/enrichment/email/mx_smtp_verifier');
+    const { defaultDialer } = await import('../../src/enrichment/email/mx_smtp_verifier.js');
     await expect(defaultDialer('127.0.0.1', { port: 25, timeoutMs: 1000 })).rejects.toBeInstanceOf(BlockedDestinationError);
   });
 });

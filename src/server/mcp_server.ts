@@ -1,18 +1,18 @@
 /**
  * pg4 MCP server — exposes the pipeline to agents over stdio with zero effort.
  *
- * Ported clean from pg3/src/mcp_server.ts. Two deliberate simplifications vs pg3:
- *  - Tools wrap pg4's REAL CLIs (src/cli/*) directly. pg3's `agent_tools/` shim
- *    layer is dropped — the CLI is already the stable contract.
+ * Two deliberate design decisions:
+ *  - Tools wrap the real CLIs (src/cli/*) directly rather than going through a
+ *    separate tool shim layer — the CLI is already the stable contract.
  *  - execFile(argv[]) instead of exec(string) → no shell, no injection. The MCP
  *    client is an untrusted agent; arg values never touch a shell.
  *
  * Run: `pnpm run mcp`  (or `npx tsx src/server/mcp_server.ts`)
  *
- * The SDK's legacy `tool()` overload recursively infers every concrete Zod
- * shape. Across this server that exhausts TypeScript's heap before CI can
+ * The SDK's generic registration overload recursively infers every concrete
+ * Zod shape. Across this server that exhausts TypeScript's heap before CI can
  * finish. `registerTool()` deliberately narrows that third-party boundary to
- * `Record<string, ZodTypeAny>` while retaining each handler's explicit local
+ * `Record<string, ZodType>` while retaining each handler's explicit local
  * input type and passing the original runtime Zod schemas unchanged.
  */
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
@@ -23,24 +23,30 @@ import { promisify } from 'util';
 import path from 'path';
 import fs from 'fs';
 import { pushFlag, resolveSandboxedPath, SandboxViolation } from './mcp_args';
+import { CLI_RUN_TIMEOUT_MS } from './cli_timeout';
+import { buildTsxCommand } from './tsx_command';
 import { onShutdownSignal } from '../runtime/shutdown';
+import { REPO_ROOT } from '../util/repo_root';
 
 const execFileAsync = promisify(execFile);
-const PG4_ROOT = path.resolve(__dirname, '..', '..'); // src/server -> pg4/
+const PG4_ROOT = REPO_ROOT;
 const MAX_OUTPUT = 32 * 1024 * 1024;
-/** A CLI run longer than this is killed, so a hung pipeline never hangs the agent forever (generous: full province + Maps runs take hours). */
-const CLI_TIMEOUT_MS = 12 * 60 * 60 * 1000;
 /** Everything a tool WRITES must land under output/. */
 const OUTPUT_DIR = 'output';
 const READABLE_OUTPUT_EXT = ['.csv', '.jsonl', '.json', '.log', '.txt', '.md'] as const;
 
+/** The SDK takes a raw shape (field name -> schema); zod 4 types it as ZodRawShape. */
 type ToolResult = { content: { type: 'text'; text: string }[]; isError?: boolean };
-type ToolSchema = Record<string, z.ZodTypeAny>;
+type ToolSchema = Record<string, z.ZodType>;
 type ToolHandler<Args> = (args: Args) => ToolResult | Promise<ToolResult>;
 type ErasedMcpToolCallback = (args: Record<string, unknown>) => unknown;
 
 interface ErasedMcpToolRegistrar {
-  tool(name: string, description: string, inputSchema: ToolSchema, callback: ErasedMcpToolCallback): unknown;
+  registerTool(
+    name: string,
+    config: { description: string; inputSchema: ToolSchema },
+    callback: ErasedMcpToolCallback,
+  ): unknown;
 }
 
 const ok = (text: string): ToolResult => ({ content: [{ type: 'text', text: text || '(no output)' }] });
@@ -50,10 +56,12 @@ const errorMessage = (e: unknown): string => (e instanceof Error ? e.message : S
 
 async function runCli(cliFile: string, argv: string[]): Promise<ToolResult> {
   try {
-    const { stdout, stderr } = await execFileAsync('npx', ['tsx', `src/cli/${cliFile}`, ...argv], {
+    // Local tsx, never npx (Fase 5.2): no network, pinned version.
+    const cmd = buildTsxCommand(PG4_ROOT, [`src/cli/${cliFile}`, ...argv]);
+    const { stdout, stderr } = await execFileAsync(cmd.file, cmd.args, {
       cwd: PG4_ROOT,
       maxBuffer: MAX_OUTPUT,
-      timeout: CLI_TIMEOUT_MS,
+      timeout: CLI_RUN_TIMEOUT_MS,
       killSignal: 'SIGTERM',
     });
     return ok(stdout || stderr);
@@ -93,10 +101,9 @@ function registerTool<Args>(
   inputSchema: ToolSchema,
   handler: ToolHandler<Args>,
 ): void {
-  toolRegistrar.tool(
+  toolRegistrar.registerTool(
     name,
-    description,
-    inputSchema,
+    { description, inputSchema },
     handler as unknown as ErasedMcpToolCallback,
   );
 }

@@ -20,9 +20,10 @@ per tenant, because it changes the obligations:
    operator owns the LIA, the Art. 14 notice, retention, and RPO.
 
 **Multi-tenant isolation is the technical backbone of the processor posture:** a
-processor must ensure one client's data cannot leak to another. That is enforced
-by Postgres RLS (migration 0001) + the app-layer tenant scoping (every sink/API
-bound to a tenant) + the cross-tenant leakage test (checklist 1.4). Document
+processor must ensure one client's data cannot leak to another. Today it rests on the
+app-layer tenant scoping of the in-memory repository; a hosted deployment adds
+Postgres RLS and the cross-tenant leakage test (checklist §1, which starts by
+restoring the removed Postgres layer). Document
 this as a technical + organisational measure (Art. 32) in the DPA.
 
 ## Sub-processors to list in the DPA (only those actually used)

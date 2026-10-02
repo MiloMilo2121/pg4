@@ -4,15 +4,15 @@ import { EXIT } from '../../src/runtime/run_record';
 import type { BrowserFactory } from '../../src/browser/factory';
 
 /**
- * Gate-0 — the preflight is the guard against a silent markup change: a
+ * The preflight is the guard against a silent markup change: a
  * selector that suddenly matches 0 cards must ABORT with exit 3 and an
  * actionable message, never "complete" with an empty output. Here we FORCE
  * that failure on a scratch (fake) browser and assert the contract.
  */
 
-// Minimal duck-typed Playwright Page. acceptConsent only calls
-// locator().first().click() (in try/catch); the preflight calls goto /
-// waitForSelector / $$eval. `cardCount` drives the failure.
+// Minimal duck-typed Playwright Page. acceptConsent is best-effort: a locator
+// that cannot report a visible banner counts as "no banner"; the preflight
+// calls goto / waitForSelector / $$eval. `cardCount` drives the failure.
 function fakeFactory(cardCount: number): BrowserFactory {
   const page = {
     goto: async () => {},
@@ -30,7 +30,7 @@ function fakeFactory(cardCount: number): BrowserFactory {
   } as unknown as BrowserFactory;
 }
 
-describe('Gate-0 — forced preflight failure', () => {
+describe('forced preflight failure', () => {
   it('throws PreflightError when the PG selector matches 0 cards (broken selector)', async () => {
     await expect(runScrapePreflight(fakeFactory(0), { checkMaps: false })).rejects.toBeInstanceOf(PreflightError);
   });

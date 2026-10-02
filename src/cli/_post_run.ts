@@ -1,10 +1,10 @@
 import { logger } from '../runtime/logger';
 import { getNotifier } from '../runtime/notifier';
-import { validateOutputs } from '../scripts/validate_output';
-import type { OutputFlavor } from '../scripts/validate_output';
+import { validateOutputs } from '../io/validation/output_validator';
+import type { OutputFlavor } from '../io/validation/output_validator';
 
 /**
- * Phase B.2 — automatic output validation at the end of every run.
+ * Automatic output validation at the end of every run.
  *
  * Warn-only by contract: a validation failure is logged + notified but
  * never changes the run's exit code. Rationale: the outputs are already

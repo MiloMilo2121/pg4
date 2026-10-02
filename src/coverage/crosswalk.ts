@@ -13,6 +13,8 @@
 
 import fs from 'fs';
 import path from 'path';
+import { stripDiacritics } from '../util/text';
+import { REPO_ROOT } from '../util/repo_root';
 
 export interface CrosswalkEntry {
   division: string;
@@ -20,15 +22,11 @@ export interface CrosswalkEntry {
   scrapeKeywords: string[];
 }
 
-const REPO_ROOT = path.resolve(__dirname, '..', '..');
 const DEFAULT_PATH = path.join(REPO_ROOT, 'data', 'reference', 'category_ateco_map.json');
 
 /** lowercase + strip accents + alphanumerics/spaces only — same scheme as category_match.ts. */
-export function normalizeCategory(s: string): string {
-  return s
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
+function normalizeCategory(s: string): string {
+  return stripDiacritics(s.toLowerCase())
     .replace(/[^a-z0-9\s]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();

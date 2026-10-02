@@ -2,6 +2,7 @@ import { request } from 'undici';
 import type { LLMProvider, LLMCompletionRequest, LLMCompletionResult, ProviderRole } from '../../types/providers';
 import { ProviderBlockError } from '../../types/providers';
 import { DEFAULTS } from '../../config/defaults';
+import { samplingParams } from './model_capabilities';
 
 /**
  * Shared base for every OpenAI-compatible chat-completions provider. OpenAI,
@@ -68,7 +69,7 @@ export class OpenAICompatibleProvider implements LLMProvider {
       body: JSON.stringify({
         model,
         max_tokens: req.max_tokens ?? DEFAULTS.llm.judgeMaxTokens,
-        temperature: req.temperature ?? DEFAULTS.llm.temperature,
+        ...samplingParams(model, req.temperature ?? DEFAULTS.llm.temperature),
         messages: [...(system ? [{ role: 'system', content: system }] : []), { role: 'user', content: req.prompt }],
       }),
     });

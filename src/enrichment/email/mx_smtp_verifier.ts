@@ -24,7 +24,7 @@ import { BlockedDestinationError, guardedLookup, isNonPublicAddress } from '../.
  * so the unit tests run fully offline with a scripted transport.
  */
 
-export type MxClass = 'deliverable' | 'undeliverable' | 'catch_all' | 'mx_only' | 'unknown';
+type MxClass = 'deliverable' | 'undeliverable' | 'catch_all' | 'mx_only' | 'unknown';
 
 export interface MxVerifyResult {
   /** Verdict for the candidate set. */
@@ -45,7 +45,7 @@ export interface SmtpReply {
   lines: string[];
 }
 
-export interface SmtpSession {
+interface SmtpSession {
   /** Send one SMTP command line and await its (possibly multiline) reply. */
   command(line: string): Promise<SmtpReply>;
   close(): Promise<void>;

@@ -5,11 +5,10 @@ import { type JudgeLLM, parseJsonLoose, clamp01 } from './shared';
 
 /**
  * GAP reasoner — the ONLY component that sees both axes. It does NOT re-judge;
- * it combines. Order (§5.1): classify model → quadrant + gap (relative to
- * category §1.4) → trajectory (§1.5) → DISQUALIFIERS (§4.5) BEFORE the gap logic
- * → cause (§4.4) → archetype (Parte VI) → verdict → levers (Parte VII). Never
- * fuses the two axes into one score. Deterministic core; LLM refines cause /
- * motivation / levers / extra disqualifiers.
+ * it combines. Order: classify model → quadrant + gap (relative to the category
+ * median) → trajectory → DISQUALIFIERS BEFORE the gap logic → cause → archetype
+ * → verdict → levers. Never fuses the two axes into one score. Deterministic core;
+ * LLM refines cause / motivation / levers / extra disqualifiers.
  */
 
 export interface GapDeps {
@@ -22,8 +21,8 @@ export interface GapOutput {
   levers: Lever[];
 }
 
-/** Deterministic, cheaply-checkable disqualifiers (the §16 triage subset + a few). */
-export function deterministicDisqualifiers(lead: Lead, segnaliA: SegnaliA): string[] {
+/** Deterministic, cheaply-checkable disqualifiers (the Stage-0 triage subset + a few). */
+function deterministicDisqualifiers(lead: Lead, segnaliA: SegnaliA): string[] {
   const out: string[] = [];
   if (lead.permanently_closed === true) out.push('permanently_closed');
   const cat = `${(lead.category as string | undefined) ?? ''}`.toLowerCase();
@@ -37,7 +36,7 @@ export function deterministicDisqualifiers(lead: Lead, segnaliA: SegnaliA): stri
 /**
  * Quadrant from the two axis ASSESSMENTS — three-valued per axis. An `unknown`
  * level becomes `?` (not `-`), so "A not measured" never masquerades as "A low"
- * in the label (the §5.3.5 firewall at the label level). `high` is the
+ * in the label (the absence firewall at the label level). `high` is the
  * score≥axisHigh boolean; anything measured-but-not-high is `-`.
  */
 function axisSym(level: AxisLevel, high: boolean): '+' | '-' | '?' {
@@ -65,11 +64,11 @@ export async function gapReason(
 
   const disqualifiers = deterministicDisqualifiers(lead, segnaliA);
 
-  // target verdict — disqualifiers operate BEFORE the gap logic (§4.5).
+  // target verdict — disqualifiers operate BEFORE the gap logic.
   let target: GapVerdict['target'];
   if (disqualifiers.length > 0) target = 'no';
   else if (aAssessment.level === 'unknown') target = 'borderline'; // insufficient A evidence
-  // FIREWALL (§5.3.5): B with NO evidence is 'unknown', NOT 'low'. scoreB=0 here
+  // FIREWALL: B with NO evidence is 'unknown', NOT 'low'. scoreB=0 here
   // means "we didn't observe B", so we must NOT confidently call a target — a
   // failed/missing discovery can never manufacture the A-high/B-low signature.
   else if (bAssessment.level === 'unknown') target = 'borderline';
@@ -78,7 +77,7 @@ export async function gapReason(
   else if (scoreA >= t.targetMinScoreA - t.borderlineBand && gap >= t.targetMinGap - t.borderlineBand) target = 'borderline';
   else target = 'no';
 
-  // cause (§4.4) — deterministic default.
+  // cause — deterministic default.
   let cause: GapCause;
   if (disqualifiers.includes('distress')) cause = 'decline';
   else if (target === 'yes' || target === 'borderline') cause = 'omission';
@@ -86,7 +85,7 @@ export async function gapReason(
 
   const trajectory: Trajectory = 'unknown'; // no time-series in MVP
 
-  // archetype attractor (Parte VI) — first config archetype matching the quadrant.
+  // archetype attractor — first config archetype matching the quadrant.
   const archetype = deps.config.gap.archetypes.find((a) => a.quadrant === quadrant)?.id;
 
   // confidence — coverage-driven; lowered for provisional baseline.
@@ -114,7 +113,7 @@ export async function gapReason(
       const traj = isTrajectory(parsed.trajectory) ? parsed.trajectory : trajectory;
       const extra = Array.isArray(parsed.extraDisqualifiers) ? parsed.extraDisqualifiers.filter((d) => typeof d === 'string') : [];
       for (const d of extra) if (!disqualifiers.includes(d)) disqualifiers.push(d);
-      // an LLM-detected disqualifier overrides target to 'no' (§4.5 before gap)
+      // an LLM-detected disqualifier overrides target to 'no' (before the gap logic)
       const finalTarget = disqualifiers.length > 0 ? 'no' : target;
       if (typeof parsed.motivation === 'string' && parsed.motivation.trim()) motivation = parsed.motivation.trim();
       if (parsed.levers?.length) levers = mergeLeverRationales(levers, parsed.levers, deps.config);
@@ -168,7 +167,7 @@ function isTrajectory(v: unknown): v is Trajectory {
   return ['improving', 'flat', 'declining', 'unknown'].includes(v as string);
 }
 
-export function renderGapPrompt(
+function renderGapPrompt(
   lead: Lead,
   model: BusinessModel,
   a: AxisAssessment,
@@ -192,7 +191,7 @@ export function renderGapPrompt(
   ].join('\n');
 }
 
-export const GAP_SCHEMA = {
+const GAP_SCHEMA = {
   type: 'object',
   properties: {
     cause: { type: 'string', enum: ['omission', 'incompetence', 'generational', 'aversion', 'constraint', 'decline', 'unknown'] },

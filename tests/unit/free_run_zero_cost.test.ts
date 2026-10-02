@@ -3,7 +3,7 @@ import { ProviderRouter } from '../../src/providers/provider_router';
 import { CostLedger } from '../../src/runtime/cost_ledger';
 import type { CostedMeta } from '../../src/types/providers';
 
-// Addendum R1 / AC1 — the load-bearing cost-safety guard: router.invoke (the single
+// The load-bearing cost-safety guard: router.invoke (the single
 // execution path for non-router families) must NEVER spend on a free run, and must
 // honour the run-cost-ceiling. This is the class of bug that once blew €0.10 → €0.229.
 

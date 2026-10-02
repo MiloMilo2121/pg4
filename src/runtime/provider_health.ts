@@ -3,7 +3,7 @@ import { getNotifier } from './notifier';
 import type { CostLedger } from './cost_ledger';
 
 /**
- * Gate-0 — the silent-dead-provider detector.
+ * The silent-dead-provider detector.
  *
  * THE meta-lesson of every prior pass: dns_mx + crtsh made 0 successful
  * calls in 12,728 attempts and nobody noticed for months, because a

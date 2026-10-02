@@ -49,8 +49,8 @@
     },
     {
       "division": "62",
-      "tokens": ["software", "informatica", "sviluppo software", "agenzia web", "web agency", "consulenza informatica", "it"],
-      "scrapeKeywords": ["software house", "web agency", "consulenza informatica", "assistenza informatica"]
+      "tokens": ["software", "informatica", "sviluppo software", "agenzia web", "web agency", "consulenza informatica", "it", "saas", "software b2b", "intelligenza artificiale", "machine learning", "cybersecurity", "cyber security"],
+      "scrapeKeywords": ["software house", "web agency", "consulenza informatica", "assistenza informatica", "software b2b saas", "intelligenza artificiale", "cybersecurity"]
     },
     {
       "division": "49",
@@ -76,6 +76,31 @@
       "division": "10",
       "tokens": ["alimentari", "panificio", "pasticceria", "salumificio", "caseificio", "industria alimentare", "gelateria"],
       "scrapeKeywords": ["panificio", "pasticceria", "salumificio", "caseificio"]
+    },
+    {
+      "division": "64",
+      "tokens": ["fintech", "insurtech", "pagamenti digitali", "open banking", "regtech"],
+      "scrapeKeywords": ["fintech", "insurtech", "pagamenti digitali"]
+    },
+    {
+      "division": "28",
+      "tokens": ["robotica", "automazione industriale", "robot collaborativi", "macchine utensili"],
+      "scrapeKeywords": ["robotica industriale", "automazione industriale", "robot collaborativi"]
+    },
+    {
+      "division": "26",
+      "tokens": ["fotonica", "semiconduttori", "optoelettronica", "elettronica professionale", "sensori"],
+      "scrapeKeywords": ["fotonica", "semiconduttori", "sensori ottici"]
+    },
+    {
+      "division": "30",
+      "tokens": ["spacetech", "aerospazio", "aerospaziale", "satelliti", "droni"],
+      "scrapeKeywords": ["aerospazio", "spacetech", "droni industriali"]
+    },
+    {
+      "division": "72",
+      "tokens": ["biotech", "biotecnologie", "medtech", "deeptech", "quantum", "ricerca e sviluppo", "life sciences"],
+      "scrapeKeywords": ["biotech", "medtech", "deeptech", "ricerca e sviluppo", "quantum computing"]
     }
   ]
 }

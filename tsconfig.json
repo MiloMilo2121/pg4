@@ -1,9 +1,13 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-    "module": "commonjs",
-    "moduleResolution": "node",
+    // Node's own resolution. With "type": "commonjs" in package.json, node16
+    // still emits CommonJS; it just resolves the way Node 24 actually does.
+    "module": "node16",
+    "moduleResolution": "node16",
     "lib": ["ES2022"],
+    // TypeScript 6 no longer picks up every @types package by default.
+    "types": ["node"],
     "outDir": "dist",
     "rootDir": ".",
     "strict": true,

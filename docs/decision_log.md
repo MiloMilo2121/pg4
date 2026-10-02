@@ -214,3 +214,58 @@ are irreversible; all are config- or flag-gated.
    launch + per-PAGE abort check in pg_live (a dense comune exceeded
    the watchdog). Verified live: natural drain in 1.7 s with partial
    outputs, lock released, checkpoint resume-ready.
+
+## G.1 — Multi-tenant SaaS layer removed (2026-09-30)
+
+- **Decision:** pg4 is a local tool with one operator. The unwired SaaS
+  layer is removed: the HTTP control plane (`api/control_plane.ts`), the
+  Postgres tenant adapter (`persistence/pg_tenant_db.ts`), the lead sinks,
+  the SQL migrations with RLS (`db/migrations/`), the unused Openapi
+  enrich path (`enrichment/openapi/openapi_enrich.ts`), the SERP evidence
+  classifier and the pg3 CSV mapper. None of them was reachable from a CLI,
+  the API server or the MCP server; only their own tests used them.
+- **Kept:** the in-memory tenant repository the API server uses, so every
+  company row stays tenant-scoped, and the per-field enrichment cache.
+- **Alternatives:** wire Postgres + RLS for real (a week of work for a
+  deployment nobody runs — rejected); keep the code dormant (it drifts and
+  reads as a feature that exists — rejected).
+- **Migration:** everything is recoverable from git at `01141dc`. The
+  activation steps in `gdpr/PRODUCTION_ACTIVATION_CHECKLIST.md` §1 start
+  from restoring those files.
+
+## H — PR B: layer boundaries enforced in lint (2026-09-30)
+
+- **Layers (bottom-up):** L0 `types/config/util/runtime/io/geo/api` (pure
+  contracts, no business logic) → L1 `providers/persistence/compliance/browser`
+  (reusable capabilities) → L2 `enrichment/judgment/discovery/coverage`
+  (domain engines) → L3 `cli/server/scripts` (thin shells, may import
+  anything). Enforced with `no-restricted-imports` in `eslint.config.mjs`;
+  verified with probe imports that fail the lint in both directions.
+- **`api/` is L0, not L3:** `src/api/types.ts` imports nothing — it is a pure
+  contract the domain engines already import (`enrichment_pipeline`,
+  `field_types`, `run_field_cascade`). Classifying it as a shell would have
+  broken the gate on existing code.
+- **`FinancialSource` moved** from `enrichment/financial/financial_types.ts`
+  to `types/financial.ts`: it was the only upward edge (`types/lead.ts` →
+  `enrichment/`). Type-only move, no importers left on the old path (knip
+  confirms), all 1502 unit tests unchanged.
+- **Deliberately not done:** no file moves (the tree is already layered —
+  no `cli`↔`server` or engine→shell import exists today); tests stay exempt
+  so fixtures can wire any layer.
+
+## 2026-10-02 — PR B, file moves (structure and names)
+
+- `src/scripts/` is gone: its four entry points live in `src/cli/`, and the
+  output checks are a library in `src/io/validation/output_validator.ts` with a
+  thin `src/cli/validate_output.ts` shell (the post-run hooks import the
+  library, never a CLI).
+- Geography lives in `src/geo/` (`italy_geo`, `regions`, `comune_lookup`), all L0.
+- `src/api/types.ts` → `src/types/api.ts`: one home for contracts.
+- `runtime/run_coverage.ts` → `discovery/scrape_completion.ts`: it decides when a
+  scrape is complete, which is discovery policy, not runtime plumbing.
+- `verify_candidates` → `enrichment/website/`; `pg_*` → `pagine_gialle_*`;
+  `providers/openapi/` → `providers/openapi_it/`.
+- `mock_http` stays in `src/cli/`: the `--mock-http` flag of the shipped CLI
+  uses it, so it cannot move to `tests/helpers`.
+- The recovery patch guard allowlist and the recovery agent's source context
+  follow the new paths in the same change.

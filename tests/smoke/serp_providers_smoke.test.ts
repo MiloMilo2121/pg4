@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { DdgLiteProvider } from '../../src/providers/serp/ddg_lite';
 import { BingHtmlProvider } from '../../src/providers/serp/bing_html';
 
-// Gate-0: dns_mx + crtsh were deleted (0 successes in 12,728 calls each).
+// dns_mx + crtsh were deleted (0 successes in 12,728 calls each).
 // Their smoke cases were removed with them.
 const ENABLED = process.env.RUN_SMOKE === '1' || process.env.RUN_SMOKE === 'true';
 

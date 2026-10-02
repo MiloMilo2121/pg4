@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { OpenapiClient, mapAdvanced } from '../../src/providers/openapi/openapi_client';
+import { OpenapiClient, mapAdvanced } from '../../src/providers/openapi_it/openapi_client';
 
 /**
  * Openapi client — base plumbing. NO network here: available() is a pure env read,

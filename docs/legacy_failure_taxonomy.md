@@ -172,7 +172,7 @@ The category-token list per requested category lives in `discovery/sources/categ
 
 **Root cause.** Schema drifted across versions; readers in pg3 each tolerated a subset.
 
-**pg4 guardrail.** New `io/legacy_csv_mapper.ts` accepts any pg3 CSV and produces canonical `Lead` objects:
+**pg4 guardrail.** `io/legacy_csv_mapper.ts` accepted any pg3 CSV and produced canonical `Lead` objects (removed on 2026-09-30: no pg3 inputs remain):
 - `company_name | name | ragione_sociale` → `company_name`
 - `vat_code | vat | piva | partita_iva` → `vat_code`
 - `dm_name | decision_maker_name` → `decision_maker_name`
@@ -206,13 +206,13 @@ These will be enforced in `enrichment/contact_enricher.ts` (Phase 5).
 | 1 | Cross-comune dedupe; `query_location` ≠ `business_city` | `types/lead.ts`, `discovery/deduper.ts`, `discovery/sources/*` |
 | 2 | Franchise + click-to-action blocklist for `official_website` | `discovery/website/content_filter.ts` |
 | 3 | SERP_EMPTY is a clean miss, not a logged error | already correct (Phase 3) |
-| 4 | crt.sh / RDAP / Bing circuit breaker | `runtime/circuit_breaker.ts`, wired into `providers/provider_router.ts` |
+| 4 | crt.sh / RDAP / Bing circuit breaker | `runtime/circuit_breaker.ts`, wired into `providers/provider_router.ts` (SERP, HTTP, LLM) and `runtime/endpoint_guard.ts` (RDAP, VIES) |
 | 5 | Disabled-by-flag providers silently skipped | already correct (Phase 1 feature-flags) |
 | 6 | Bing Cloudflare-Turnstile cooldown | uses circuit breaker |
 | 7 | Maps `~120` cap signal | `discovery/sources/google_maps_parser.ts` returns `cap_likely` |
 | 8 | Off-category Maps marker | `discovery/sources/category_match.ts` + `Lead.category_match` |
 | 9 | Multi-source provenance as array | `Lead.sources?: string[]` |
-| 10 | Legacy CSV schema mapper | `io/legacy_csv_mapper.ts` |
+| 10 | Legacy CSV schema mapper | removed 2026-09-30 (no pg3 inputs remain) |
 | 11 | Email/DM pollution | DEFERRED to Phase 5 |
 
 Each guardrail has at least one test in `tests/unit/` that fails if the regression returns.

@@ -51,7 +51,7 @@ describe('parseFatturatoItaliaPage — grid fallback page', () => {
 });
 
 describe('parseFatturatoItaliaPage — <th scope="row"> summary table (current 2026-07 format)', () => {
-  // O6 regression: the site dropped the chart JS vars + col-xs grid for a
+  // Regression: the site dropped the chart JS vars + col-xs grid for a
   // `<th scope="row">Fatturato 2024</th><td>…</td>` table. Without this path the
   // fetcher parsed a 404 shell → revenue/employees 0% nationwide.
   const r = parseFatturatoItaliaPage(read('fatturato_company_table.html'));

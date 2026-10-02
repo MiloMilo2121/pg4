@@ -12,13 +12,52 @@ function stepBlock(name: string): string {
 
 describe('recovery workflow secret boundary', () => {
   it('does not expose OpenRouter credentials to install, tests, or lint', () => {
-    const jobPreamble = workflow.slice(
-      workflow.indexOf('  diagnose-fix-review:'),
-      workflow.indexOf('      - uses: actions/checkout@v4'),
-    );
+    // The preamble is everything from the job header up to the first named
+    // step — i.e. checkout, pnpm setup, node setup and `pnpm install`. Anchor
+    // on the step name, never on an action version: a version string moves on
+    // every Dependabot bump, and a slice anchored on one silently becomes the
+    // whole rest of the file when the anchor is missing, which makes the
+    // assertion pass or fail for the wrong reason.
+    const jobStart = workflow.indexOf('  diagnose-fix-review:');
+    const firstNamedStep = workflow.indexOf('      - name:', jobStart);
 
+    expect(jobStart).toBeGreaterThan(-1);
+    expect(firstNamedStep).toBeGreaterThan(jobStart);
+
+    const jobPreamble = workflow.slice(jobStart, firstNamedStep);
+    expect(jobPreamble).toContain('uses: actions/checkout@');
     expect(jobPreamble).not.toContain('OPENROUTER_API_KEY');
+
     expect(stepBlock('Mechanical pre-review')).not.toContain('OPENROUTER_API_KEY');
+  });
+
+  it('pins every action in the workflow to a commit SHA', () => {
+    // A tag is a mutable ref: whoever owns the upstream repo can repoint
+    // `v4` at new code, and the recovery agent would then run it with a
+    // repository secret in the environment.
+    const uses = workflow.match(/uses:\s*([^\s#]+)/g) ?? [];
+    expect(uses.length).toBeGreaterThan(0);
+    for (const use of uses) {
+      const ref = use.replace(/uses:\s*/, '');
+      expect(ref, `${ref} is not pinned to a SHA`).toMatch(/@[0-9a-f]{40}$/);
+    }
+  });
+
+  it('pins every action in every workflow to a commit SHA', () => {
+    // Same threat as above, repo-wide: the CodeQL and Scorecard workflows get
+    // `id-token: write` and `security-events: write`, which is strictly more
+    // authority than the recovery agent has.
+    const dir = path.resolve('.github/workflows');
+    const files = fs.readdirSync(dir).filter((f) => f.endsWith('.yml') || f.endsWith('.yaml'));
+    expect(files.length).toBeGreaterThan(0);
+
+    for (const file of files) {
+      const text = fs.readFileSync(path.join(dir, file), 'utf8');
+      for (const use of text.match(/uses:\s*([^\s#]+)/g) ?? []) {
+        const ref = use.replace(/uses:\s*/, '');
+        expect(ref, `${file}: ${ref} is not pinned to a SHA`).toMatch(/@[0-9a-f]{40}$/);
+      }
+    }
   });
 
   it('scopes the credential to the two model invocation steps only', () => {

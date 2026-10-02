@@ -1,19 +1,19 @@
 import type { Lead } from '../../types/lead';
-import type { CostLedger } from '../../runtime/cost_ledger';
-import type { EnrichableField } from '../../api/types';
+import type { ProviderRouter, RouteOptions } from '../../providers/provider_router';
+import type { EnrichableField } from '../../types/api';
 import { extractFromBody } from '../extract/extract_from_body';
 import type { BodyExtraction } from '../extract/extract_from_body';
 import { FIELD_BY_NAME } from './field_registry';
-import type { EnrichmentFieldDescriptor, StepResult } from './field_types';
+import type { EnrichmentFieldDescriptor, EnrichmentStep, FieldStepContext, StepResult } from './field_types';
 
 /**
  * The per-field cascade runner — the pipeline loop shape lifted out and made
  * field-generic. For one field it walks the cascade free→paid, applying the
  * triple gate (step.enabled · paidEnabled for tier-2 · per-field budget), stops
- * at the first value whose confidence ≥ the field's stopConfidence, writes it to
- * the lead, and records any paid cost to the ledger. Zero engine rewrite: it is
- * the same control flow as enrichment_pipeline.ts:129-158, parameterised by a
- * field descriptor instead of the fixed website ladder.
+ * at the first value whose confidence ≥ the field's stopConfidence and writes it
+ * to the lead. A costed step runs only through `router.invoke`, which adds the
+ * run ceiling, the per-lead cap and the circuit breaker, and records what the
+ * step actually cost in the router's ledger.
  */
 
 export interface FieldCascadeOutcome {
@@ -33,7 +33,15 @@ export interface RunFieldOptions {
   /** Pre-computed extraction (skips re-parsing the body). */
   extraction?: BodyExtraction;
   paidEnabled?: boolean;
-  ledger?: CostLedger;
+  /**
+   * Required for any costed step: without it a costed step is `paid_gated`. Its
+   * ledger is the one charged.
+   */
+  router?: ProviderRouter;
+  /** Run-level cap forwarded to the router for every costed step. */
+  runCostCeilingEur?: number;
+  /** Per-lead cap forwarded to the router (re-read from its ledger via `meta.lead_id`). */
+  leadCostCeilingEur?: number;
   /** meta for ledger attribution (tenant_id, lead_id, job_item_id). */
   meta?: Record<string, string | number | boolean>;
   /** GDPR hook forwarded to steps — true if an email is suppressed (do-not-contact). */
@@ -72,22 +80,24 @@ async function runOne(lead: Lead, descriptor: EnrichmentFieldDescriptor, extract
       continue;
     }
 
-    // tier-0 steps are sync, network steps return a Promise — await either.
-    // A throwing step degrades to "no value" rather than failing the cascade.
+    const stepCtx = { lead, extraction, paidEnabled, isSuppressedEmail: opts.isSuppressedEmail };
     let res: StepResult;
-    try {
-      res = await step.run({ lead, extraction, paidEnabled, isSuppressedEmail: opts.isSuppressedEmail });
-    } catch {
-      res = { confidence: 0, source: step.id, costEur: 0, skippedReason: 'no_value' };
-    }
     if (step.costEur > 0) {
-      spentOnField += step.costEur;
-      opts.ledger?.record(step.id, 'enrich_field', step.costEur, !!res.value, {
-        kind: res.value ? 'success' : 'empty',
-        meta: { ...opts.meta, field: descriptor.field },
-      });
+      if (!opts.router) {
+        steps.push({ id: step.id, tier: step.tier, ran: false, reason: 'paid_gated', costEur: 0 });
+        continue;
+      }
+      const invoked = await invokeCostedStep(opts.router, step, stepCtx, descriptor.field, paidEnabled, opts);
+      if (!invoked) {
+        steps.push({ id: step.id, tier: step.tier, ran: false, reason: 'budget', costEur: 0 });
+        continue;
+      }
+      res = invoked;
+      spentOnField += res.costEur;
+    } else {
+      res = await runStep(step, stepCtx);
     }
-    steps.push({ id: step.id, tier: step.tier, ran: true, reason: res.value ? undefined : res.skippedReason, costEur: step.costEur });
+    steps.push({ id: step.id, tier: step.tier, ran: true, reason: res.value ? undefined : res.skippedReason, costEur: step.costEur > 0 ? res.costEur : 0 });
 
     if (res.value && res.confidence >= descriptor.stopConfidence) {
       // Fill-only-missing: never overwrite an existing value (input/earlier wins).
@@ -116,6 +126,55 @@ async function runOne(lead: Lead, descriptor: EnrichmentFieldDescriptor, extract
     }
   }
   return { field: descriptor.field, resolved: false, confidence: 0, costEur: spentOnField, steps };
+}
+
+/** tier-0 steps are sync, network steps return a Promise — await either. A
+ *  throwing step degrades to "no value" rather than failing the cascade. */
+async function runStep(step: EnrichmentStep, ctx: FieldStepContext): Promise<StepResult> {
+  try {
+    return await step.run(ctx);
+  } catch {
+    return { confidence: 0, source: step.id, costEur: 0, skippedReason: 'no_value' };
+  }
+}
+
+/**
+ * Run a costed step through `router.invoke` — the same gate pipeline every paid
+ * provider call uses (paid gate, breaker, per-lead cap, run-ceiling reservation,
+ * ledger). The ledger is charged the cost the step REPORTS, since a step can stop
+ * before its API call (no domain, no VAT) and spend nothing. Returns `null` when
+ * the router refused to run the step.
+ */
+async function invokeCostedStep(
+  router: ProviderRouter,
+  step: EnrichmentStep,
+  ctx: FieldStepContext,
+  field: EnrichableField,
+  paidEnabled: boolean,
+  opts: RunFieldOptions,
+): Promise<StepResult | null> {
+  let called = false;
+  let res: StepResult | undefined;
+  const route: RouteOptions = {
+    paidEnabled,
+    runCostCeilingEur: opts.runCostCeilingEur,
+    leadCostCeilingEur: opts.leadCostCeilingEur,
+    meta: { ...opts.meta, field },
+  };
+  await router.invoke(
+    { id: step.id, family: step.family ?? 'official', tier: step.tier, costPerCallEur: step.costEur, available: () => step.enabled },
+    async () => {
+      called = true;
+      res = await step.run(ctx);
+      return { ok: !!res.value, value: res, cost_eur: res.costEur };
+    },
+    route,
+  );
+  if (res) return res;
+  // A step that threw after admission degrades to "no value"; the router has
+  // already charged its worst-case cost, so the field budget counts it too.
+  if (called) return { confidence: 0, source: step.id, costEur: step.costEur, skippedReason: 'no_value' };
+  return null;
 }
 
 /** Run one field's cascade. */

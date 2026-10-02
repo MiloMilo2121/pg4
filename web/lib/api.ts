@@ -99,12 +99,57 @@ export interface JudgmentSummary {
   targets: Record<string, number>;
 }
 
+// null = not measured (no ledger to read it from), never a stand-in 0.
+export interface Health {
+  ok: boolean;
+  companies: number;
+  seed: string;
+  tenant: string;
+  /** True when the store is empty: the dashboard shows a `pnpm demo` banner. */
+  seedEmpty: boolean;
+  seedHint?: string;
+}
+
 export interface CostView {
-  seedRunCostEur: number;
-  liveSessionCostEur: number;
+  seedRunCostEur: number | null;
+  liveSessionCostEur: number | null;
+  liveSessionBreakdown?: { enrichEur: number; judgmentEur: number | null; scrapeEur: number };
   ceilingEur: number | null;
   ceilingHit: boolean;
   note: string;
+}
+
+// ---- scrape (the wizard's "Mappa il mercato") ----
+export interface ScrapeRequest {
+  categories: string[];
+  provinces: string[];
+  /** Wizard source ids: 'pg' always runs; 'maps' adds Google Maps. */
+  sources: string[];
+  /** 'rapido' = the province capital, one page (about a minute); the others run the whole province. */
+  depth?: 'rapido' | 'completo' | 'esteso';
+  /** The dashboard scrape runs the free tiers only; true is refused, not ignored. */
+  paidEnabled?: boolean;
+}
+export type ScrapeStatus = 'running' | 'done' | 'partial' | 'error';
+export interface ScrapeJob {
+  jobId: string;
+  kind: 'scrape';
+  status: ScrapeStatus;
+  maps: boolean;
+  added: number;
+  costEur: number;
+  error?: string;
+  runs: Array<{
+    category: string;
+    province: string;
+    comuni?: string;
+    status: 'queued' | 'running' | ScrapeStatus;
+    added?: number;
+    /** Rows written so far by the scrape and enrich stages (live while the run is going). */
+    scraped?: number;
+    enriched?: number;
+    error?: string;
+  }>;
 }
 
 export type CellStatus = 'queued' | 'running' | 'filled' | 'failed' | 'not_found';
@@ -124,7 +169,7 @@ export interface JudgmentJob {
   jobId: string;
   kind: JudgmentJobKind;
   status: 'running' | 'done' | 'error';
-  totalCostEur: number;
+  totalCostEur: number | null;
   error?: string;
   items: Array<{ companyId: string; sections: Record<string, { state: SectionState; summary?: string; evidenceCount?: number }> }>;
 }
@@ -182,12 +227,16 @@ async function post<T>(path: string, body: unknown): Promise<T> {
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(body),
   });
-  if (!r.ok) throw new Error(`${path} → ${r.status}`);
+  if (!r.ok) {
+    // The API explains a refusal in `error` (e.g. a wizard source it cannot run).
+    const detail = await r.json().then((j: { error?: unknown }) => (typeof j.error === 'string' ? j.error : ''), () => '');
+    throw new Error(detail || `${path} → ${r.status}`);
+  }
   return r.json() as Promise<T>;
 }
 
 export const api = {
-  health: () => get<{ ok: boolean; companies: number; seed: string; tenant: string }>('/api/health'),
+  health: () => get<Health>('/api/health'),
   companies: (limit = 500, offset = 0, hasWebsite = false) =>
     get<{ total: number; rows: Company[] }>(`/api/companies?limit=${limit}&offset=${offset}${hasWebsite ? '&hasWebsite=1' : ''}`),
   metrics: () => get<Metrics>('/api/metrics'),
@@ -203,7 +252,8 @@ export const api = {
   companiesCsvUrl: () => `${BASE}/api/companies.csv`,
   enrich: (companyIds: string[], fields: string[]) => post<{ jobId: string; itemCount: number }>('/api/jobs/enrich', { companyIds, fields }),
   job: (id: string) => get<EnrichJob>(`/api/jobs/${id}`),
-  scrape: (body: Record<string, unknown>) => post<{ jobId: string; kind: string; category: string; province: string }>('/api/jobs/scrape', body),
+  scrape: (body: ScrapeRequest) => post<{ jobId: string; kind: 'scrape'; runs: number; maps: boolean }>('/api/jobs/scrape', body),
+  scrapeJob: (id: string) => get<ScrapeJob>(`/api/jobs/${id}`),
   // judgment-layer buttons (L2–L5) — each independent, idempotent, cumulative.
   discovery: (companyIds: string[]) => post<{ jobId: string; kind: JudgmentJobKind; itemCount: number }>('/api/jobs/discovery', { companyIds }),
   collectSignals: (companyIds: string[]) => post<{ jobId: string; kind: JudgmentJobKind; itemCount: number }>('/api/jobs/collect-signals', { companyIds }),

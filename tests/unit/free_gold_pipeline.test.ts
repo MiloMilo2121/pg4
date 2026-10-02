@@ -9,7 +9,7 @@ import { createPerLeadContext, createRun } from '../../src/runtime/run_context';
 import type { Lead } from '../../src/types/lead';
 
 /**
- * Phase 1 (free-gold) — pipeline-level proof: when a website-discovery stage
+ * Free-gold extraction — pipeline-level proof: when a website-discovery stage
  * has stashed the firm's own page body on `perLead.verifiedBody`, the
  * pipeline mines it for email/social/VAT and adds ZERO cost.
  *
@@ -58,6 +58,25 @@ describe('free-gold pipeline integration (zero-cost)', () => {
     expect(result.lead.facebook).toBe('https://facebook.com/agenziabianchicase');
     expect(result.lead.linkedin).toBe('https://linkedin.com/company/agenzia-bianchi');
     expect(result.cost_eur).toBe(0);
+  });
+
+  it('never emits a website email or PEC that is on the suppression list', async () => {
+    const run = createRun();
+    const router = new ProviderRouter([], [], [], new CostLedger());
+    const perLead = createPerLeadContext(run);
+    perLead.verifiedBody = load('it_site_pec_and_phone.html');
+    const suppressed = new Set(['contatti@neriservizi.it', 'neriservizi@pec.it']);
+
+    const lead: Lead = {
+      company_name: 'Neri Servizi Srl', city: 'Treviso', province: 'TV',
+      address: 'Via Roma 1', official_website: 'https://neriservizi.it',
+    };
+    const result = await runEnrichmentPipeline({ run, perLead, router, lead, dnsResolver: deadDns, isSuppressedEmail: (e) => suppressed.has(e.toLowerCase()) });
+
+    expect(result.lead.email_inferred).toBeUndefined();
+    expect(result.lead.pec).toBeUndefined();
+    expect(result.lead.email_type).toBeUndefined();
+    expect(result.lead.phone).toBeTruthy(); // the rest of the extraction still lands
   });
 
   it('no verified body → no free_gold outcome, no crash', async () => {

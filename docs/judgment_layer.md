@@ -10,8 +10,8 @@ Only the **numbers** (thresholds/weights) are a system extension — `thresholds
 
 ## How it runs (offline-first, free, €0)
 - **Website adapter**: live, free — works on its own.
-- **A-collector via free SERP (Bing)**: searches for awards/patents/heritage trademarks/press at €0 (low yield).
-- Everything else (Places, OpenAPI registry, paid social search, **LLM judges**) is **wired-but-disabled** behind key+flag. Without keys the judges run **deterministically** (transparent baseline); with `--paid`+keys they are refined with Claude.
+- **A-collector via free SERP (Bing)**: searches for awards/patents/heritage trademarks/press at €0 (low yield). A result becomes `confirmed_present` only when it is **third-party** (not the company's own domain or social profile), carries **every distinctive token of the name** (at least one not a generic trade word such as "costruzioni"), and is **corroborated** by the company's city, province `(PD)`, VAT number or own domain in the title/snippet. A bare name match is not evidence: the queries contain the name, so the company's own pages and namesakes elsewhere always match.
+- Everything else (Places, OpenAPI registry, paid social search, **LLM judges**) is **wired-but-disabled** behind key+flag. Without keys the judges run **deterministically** (transparent baseline); with `--paid`+keys they are refined with Claude. The LLM re-grades only keys that carry an observed signal: an unobserved B surface stays `unknown` and an unobserved A subdimension stays `insufficient_evidence`, whatever the model answers.
 
 ## Running
 

@@ -2,7 +2,7 @@
  * Judgment-layer vocabulary — the shared types for discovery refinement (L2),
  * signal collection (L3), judging (L4) and validation (L5).
  *
- * Design invariants (from the approved plan, §0/§3/§4):
+ * Design invariants:
  *  - THREE evidence states EVERYWHERE (`EvidenceState`). A failed/uncertain
  *    discovery is `unknown_not_found`, NEVER `confirmed_absent`, and must never
  *    be read as a negative B signal.
@@ -17,18 +17,18 @@
 
 export type EvidenceState = 'confirmed_present' | 'confirmed_absent' | 'unknown_not_found';
 
-export type Axis = 'A' | 'B';
+type Axis = 'A' | 'B';
 
 /**
- * Business model, used to declension Judge A (ontology §2.8) and to weight
- * Judge B surfaces (§3.0.2). A PRIOR, never a rigid rule.
+ * Business model, used to declension Judge A (ontology) and to weight Judge B
+ * surfaces. A PRIOR, never a rigid rule.
  */
 export type BusinessModel =
-  | 'B2B_manufacturing' // §2.8.1
-  | 'B2C_product' // §2.8.2
-  | 'professional_local' // §2.8.3
-  | 'hospitality_retail' // §2.8.4
-  | 'B2B2C' // §2.8.5
+  | 'B2B_manufacturing'
+  | 'B2C_product'
+  | 'professional_local'
+  | 'hospitality_retail'
+  | 'B2B2C'
   | 'unknown';
 
 /** Provenance of a single observed assertion. Maps to a `field_evidence` row. */
@@ -61,7 +61,7 @@ export type FootprintChannel =
   | 'ecommerce'
   | 'ad_library';
 
-export type Ownership = 'owned_confirmed' | 'candidate_unverified' | 'rejected_third_party' | 'na';
+type Ownership = 'owned_confirmed' | 'candidate_unverified' | 'rejected_third_party' | 'na';
 
 export interface ChannelFootprint {
   channel: FootprintChannel;
@@ -132,9 +132,9 @@ export interface SurfaceVerdict {
   /** surface key, e.g. '3.1' */
   surface: string;
   state: SurfaceState;
-  /** §3.0.1 — the target's signature: present but does not express the real strength */
+  /** the target's signature: present but does not express the real strength */
   presentButPoor: boolean;
-  /** §3.0.2 model weight applied to this surface */
+  /** model weight applied to this surface */
   weight: number;
   confidence: number;
   citations: string[];
@@ -160,7 +160,7 @@ export interface AxisAssessment {
   basedOn: EvidenceRef[];
 }
 
-// category benchmark (§1.4 relativity, §17 two-pass)
+// category benchmark (category-relative, computed in a second pass)
 export interface CategoryBenchmark {
   p50?: number;
   p90?: number;
@@ -181,9 +181,9 @@ export interface CategoryProfile {
 /**
  * Quadrant label. `+` = high, `-` = measured-low, `?` = NOT measured (axis
  * unknown). The `?` variants are load-bearing: a `?` axis must NEVER read as `-`
- * (the §5.3.5 firewall at the LABEL level). 'A?B+' is "B high, A not looked at"
+ * (the label-level firewall). 'A?B+' is "B high, A not looked at"
  * — an indeterminate quadrant, NOT the "fuffa" A-B+. The ontology's four
- * canonical quadrants (§4.1) are the four +/- combinations; the `?` variants are
+ * canonical quadrants are the four +/- combinations; the `?` variants are
  * the honest "insufficient evidence" overlay.
  */
 export type Quadrant =
@@ -197,7 +197,7 @@ export type Quadrant =
   | 'A?B-'
   | 'A?B?';
 export type Trajectory = 'improving' | 'flat' | 'declining' | 'unknown';
-/** §4.4 cause taxonomy. */
+/** The taxonomy of causes a gap can have. */
 export type GapCause = 'omission' | 'incompetence' | 'generational' | 'aversion' | 'constraint' | 'decline' | 'unknown';
 export type TargetVerdict = 'yes' | 'no' | 'borderline';
 
@@ -210,9 +210,9 @@ export interface GapVerdict {
   /** A − B (can be negative); the separately-stored derived value */
   gap: number;
   gapWidth: 'narrow' | 'moderate' | 'wide';
-  trajectory: Trajectory; // §1.5
-  cause: GapCause; // §4.4
-  /** §4.5 — hard knock-outs applied BEFORE the gap logic */
+  trajectory: Trajectory;
+  cause: GapCause;
+  /** hard knock-outs applied BEFORE the gap logic */
   disqualifiers: string[];
   target: TargetVerdict;
   /** illustrative archetype matched (Parte VI) */
@@ -227,7 +227,7 @@ export type LeverKind = 'positioning' | 'acquisition' | 'conversion_ops' | 'meas
 export interface Lever {
   kind: LeverKind;
   rationale: string;
-  /** ordering in the recommended intervention sequence (§7.5) */
+  /** ordering in the recommended intervention sequence */
   sequence: number;
   basedOn: EvidenceRef[];
 }
@@ -247,7 +247,7 @@ export interface ValidationResult {
 }
 
 // ---------------------------------------------------------------------------
-// meta (versioning → reproducibility, §20)
+// meta (versioning → reproducibility)
 // ---------------------------------------------------------------------------
 
 export interface JudgmentMeta {
@@ -262,10 +262,9 @@ export interface JudgmentMeta {
 }
 
 /**
- * The umbrella the UI reads. Physically: nine JSONB columns on `companies`
- * (Postgres) or nine nested keys on the in-memory CompanyRow. Each section is a
- * PURE PROJECTION of the append-only `field_evidence` atoms — never edited
- * independently (watch-item #4).
+ * The umbrella the UI reads. Physically: ten nested keys on the in-memory
+ * CompanyRow (see JUDGMENT_SECTIONS). Each section is a pure projection of the
+ * evidence the judgment collected — never edited independently.
  */
 export interface JudgmentRecord {
   footprint?: Footprint;
@@ -280,7 +279,7 @@ export interface JudgmentRecord {
   meta?: JudgmentMeta;
 }
 
-/** The nine judgment section keys (column names / in-memory keys). */
+/** The ten judgment section keys on the in-memory CompanyRow. */
 export const JUDGMENT_SECTIONS = [
   'footprint',
   'segnali_a',

@@ -1,14 +1,16 @@
 import type { Lead } from '../../../types/lead';
 import type { Signal, EvidenceRef } from '../../../types/judgment';
 import { getEnv } from '../../../config/env';
+import type { CostedMeta } from '../../../types/providers';
+import { CALL_COST_EUR } from '../../../providers/pricing';
 import type { SourceAdapter, HarvestContext, HarvestResult } from '../source_harvest';
-import { SOURCE_TTL_DAYS } from '../routing';
+import { SOURCE_TTL_DAYS } from '../source_ttl';
 
 /**
  * Google Places SourceAdapter — the OFFICIAL source for Maps/GBP/reviews/hours
- * (plan §19: official API over Maps HTML scraping). HYBRID: review CONTENT/rating
- * → Axis A (§2.4); GBP completeness + review MANAGEMENT (responses/recency) →
- * Axis B (§3.3/§3.4). Disabled by default (GOOGLE_PLACES_ENABLED).
+ * (official API over Maps HTML scraping). HYBRID: review CONTENT/rating → Axis A
+ * (perceived quality); GBP completeness + review MANAGEMENT (responses/recency) →
+ * Axis B. Disabled by default (GOOGLE_PLACES_ENABLED).
  *
  * Watch-item #2: review MANAGEMENT (responses) is only PARTIALLY observable via
  * the official API. When a B aspect is not observable, this adapter LEAVES IT
@@ -27,7 +29,7 @@ export class PlacesSourceAdapter implements SourceAdapter {
   readonly kind = 'maps_gbp' as const;
   readonly id = 'google_places';
   readonly tier = 2 as const;
-  readonly costEur = 0.06; // New API Text Search (Pro) + rating field, €/call estimate
+  readonly costEur = CALL_COST_EUR.google_places;
 
   available(): boolean {
     const e = getEnv();
@@ -48,16 +50,25 @@ export class PlacesSourceAdapter implements SourceAdapter {
   async harvest(locator: string, ctx: HarvestContext): Promise<HarvestResult> {
     const iso = new Date(ctx.now()).toISOString();
     const base: HarvestResult = { source: this.kind, sourceId: this.id, locator, fetchedAt: iso, ok: false, attributes: {}, signals: [] };
-    if (!ctx.paidEnabled) return base; // tier-2: respect the paid gate
+    // Paid: the request runs only through the router (gate, breaker, budgets, ledger).
+    if (!ctx.paidEnabled || !ctx.router) return base;
     const e = getEnv();
-    const body = await ctx.fetcher(PLACES_SEARCH_URL, {
-      method: 'POST',
-      headers: {
-        'X-Goog-Api-Key': e.GOOGLE_PLACES_API_KEY ?? '',
-        'X-Goog-FieldMask': FIELD_MASK,
+    const meta: CostedMeta = { id: this.id, family: 'reviews', tier: this.tier, costPerCallEur: this.costEur, available: () => this.available() };
+    const body = await ctx.router.invoke(
+      meta,
+      async () => {
+        const text = await ctx.fetcher(PLACES_SEARCH_URL, {
+          method: 'POST',
+          headers: {
+            'X-Goog-Api-Key': e.GOOGLE_PLACES_API_KEY ?? '',
+            'X-Goog-FieldMask': FIELD_MASK,
+          },
+          body: JSON.stringify({ textQuery: locator, languageCode: 'it', regionCode: 'IT' }),
+        });
+        return text ? { ok: true, value: text } : null;
       },
-      body: JSON.stringify({ textQuery: locator, languageCode: 'it', regionCode: 'IT' }),
-    });
+      { ...ctx.route, paidEnabled: ctx.paidEnabled, meta: { ...ctx.ledgerMeta, stage: 'judgment_places' } },
+    );
     if (!body) return base;
     let json: unknown;
     try {
@@ -71,14 +82,14 @@ export class PlacesSourceAdapter implements SourceAdapter {
     const ev = (excerpt: string, c = 0.8): EvidenceRef[] => [{ source: 'google_places', url: PLACES_SEARCH_URL, excerpt, observedAt: iso, confidence: c }];
     const signals: Signal[] = [];
     const closed = top.businessStatus === 'CLOSED_PERMANENTLY';
-    // A side — review CONTENT/rating (§2.4 perceived quality). A permanently-closed
+    // A side — review CONTENT/rating (perceived quality). A permanently-closed
     // business is not a live A signal — skip the positive rating assertion.
     if (!closed && typeof top.rating === 'number') {
       signals.push({ axis: 'A', key: '2.4', state: 'confirmed_present', value: top.rating, evidence: ev(`rating ${top.rating} (${top.userRatingCount ?? '?'} reviews)`) });
     }
-    // B side — GBP presence/completeness (§3.3).
+    // B side — GBP presence/completeness.
     signals.push({ axis: 'B', key: '3.3', state: 'confirmed_present', value: 'gbp_present', evidence: ev('GBP profile present') });
-    // B side — review volume present (§3.4); MANAGEMENT/responses NOT exposed → left unknown.
+    // B side — review volume present; MANAGEMENT/responses NOT exposed → left unknown.
     if (typeof top.userRatingCount === 'number') {
       signals.push({ axis: 'B', key: '3.4', state: 'confirmed_present', value: top.userRatingCount, evidence: ev(`${top.userRatingCount} reviews on GBP`), notes: 'volume only; responses/recency not observable via API (watch-item #2)' });
     }

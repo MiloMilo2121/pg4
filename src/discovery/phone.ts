@@ -1,5 +1,5 @@
 /**
- * Phase C.2 — Italian phone normalization to E.164.
+ * Italian phone normalization to E.164.
  *
  * Italian numbering (ITU E.164, country code +39):
  *   - LANDLINES keep their leading 0 after the country code:

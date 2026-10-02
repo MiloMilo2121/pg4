@@ -2,7 +2,7 @@ import type { GateResult, GateStatus, NormalizedLead } from '../../types/discove
 import { evaluateSemanticEvidence } from './semantic_evidence';
 
 /**
- * Phase D layered gate: decides whether `url` (with the HTML it served)
+ * Layered gate: decides whether `url` (with the HTML it served)
  * belongs to `normalized`. Pure function over (url, html, lead).
  *
  * Decision order — first match wins:
@@ -29,7 +29,7 @@ import { evaluateSemanticEvidence } from './semantic_evidence';
  *      multi-token brand evidence and locality + sector context.
  *
  *   6. Otherwise REJECTED with a specific sub-reason that maps to a
- *      Phase D taxonomy reason code (see `types/output.ts`):
+ *      taxonomy reason code (see `types/output.ts`):
  *        - `tiny_or_parked`     → SEMANTIC_REJECTED_TINY_OR_PARKED
  *        - `common_stem`        → SEMANTIC_REJECTED_COMMON_STEM
  *        - `sector_conflict`    → SEMANTIC_REJECTED_SECTOR_CONFLICT

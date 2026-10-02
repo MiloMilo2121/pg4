@@ -1,10 +1,10 @@
 /**
- * R13 (Phase 3) — the live fatturatoitalia.it fetcher the parser was waiting
+ * The live fatturatoitalia.it fetcher the parser was waiting
  * for. The parser (`fatturato_italia_parser.ts`) is PURE and deferred the
  * network; this is the small, rate-limited fetch that feeds it.
  *
- * URL scheme (re-probed 2026-07-18 — the site changed, see O6 in
- * the R13 review and its measurements):
+ * URL scheme (re-probed 2026-07-18 — the site changed; measurements below
+ * were taken on that probe):
  *   - The old direct `https://www.fatturatoitalia.it/<P.IVA>` now 404s for
  *     every VAT (it parsed the 404 shell → silent garbage).
  *   - The company page lives at a slug URL `/<slug>-<P.IVA>`, reachable only
@@ -22,18 +22,23 @@
  * Free, but be a good citizen: callers bound concurrency (the dev server caps
  * at 5) and a short timeout; do not hammer the site at volume.
  */
-import { request } from 'undici';
+import { followRedirects } from '../../providers/http/follow_redirects';
 import { normalizeVatCode, validateItalianVatChecksum } from './vat';
 import { parseFatturatoItaliaPage } from './fatturato_italia_parser';
 import type { FatturatoItaliaParseResult } from './fatturato_italia_parser';
 import { DirectFetchProvider } from '../../providers/http/direct_fetch';
 import { RateLimiter } from '../../runtime/rate_limiter';
 import { DEFAULTS } from '../../config/defaults';
+import { CircuitBreaker } from '../../runtime/circuit_breaker';
+import { classifyHttpFailure, type FailureKind } from '../../types/providers';
 
 const fetcher = new DirectFetchProvider();
 
+const hostOf = (url: string): string => new URL(url).host;
+
 const ORIGIN = 'https://www.fatturatoitalia.it';
 const SEARCH_URL = `${ORIGIN}/risultato-di-ricerca`;
+const SEARCH_HOST = hostOf(SEARCH_URL);
 
 // MEASURED 2026-06-13: fatturatoitalia.it drops connections (status 0, empty
 // body) under burst requests — a no-delay probe of 30 VATs returned 0% while the
@@ -71,21 +76,30 @@ function memoSet(vat: string, val: FatturatoItaliaLookup | undefined): void {
 }
 
 // Circuit breaker for the MEASURED site-wide block mode (status 0 / error shell
-// under load): after enough CONSECUTIVE transient failures the site is down for
-// us — keep answering undefined fast (never memoised) for a cooldown instead of
-// crawling the whole run at ~8-16s/lead with a guaranteed 0% fill. Distinct
-// definitive misses (VAT not indexed) and successes reset the streak.
-let transientStreak = 0;
-let circuitOpenUntil = 0;
-const CIRCUIT_THRESHOLD = 5;
-const CIRCUIT_COOLDOWN_MS = 600_000;
+// under load): once the host is down for us, answer undefined fast (never
+// memoised) instead of crawling the run at ~8-16s/lead for a guaranteed 0% fill.
+// Keyed by host and bounded by a window, so it trips on a real outage, not on
+// five unrelated transients scattered across a long run. At the limiter's pace a
+// lookup takes ~8 s, so 120 s holds ~15 lookups: 5 host failures among them is
+// a block. After the cool-down the breaker half-opens and the next failure
+// re-opens it at once, so 5 minutes (not a flat 10) is enough.
+// Lead-specific answers (VAT not indexed, page 404/410) are not host failures.
+const breaker = new CircuitBreaker({ failureThreshold: 5, windowMs: 120_000, cooldownMs: 300_000 });
 
-function noteTransientFailure(): undefined {
-  transientStreak += 1;
-  if (transientStreak >= CIRCUIT_THRESHOLD) {
-    circuitOpenUntil = Date.now() + CIRCUIT_COOLDOWN_MS;
-    transientStreak = 0;
+/** A failure of the host itself, as opposed to one lead's missing page. */
+class HostFailure extends Error {
+  constructor(
+    readonly host: string,
+    readonly kind: FailureKind,
+    message: string,
+  ) {
+    super(message);
   }
+}
+
+function noteHostFailure(err: unknown): undefined {
+  if (err instanceof HostFailure) breaker.recordFailure(err.host, err.kind);
+  else breaker.recordFailure(SEARCH_HOST, classifyHttpFailure({ error: (err as Error)?.message }));
   return undefined;
 }
 
@@ -104,12 +118,11 @@ async function resolveCompanyUrl(vat: string, timeoutMs: number): Promise<string
     search_query: vat,
   }).toString();
 
-  const res = await request(SEARCH_URL, {
+  const { response: res } = await followRedirects(SEARCH_URL, {
     method: 'POST',
     body,
     bodyTimeout: timeoutMs,
     headersTimeout: timeoutMs,
-    maxRedirections: 3,
     headers: {
       'content-type': 'application/x-www-form-urlencoded',
       accept: 'application/json',
@@ -121,14 +134,15 @@ async function resolveCompanyUrl(vat: string, timeoutMs: number): Promise<string
 
   if (res.statusCode < 200 || res.statusCode >= 300) {
     await res.body.dump();
-    throw new Error(`search http ${res.statusCode}`); // transient — retryable, not memoised
+    // One search endpoint serves every VAT, so an error status is the host's.
+    throw new HostFailure(SEARCH_HOST, classifyHttpFailure({ status: res.statusCode }), `search http ${res.statusCode}`);
   }
 
   let json: unknown;
   try {
     json = await res.body.json();
   } catch {
-    throw new Error('search json parse'); // block/HTML shell — transient
+    throw new HostFailure(SEARCH_HOST, 'blocked', 'search json parse'); // block/HTML shell — transient
   }
 
   const results = (json as { results?: Array<{ tax_code?: string; url?: string }> })?.results;
@@ -158,7 +172,7 @@ export async function fetchFatturatoItalia(
   const cached = memo.get(vat);
   if (cached && Date.now() - cached.at < MEMO_TTL_MS) return cached.val;
 
-  if (Date.now() < circuitOpenUntil) return undefined; // circuit open — cooling down, not memoised
+  if (!breaker.allow(SEARCH_HOST)) return undefined; // circuit open — cooling down, not memoised
 
   const timeoutMs = opts.timeoutMs ?? 12_000;
   let pageUrl: string | undefined;
@@ -167,25 +181,32 @@ export async function fetchFatturatoItalia(
     await limiter.acquire('fatturatoitalia'); // good-citizen spacing — see limiter note
     pageUrl = await resolveCompanyUrl(vat, timeoutMs);
     if (!pageUrl) {
-      transientStreak = 0; // the search itself worked
+      breaker.recordSuccess(SEARCH_HOST); // the search itself worked
       memoSet(vat, undefined); // definitive: VAT not indexed
       return undefined;
     }
+    const pageHost = hostOf(pageUrl);
+    if (!breaker.allow(pageHost)) return undefined;
     await limiter.acquire('fatturatoitalia');
     const res = await fetcher.fetch(pageUrl, { timeoutMs }); // follows the slug 301
     // DirectFetchProvider returns the body for ANY text/html status (it only
     // errors on network failure), so an error shell (403 WAF / 404 / 5xx) would
     // otherwise reach the parser at confidence <0.5 and be memoised 5 min as a
     // definitive miss — poisoning the employees step that shares this memo.
-    // An error status is TRANSIENT: no memo, breaker note, retryable.
-    if (res.status < 200 || res.status >= 400) return noteTransientFailure();
+    // An error status is never memoised and stays retryable. A 404/410 is this
+    // lead's page missing; anything else (403 WAF, 429, 5xx, status 0) is the
+    // host refusing everyone.
+    if (res.status === 404 || res.status === 410) return undefined;
+    if (res.status < 200 || res.status >= 400) {
+      throw new HostFailure(pageHost, classifyHttpFailure({ status: res.status, error: res.error }), `page http ${res.status}`);
+    }
+    if (!res.html) throw new HostFailure(pageHost, 'blocked', 'page empty body'); // status-0 style block
     html = res.html;
-  } catch {
-    return noteTransientFailure(); // transient (search block / network) — do not memoise a failure
+    breaker.recordSuccess(pageHost);
+  } catch (err) {
+    return noteHostFailure(err); // transient — do not memoise a failure
   }
-  if (!html) return noteTransientFailure(); // includes status-0 block (empty body) — not memoised, retryable
 
-  transientStreak = 0;
   const parsed = parseFatturatoItaliaPage(html, pageUrl);
   // confidence 0.4 = the generic site shell (no company resolved); require a
   // real parse (chart → 0.9, table/grid → 0.75).

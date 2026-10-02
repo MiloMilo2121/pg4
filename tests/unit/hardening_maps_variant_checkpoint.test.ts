@@ -110,7 +110,7 @@ describe('Maps coverage — checkpoint key isolation', () => {
   // In that scenario all variant keys collide on the same string, and marking
   // the first variant done would skip all others.
   //
-  it('[anti-pattern] if all variants used the same category key they would collide', () => {
+  it('would collide if all variants used the same category key', () => {
     const variants = expandMapsQueryVariants(CATEGORY, 'full');
     expect(variants.length).toBeGreaterThan(1);
 

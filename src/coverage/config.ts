@@ -9,6 +9,7 @@
 
 import fs from 'fs';
 import path from 'path';
+import { REPO_ROOT } from '../util/repo_root';
 
 export interface CoverageConfig {
   /** Target coverage fraction of the ADDRESSABLE universe (0..1). */
@@ -41,7 +42,7 @@ export const DEFAULT_COVERAGE_CONFIG: CoverageConfig = {
  * data to estimate the true findable/active ratio per sector. Override via
  * CLI / config file when evidence is available.
  */
-export const DIRECTORY_FACTOR_BY_SECTION: Record<string, number> = {
+const DIRECTORY_FACTOR_BY_SECTION: Record<string, number> = {
   A: 0.15, // agriculture — many sole proprietorships, little directory presence
   B: 0.4,
   C: 0.55, // manufacturing
@@ -65,7 +66,7 @@ export const DIRECTORY_FACTOR_BY_SECTION: Record<string, number> = {
   U: 0.05,
 };
 
-export const DEFAULT_DIRECTORY_FACTOR = 0.5;
+const DEFAULT_DIRECTORY_FACTOR = 0.5;
 
 /**
  * EMPIRICAL calibration hook. If
@@ -78,7 +79,7 @@ let calibratedFactors: Record<string, number> | null | undefined;
 function loadCalibratedFactors(): Record<string, number> | null {
   if (calibratedFactors !== undefined) return calibratedFactors;
   try {
-    const p = path.join(path.resolve(__dirname, '..', '..'), 'data', 'reference', 'directory_factor_calibrated.json');
+    const p = path.join(REPO_ROOT, 'data', 'reference', 'directory_factor_calibrated.json');
     calibratedFactors = fs.existsSync(p) ? (JSON.parse(fs.readFileSync(p, 'utf8')) as Record<string, number>) : null;
   } catch {
     calibratedFactors = null;

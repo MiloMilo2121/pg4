@@ -49,14 +49,14 @@ describe('resolveRole — the cost-safe compiler', () => {
     expect(r.routeOptions.paidEnabled).toBe(true);
   });
 
-  it('AC5: italian_real_estate excludes ddg_lite but INCLUDES serper (R14 serper-exclusion lifted 2026-07-20 after live re-test: ~50% own-site hit vs bing_html 0)', () => {
+  it('italian_real_estate excludes ddg_lite but INCLUDES serper (serper-exclusion lifted 2026-07-20 after live re-test: ~50% own-site hit vs bing_html 0)', () => {
     const r = resolveRole('SEARCH_WEB', { paidEnabled: true, categoryProfile: 'italian_real_estate' });
     expect(r.providerIds).not.toContain('ddg_lite');
     expect(r.providerIds).toContain('serper');
     expect(r.providerIds).toContain('bing_html');
   });
 
-  it('addendum R6: LLM_CHEAP on a free-only run has NO usable provider (LLM is paid)', () => {
+  it('LLM_CHEAP on a free-only run has NO usable provider (LLM is paid)', () => {
     expect(resolveRole('LLM_CHEAP', { paidEnabled: false }).providerIds).toEqual([]);
     expect(resolveRole('LLM_CHEAP', { paidEnabled: true }).providerIds.length).toBeGreaterThan(0);
   });

@@ -1,0 +1,100 @@
+# pg4 is a TypeScript monorepo-ish repo with a Next.js dashboard in web/.
+# Dependabot watches the root, the dashboard, and the Actions workflows.
+#
+# Grouping policy: patch + minor share a group so a single PR covers the
+# transitive bumps that usually arrive together (a package and the @types
+# package that tracks it). Majors stay separate — they need a human to run the
+# gate and check the changelog — so every group is limited to minor + patch;
+# without `update-types` a group swallows majors too.
+#
+# @types/node tracks the runtime, not the latest Node: its major follows
+# .nvmrc (Node 24) and moves only when the runtime does.
+version: 2
+
+updates:
+  - package-ecosystem: npm
+    directory: /
+    # Same 24 h floor as minimum-release-age in .npmrc; without it Dependabot
+    # proposes versions pnpm then refuses to resolve.
+    cooldown:
+      default-days: 1
+    schedule:
+      interval: weekly
+      day: tuesday
+      time: '07:00'
+      timezone: Europe/Rome
+    open-pull-requests-limit: 5
+    ignore:
+      - dependency-name: '@types/node'
+        update-types: ['version-update:semver-major']
+    groups:
+      types:
+        patterns:
+          - '@types/*'
+        update-types: ['minor', 'patch']
+      dev-tooling:
+        patterns:
+          - 'typescript'
+          - 'typescript-eslint'
+          - 'eslint'
+          - 'eslint-*'
+          - 'vitest'
+          - '@vitest/*'
+          - 'tsx'
+          - '@modelcontextprotocol/*'
+        update-types: ['minor', 'patch']
+      observability:
+        patterns:
+          - 'pino'
+          - 'pino-pretty'
+        update-types: ['minor', 'patch']
+      http:
+        patterns:
+          - 'undici'
+          - 'cheerio'
+          - 'domhandler'
+        update-types: ['minor', 'patch']
+
+  - package-ecosystem: npm
+    directory: /web
+    # Same 24 h floor as minimum-release-age in .npmrc; without it Dependabot
+    # proposes versions pnpm then refuses to resolve.
+    cooldown:
+      default-days: 1
+    schedule:
+      interval: weekly
+      day: tuesday
+      time: '07:00'
+      timezone: Europe/Rome
+    open-pull-requests-limit: 5
+    ignore:
+      - dependency-name: '@types/node'
+        update-types: ['version-update:semver-major']
+    groups:
+      next-ecosystem:
+        patterns:
+          - 'next'
+          - 'eslint-config-next'
+          - 'react'
+          - 'react-dom'
+          - '@types/react'
+          - '@types/react-dom'
+        update-types: ['minor', 'patch']
+      types:
+        patterns:
+          - '@types/*'
+        update-types: ['minor', 'patch']
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: tuesday
+      time: '07:00'
+      timezone: Europe/Rome
+    open-pull-requests-limit: 5
+    groups:
+      actions:
+        patterns:
+          - '*'
+        update-types: ['minor', 'patch']

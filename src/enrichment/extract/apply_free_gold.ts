@@ -1,5 +1,5 @@
 /**
- * Phase 1 (free-gold) — apply the pure body extraction onto a Lead.
+ * Free-gold — apply the pure body extraction onto a Lead.
  *
  * Discipline (matches PgDetailStage.backfill + FinancialStage): fill ONLY
  * empty fields — input always wins, we never overwrite. Never throws (the

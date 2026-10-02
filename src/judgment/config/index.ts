@@ -2,15 +2,11 @@ import type { JudgmentConfig } from './types';
 import { JUDGMENT_CONFIG_V0 } from './v0';
 
 export type { JudgmentConfig } from './types';
-export {
-  JUDGMENT_CONFIG_V0,
-} from './v0';
 
 /**
- * Active judgment_config registry. The ACTIVE config is a versioned in-code
- * artifact (CRETA). Re-judging with a new version = swap here + re-run L4; never
- * a migration (plan §0/§20). A DB snapshot lives in `judgment_config_versions`
- * purely for reproducibility (see snapshotConfig).
+ * Active judgment_config registry. The active config is a versioned in-code
+ * artifact. Re-judging with a new version = swap here + re-run L4; never a
+ * migration. `snapshotConfig` serializes it for reproducibility.
  */
 const REGISTRY: Record<string, JudgmentConfig> = {
   [JUDGMENT_CONFIG_V0.version]: JUDGMENT_CONFIG_V0,
@@ -22,17 +18,9 @@ export function getActiveJudgmentConfig(): JudgmentConfig {
   return REGISTRY[ACTIVE_VERSION];
 }
 
-export function getJudgmentConfig(version: string): JudgmentConfig | undefined {
-  return REGISTRY[version];
-}
-
-export function listJudgmentConfigVersions(): string[] {
-  return Object.keys(REGISTRY);
-}
-
 /**
- * Snapshot a config as DATA for the `judgment_config_versions` table (repro).
- * This is a serialization, NOT logic-in-query: the blob is opaque to SQL.
+ * Snapshot a config as data, so a verdict can be reproduced against the exact
+ * config that produced it.
  */
 export function snapshotConfig(cfg: JudgmentConfig): {
   version: string;
@@ -45,7 +33,7 @@ export function snapshotConfig(cfg: JudgmentConfig): {
 /**
  * Collect every CRETA-LOGICA entry with the v2 section `ref` it was transcribed
  * from. Used by the fidelity test to enforce that no judgment logic is
- * "improvised" (plan §0: logica trascritta da v2, only numbers are extension).
+ * "improvised" (logica trascritta da v2, only numbers are extension).
  */
 export function collectLogicRefs(cfg: JudgmentConfig): Array<{ kind: string; id: string; ref: string }> {
   const out: Array<{ kind: string; id: string; ref: string }> = [];
@@ -63,7 +51,7 @@ export function collectLogicRefs(cfg: JudgmentConfig): Array<{ kind: string; id:
   return out;
 }
 
-/** The disqualifiers a deterministic Stage-0 triage can check cheaply (§16/§4.5). */
+/** The disqualifiers a deterministic Stage-0 triage can check cheaply. */
 export function cheapDisqualifiers(cfg: JudgmentConfig): string[] {
   return cfg.gap.disqualifiers.filter((d) => d.cheaplyCheckable).map((d) => d.id);
 }

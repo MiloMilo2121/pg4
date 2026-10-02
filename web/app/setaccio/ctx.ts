@@ -4,6 +4,4 @@ import type { State } from './data';
 export interface ViewProps {
   st: State;
   set: (patch: Partial<State>) => void;
-  /** animated count-up used by the Italia map tooltip. */
-  startCount: (target: number) => void;
 }

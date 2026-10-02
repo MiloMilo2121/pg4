@@ -1,8 +1,9 @@
 import fs from 'fs';
 import { parseArgs, reqString, optString, hasHelp, reportFatal } from './_args';
-import { readCsvAsLeads } from '../io/csv_reader';
 import type { Lead } from '../types/lead';
 import { logger } from '../runtime/logger';
+import { suppressionForCommand } from '../compliance/suppression';
+import { loadLeadFiles } from '../io/lead_files';
 
 /**
  * `pnpm run benchmark -- --input <enriched.csv|.jsonl> [--out report.md]`
@@ -38,26 +39,6 @@ function filled(v: unknown): boolean {
   return v !== undefined && v !== null && v !== '';
 }
 
-async function loadLeads(input: string): Promise<Lead[]> {
-  if (!fs.existsSync(input)) throw new Error(`input not found: ${input}`);
-  if (input.endsWith('.jsonl')) {
-    const out: Lead[] = [];
-    for (const line of fs.readFileSync(input, 'utf8').split('\n')) {
-      const t = line.trim();
-      if (!t) continue;
-      try {
-        out.push(JSON.parse(t) as Lead);
-      } catch {
-        /* skip malformed */
-      }
-    }
-    return out;
-  }
-  const out: Lead[] = [];
-  for await (const r of readCsvAsLeads(input)) if (!r.ingestError) out.push(r.lead);
-  return out;
-}
-
 function tally(leads: Lead[], key: string): Record<string, number> {
   const m: Record<string, number> = {};
   for (const l of leads) {
@@ -75,7 +56,10 @@ async function main() {
   }
   const input = reqString(args, 'input');
   const outMd = optString(args, 'out');
-  const leads = await loadLeads(input);
+  // Report-only: the list is looked up next to the enriched output it reads
+  // (where enrich auto-discovered it), not next to the report.
+  const { kept: leads, suppressed } = suppressionForCommand(args.flags, input).apply((await loadLeadFiles([input])).leads);
+  if (suppressed > 0) logger.warn({ suppressed }, '[benchmark] companies excluded by suppression list');
   const n = leads.length;
   if (n === 0) {
     logger.warn({ input }, '[benchmark] no leads in input');
@@ -141,6 +125,9 @@ website-discovery-method / financial-source / email-type breakdown and total cos
 Flags:
   --input <path>   Required. An enriched CSV or JSONL produced by \`enrich\`/\`run\`.
   --out <path>     Optional. Also write a markdown report to this path.
+  --suppression-list <path>
+                   Optional. Do-not-contact CSV (else SUPPRESSION_LIST, else
+                   suppression.csv next to --input); excluded from counts.
 `);
 }
 

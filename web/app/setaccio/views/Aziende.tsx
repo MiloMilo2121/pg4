@@ -1,10 +1,20 @@
-import type { Company } from '../data';
+import { NO_TIER, type Company } from '../data';
 import { useCompanies } from '../queries';
-import { chipStyle, tierPillStyle } from '../helpers';
+import { EMPTY } from '../helpers';
 import type { ViewProps } from '../ctx';
+import { PageSection, PageHeader } from '../ui/Page';
+import { Chip } from '../ui/Choice';
+import { Table } from '../ui/Table';
+import { MiniBar, pctOf } from '../ui/Bar';
+import { Pill, type PillTone } from '../ui/Pill';
+import { EmptyState } from '../ui/Callout';
+import { CloseButton } from '../ui/Dialog';
+import { Card } from '../../ds/components/Card';
+import { cx } from '../../ds/components/cx';
+import { Icon } from '../../ds/components/Icon';
 
-const SECTION = { padding: '34px 36px 60px', maxWidth: 1180, margin: '0 auto' } as const;
-const COLS = '2fr 1.4fr 1fr .9fr .7fr 1fr 1fr';
+const COLS = [2, 1.4, 1, 0.9, 0.7, 1.15, 1];
+const HEAD = ['Azienda', 'Settore', 'Comune', 'Fatturato', 'Dip.', 'Maturità', 'Giudizio'];
 
 type View = ViewProps['st']['aziView'];
 const VIEWS: [View, string][] = [
@@ -17,12 +27,21 @@ function inView(c: Company, v: View): boolean {
     case 'tutte': return true;
     case 'grezze': return c.mat === 'Base' || c.mat === 'Grezza';
     case 'arricchite': return c.mat === 'Arricchita';
-    case 'giudicate': return c.mat === 'Qualificata' || c.mat === 'Target';
+    case 'giudicate': return c.tier !== NO_TIER;
     case 'target': return c.mat === 'Target';
-    case 'escluse': return c.tier === '—';
+    case 'escluse': return c.excluded === true;
     default: return true;
   }
 }
+
+/** Tier A is the target: solid. B outlined, C/D quiet, unjudged muted. */
+function tierTone(tier: string): PillTone {
+  if (tier === 'Tier A') return 'solid';
+  if (tier === 'Tier B') return 'outline';
+  if (tier === NO_TIER) return 'muted';
+  return 'wash';
+}
+
 
 export default function Aziende({ st, set }: Pick<ViewProps, 'st' | 'set'>) {
   const { companies, isLoading } = useCompanies();
@@ -39,78 +58,73 @@ export default function Aziende({ st, set }: Pick<ViewProps, 'st' | 'set'>) {
     if (!q) return true;
     return (c.nome + ' ' + c.comune + ' ' + c.settore + ' ' + c.kw + ' ' + c.tier).toLowerCase().includes(q);
   });
-  const resultLabel = rows.length + (rows.length === 1 ? ' azienda' : ' aziende') + (st.query.trim() ? ` per “${st.query.trim()}”` : '');
+  const resultLabel = rows.length + (rows.length === 1 ? ' azienda' : ' aziende') + (st.query.trim() ? ` per «${st.query.trim()}»` : '');
   const hasQuery = st.query.trim().length > 0;
+  const open = (c: Company) => c.id && set({ selectedCompanyId: c.id });
 
   return (
-    <section className="agfade" style={SECTION}>
-      <div style={{ marginBottom: 8 }}><span className="kicker">Archivio</span></div>
-      <h1 style={{ fontSize: '1.95rem', fontWeight: 500, letterSpacing: '-.02em', marginBottom: 6 }}>Aziende</h1>
-      <p style={{ fontSize: '.95rem', color: 'var(--ink-2)', marginBottom: 18 }}>
-        Cerca per settore, parola chiave, comune o nome: il sistema filtra l&apos;archivio in tempo reale.
-      </p>
+    <PageSection>
+      <PageHeader
+        kicker="Archivio" number="02"
+        title="Aziende"
+        lead="Cerca per settore, parola chiave, comune o nome: il sistema filtra l’archivio in tempo reale."
+      />
 
-      {/* search */}
-      <div style={{ position: 'relative', marginBottom: 16 }}>
-        <span style={{ position: 'absolute', left: 16, top: '50%', transform: 'translateY(-50%)', color: 'var(--ink-3)', fontSize: '1rem' }}>⌕</span>
+      <div className="sx-search" style={{ marginBottom: '1rem' }}>
+        <label htmlFor="sx-azi-search" className="sr-only">Cerca nell’archivio</label>
+        <Icon name="search" size={15} className="sx-search__icon" />
         <input
+          id="sx-azi-search"
+          type="search"
+          className="sx-search__input"
           value={st.query}
           onChange={(e) => set({ query: e.target.value })}
-          placeholder="Es. “tornitura”, “carpenteria inox”, “Schio”, “Tier A”…"
-          style={{ width: '100%', boxSizing: 'border-box', padding: '14px 44px 14px 42px', border: '1px solid var(--line)', borderRadius: 12, background: 'var(--paper)', fontFamily: 'var(--sans)', fontSize: '.95rem', color: 'var(--ink)', outline: 'none' }}
+          placeholder="Es. computer vision, SaaS HR, Trento, Tier A"
+          autoComplete="off"
         />
         {hasQuery && (
-          <button onClick={() => set({ query: '' })} style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--ink-3)', fontSize: '.9rem', padding: '4px 8px' }}>✕</button>
+          <span className="sx-search__clear">
+            <CloseButton onClick={() => set({ query: '' })} label="Cancella la ricerca" />
+          </span>
         )}
       </div>
 
-      {/* view chips */}
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 14 }}>
+      <div className="sx-chips" role="group" aria-label="Vista" style={{ marginBottom: '0.9rem' }}>
         {VIEWS.map(([id, label]) => (
-          <button key={id} onClick={() => set({ aziView: id })} style={chipStyle(st.aziView === id)}>
-            {label} <span style={{ opacity: 0.6 }}>{counts[id]}</span>
-          </button>
+          <Chip key={id} pressed={st.aziView === id} onClick={() => set({ aziView: id })} count={counts[id]}>{label}</Chip>
         ))}
       </div>
 
-      <div style={{ fontSize: '.78rem', color: 'var(--ink-3)', marginBottom: 12, fontWeight: 600, letterSpacing: '.02em' }}>{resultLabel}</div>
+      <p className="sx-meta num" role="status" style={{ marginBottom: '0.75rem' }}>{resultLabel}</p>
 
-      {/* table */}
-      <div style={{ background: 'var(--paper)', border: '1px solid var(--line)', borderRadius: 14, overflow: 'hidden' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: COLS, gap: 12, padding: '12px 20px', borderBottom: '1px solid var(--line)', fontSize: '.68rem', fontWeight: 600, letterSpacing: '.1em', textTransform: 'uppercase', color: 'var(--ink-3)' }}>
-          <span>Azienda</span><span>Settore</span><span>Comune</span><span>Fatturato</span><span>Dip.</span><span>Maturità</span><span>Giudizio</span>
-        </div>
-        {rows.map((c) => (
-          <div
-            key={c.id ?? c.nome}
-            className="ag-row"
-            role={c.id ? 'button' : undefined}
-            tabIndex={c.id ? 0 : undefined}
-            onClick={() => c.id && set({ selectedCompanyId: c.id })}
-            onKeyDown={(e) => { if (c.id && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); set({ selectedCompanyId: c.id }); } }}
-            style={{ display: 'grid', gridTemplateColumns: COLS, gap: 12, padding: '13px 20px', borderBottom: '1px solid var(--line-soft)', alignItems: 'center', fontSize: '.86rem', cursor: c.id ? 'pointer' : 'default' }}
-          >
-            <span style={{ fontWeight: 600, color: 'var(--ink)' }}>{c.nome}</span>
-            <span style={{ color: 'var(--ink-3)', fontSize: '.8rem' }}>{c.settore}</span>
-            <span style={{ color: 'var(--ink-2)' }}>{c.comune}</span>
-            <span style={{ color: 'var(--ink-2)' }}>{c.fattN ? c.fattN.toFixed(1).replace('.', ',') + 'M' : '—'}</span>
-            <span style={{ color: 'var(--ink-2)' }}>{c.dip || '—'}</span>
-            <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span style={{ width: 38, height: 5, borderRadius: 999, background: 'var(--paper-3)', overflow: 'hidden' }}>
-                <span style={{ display: 'block', height: '100%', width: c.matW, background: 'var(--accent)' }} />
-              </span>
-              <span style={{ fontSize: '.72rem', color: 'var(--ink-3)' }}>{c.mat}</span>
-            </span>
-            <span style={tierPillStyle(c.tier)}>{c.tier}</span>
-          </div>
-        ))}
-        {rows.length === 0 && (
-          <div style={{ padding: '48px 20px', textAlign: 'center', color: 'var(--ink-3)' }}>
-            <div style={{ fontFamily: 'var(--serif)', fontSize: '1.1rem', marginBottom: 6 }}>{isLoading ? 'Caricamento archivio…' : 'Nessuna azienda trovata'}</div>
-            <div style={{ fontSize: '.84rem' }}>{isLoading ? 'Connessione al motore pg4.' : 'Prova un’altra parola chiave o cambia vista.'}</div>
-          </div>
+      <Card pad="flush">
+        {rows.length > 0 && (
+          <Table cols={COLS} head={HEAD} minWidth={820} label="Aziende nell’archivio">
+            {rows.map((c) => (
+              <tr key={c.id ?? c.nome} className={cx(c.id && 'sx-tr--action')} onClick={() => open(c)}>
+                <td>
+                  {c.id ? (
+                    <button type="button" className="sx-rowbtn" onClick={(e) => { e.stopPropagation(); open(c); }}>{c.nome}</button>
+                  ) : (
+                    <span className="sx-cell-strong">{c.nome}</span>
+                  )}
+                </td>
+                <td className="sx-cell-sub">{c.settore}</td>
+                <td>{c.comune}</td>
+                <td className="sx-cell-num">{c.fattN ? c.fattN.toFixed(1).replace('.', ',') + 'M' : EMPTY}</td>
+                <td className="sx-cell-num">{c.dip || EMPTY}</td>
+                <td><MiniBar value={pctOf(c.matW)} text={c.mat} /></td>
+                <td><Pill tone={tierTone(c.tier)}>{c.tier}</Pill></td>
+              </tr>
+            ))}
+          </Table>
         )}
-      </div>
-    </section>
+        {rows.length === 0 && (
+          <EmptyState icon={isLoading ? 'job' : 'search'} title={isLoading ? 'Caricamento archivio' : 'Nessuna azienda trovata'}>
+            {isLoading ? 'Connessione al motore pg4.' : 'Prova un’altra parola chiave o cambia vista.'}
+          </EmptyState>
+        )}
+      </Card>
+    </PageSection>
   );
 }

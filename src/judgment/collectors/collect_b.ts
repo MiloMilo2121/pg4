@@ -12,12 +12,12 @@ import { AdLibrarySourceAdapter } from '../harvest/adapters/ad_library_adapter';
  * GBP completeness + review MANAGEMENT, social presence, ad presence). Imports
  * NOTHING from the A-collector. COLLECTS, never judges.
  *
- * §5.3.5 firewall: a surface whose FOOTPRINT channel is `unknown` becomes a
- * `unknown` B signal — NEVER `confirmed_absent`. Only a footprint
- * `confirmed_absent` (a serious search found nothing) may surface as absence.
+ * Firewall: a surface whose FOOTPRINT channel is `unknown` becomes a `unknown` B
+ * signal — NEVER `confirmed_absent`. Only a footprint `confirmed_absent` (a serious
+ * search found nothing) may surface as absence.
  */
 
-/** B surfaces this collector reasons about (subset of §3.1–3.15 that is observable). */
+/** B surfaces this collector reasons about. */
 const B_SURFACES = ['3.1', '3.2', '3.3', '3.4', '3.5', '3.6', '3.7', '3.8', '3.9', '3.10', '3.11', '3.12', '3.13', '3.14', '3.15'] as const;
 
 export async function collectB(lead: Lead, ctx: HarvestContext, bundle: HarvestBundle, footprint?: Footprint): Promise<Signal[]> {

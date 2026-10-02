@@ -1,0 +1,30 @@
+# pg4 API server on the VPS — production build, NOT tsx.
+#
+# Install:  pnpm build && sudo cp deploy/pg4-api.service /etc/systemd/system/ &&
+#           sudo systemctl daemon-reload && sudo systemctl enable --now pg4-api
+# Logs:     journalctl -u pg4-api -f
+#
+# %h is the unit user's home (e.g. /home/ubuntu): the checkout must be at
+# %h/pg4. Graceful stop via SIGTERM is handled by src/runtime/shutdown.ts
+# (drains in-flight work, kills scrape children, max 10 s); Restart=on-failure
+# never masks a clean exit(0).
+[Unit]
+Description=pg4 dev API server (production build)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=%h/pg4
+Environment=NODE_ENV=production
+Environment=LOG_FORMAT=json
+EnvironmentFile=-%h/pg4/.env
+ExecStart=/usr/bin/node dist/server/api_server.js
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

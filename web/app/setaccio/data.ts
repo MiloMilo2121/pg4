@@ -36,7 +36,6 @@ export interface State {
   itLevel: ItLevel;
   itMode: ItMode;
   hover: string | null;
-  hoverCount: number;
   raffTab: 'enrichment' | 'imbuto' | 'viste';
   enrich: Record<string, boolean>;
   filters: Record<string, boolean>;
@@ -73,7 +72,6 @@ export const INITIAL_STATE: State = {
   itLevel: 'nazione',
   itMode: 'copertura',
   hover: null,
-  hoverCount: 0,
   raffTab: 'enrichment',
   enrich: { piva: true, fatturato: true, dipendenti: true },
   filters: { sito: true, categoria: true, fatturato: true, dipendenti: true, quadrante: true },
@@ -84,8 +82,8 @@ export const INITIAL_STATE: State = {
   query: '',
   wizardOpen: false,
   wStep: 0,
-  wCats: ['Imprese metalmeccaniche'],
-  wProv: ['Vicenza'],
+  wCats: ['Software B2B SaaS'],
+  wProv: ['Milano'],
   wSrc: ['pg', 'maps'],
   wDepth: 'completo',
   activeJob: null,
@@ -103,15 +101,7 @@ export interface Market {
   comuni: number;
   cov: number;
   ultimo: string;
-  dot: string;
 }
-
-export const MARKETS: Market[] = [
-  { id: 'vic', settore: 'Imprese metalmeccaniche', territorio: 'Provincia di Vicenza', stato: 'Parzialmente arricchito', aziende: 18420, target: 1840, comuni: 41, cov: 56, ultimo: '2 giorni fa', dot: 'var(--accent)' },
-  { id: 'vr', settore: 'Serramenti', territorio: 'Provincia di Verona', stato: 'Mercato acquisito', aziende: 24100, target: 1320, comuni: 38, cov: 22, ultimo: '6 giorni fa', dot: 'var(--accent-2)' },
-  { id: 'pd', settore: 'Imprese edili', territorio: 'Provincia di Padova', stato: 'Pronto da raffinare', aziende: 12800, target: 980, comuni: 29, cov: 64, ultimo: '90 giorni fa', dot: 'var(--ink-3)' },
-  { id: 'tv', settore: 'Web Agency', territorio: 'Provincia di Treviso', stato: 'Mappatura pronta', aziende: 3400, target: 0, comuni: 14, cov: 8, ultimo: '1 giorno fa', dot: 'var(--ink-3)' },
-];
 
 export interface Region {
   id: string;
@@ -163,13 +153,13 @@ export interface Province {
 }
 
 export const PROVINCES: Province[] = [
-  { id: 'vr', name: 'Verona', col: 0, row: 1, cov: 48, az: 24100, target: 1320, tr: '5,5%', ct: '€0,79' },
-  { id: 'vi', name: 'Vicenza', col: 1, row: 1, cov: 85, az: 18420, target: 1840, tr: '10,0%', ct: '€0,42' },
-  { id: 'tv', name: 'Treviso', col: 2, row: 1, cov: 40, az: 9400, target: 520, tr: '5,5%', ct: '€0,71' },
-  { id: 've', name: 'Venezia', col: 3, row: 1, cov: 34, az: 7200, target: 360, tr: '5,0%', ct: '€0,84' },
-  { id: 'bl', name: 'Belluno', col: 2, row: 0, cov: 22, az: 1600, target: 90, tr: '5,6%', ct: '€0,90' },
-  { id: 'pd', name: 'Padova', col: 2, row: 2, cov: 64, az: 12800, target: 980, tr: '7,7%', ct: '€0,58' },
-  { id: 'ro', name: 'Rovigo', col: 2, row: 3, cov: 18, az: 2100, target: 110, tr: '5,2%', ct: '€0,88' },
+  { id: 'vr', name: 'Verona', col: 0, row: 1, cov: 48, az: 24100, target: 1320, tr: '6,1%', ct: '€0,74' },
+  { id: 'vi', name: 'Vicenza', col: 1, row: 1, cov: 85, az: 18420, target: 1840, tr: '7,0%', ct: '€0,61' },
+  { id: 'tv', name: 'Treviso', col: 2, row: 1, cov: 40, az: 9400, target: 520, tr: '9,8%', ct: '€0,49' },
+  { id: 've', name: 'Venezia', col: 3, row: 1, cov: 34, az: 7200, target: 360, tr: '5,2%', ct: '€0,83' },
+  { id: 'bl', name: 'Belluno', col: 2, row: 0, cov: 22, az: 1600, target: 90, tr: '4,0%', ct: '€0,92' },
+  { id: 'pd', name: 'Padova', col: 2, row: 2, cov: 64, az: 12800, target: 980, tr: '12,4%', ct: '€0,38' },
+  { id: 'ro', name: 'Rovigo', col: 2, row: 3, cov: 18, az: 2100, target: 110, tr: '3,5%', ct: '€0,95' },
 ];
 
 // Maps a Veneto province id → svg outline id in geo/veneto-provinces.json.
@@ -207,8 +197,11 @@ export const CREDITS: Credit[] = [
   { id: 'ri', nome: 'Registro Imprese · PEC', piano: 'Prepagato', unit: '€', resN: 86, totN: 200, res: '€86', tot: '€200', cons: '€34 / 30gg', giorni: 76, soglia: 30 },
 ];
 
+/** Tier label of a company the judgment layer has not scored yet. */
+export const NO_TIER = 'Non giudicata';
+
 export interface Company {
-  /** Real company id (empty for the static demo rows; set for API rows). */
+  /** Real company id (set for API rows). */
   id?: string;
   nome: string;
   comune: string;
@@ -218,41 +211,31 @@ export interface Company {
   mat: string;
   matW: string;
   tier: string;
+  /** Judged and ruled out as a target (verdetto_gap.target === 'no'). */
+  excluded?: boolean;
   kw: string;
 }
 
-export const COMPANIES: Company[] = [
-  { nome: 'Officine Meccaniche Schio Srl', comune: 'Schio', settore: 'Carpenteria metallica', fattN: 8.2, dip: 34, mat: 'Target', matW: '92%', tier: 'Tier A', kw: 'tornitura acciaio saldatura cnc' },
-  { nome: 'Carpenteria Berica SpA', comune: 'Vicenza', settore: 'Carpenteria pesante', fattN: 14.0, dip: 52, mat: 'Target', matW: '100%', tier: 'Tier A', kw: 'travi capannoni strutture acciaio' },
-  { nome: 'Veneta Lavorazioni Srl', comune: 'Arzignano', settore: 'Lavorazioni meccaniche', fattN: 6.1, dip: 21, mat: 'Qualificata', matW: '78%', tier: 'Tier B', kw: 'fresatura tornitura conto terzi' },
-  { nome: 'F.lli Dal Maso & C.', comune: 'Thiene', settore: 'Meccatronica', fattN: 4.8, dip: 18, mat: 'Qualificata', matW: '70%', tier: 'Tier B', kw: 'automazione robotica assemblaggio' },
-  { nome: 'Meccanica Bassanese Srl', comune: 'Bassano', settore: 'Lavorazioni meccaniche', fattN: 2.1, dip: 9, mat: 'Arricchita', matW: '54%', tier: 'Tier C', kw: 'tornitura piccola serie' },
-  { nome: 'Torneria Valdagno', comune: 'Valdagno', settore: 'Tornitura', fattN: 0, dip: 0, mat: 'Base', matW: '32%', tier: '—', kw: 'tornitura acciaio ottone' },
-  { nome: 'Inox Montecchio Srl', comune: 'Montecchio', settore: 'Carpenteria inox', fattN: 3.4, dip: 12, mat: 'Arricchita', matW: '58%', tier: 'Tier C', kw: 'acciaio inox saldatura alimentare' },
-  { nome: 'Carpenterie Lonigo Snc', comune: 'Lonigo', settore: 'Carpenteria leggera', fattN: 0, dip: 0, mat: 'Grezza', matW: '18%', tier: '—', kw: 'lamiera taglio laser' },
-  { nome: 'Fonderia Marosticense SpA', comune: 'Marostica', settore: 'Fonderia', fattN: 22.5, dip: 88, mat: 'Target', matW: '96%', tier: 'Tier A', kw: 'pressofusione alluminio getti' },
-  { nome: 'Saldature Berica Srl', comune: 'Vicenza', settore: 'Saldatura', fattN: 1.6, dip: 7, mat: 'Arricchita', matW: '48%', tier: 'Tier C', kw: 'saldatura tig mig carpenteria' },
-  { nome: 'Utensileria Schio SpA', comune: 'Schio', settore: 'Utensileria', fattN: 9.7, dip: 41, mat: 'Target', matW: '88%', tier: 'Tier A', kw: 'stampi utensili precisione' },
-  { nome: 'Lamiere Thiene Srl', comune: 'Thiene', settore: 'Lavorazione lamiera', fattN: 5.3, dip: 24, mat: 'Qualificata', matW: '74%', tier: 'Tier B', kw: 'taglio laser piegatura lamiera' },
-  { nome: 'Automazioni Malo Srl', comune: 'Malo', settore: 'Meccatronica', fattN: 3.9, dip: 15, mat: 'Arricchita', matW: '60%', tier: 'Tier C', kw: 'automazione quadri elettrici plc' },
-  { nome: 'Meccanica di Precisione Arzignano', comune: 'Arzignano', settore: 'Lavorazioni meccaniche', fattN: 7.8, dip: 29, mat: 'Qualificata', matW: '82%', tier: 'Tier B', kw: 'cnc precisione aerospace' },
-  { nome: 'Stampi Montecchio Srl', comune: 'Montecchio', settore: 'Stampi', fattN: 0, dip: 0, mat: 'Grezza', matW: '22%', tier: '—', kw: 'stampaggio plastica stampi' },
-  { nome: 'Carpenteria Lonigo Industriale', comune: 'Lonigo', settore: 'Carpenteria pesante', fattN: 11.2, dip: 47, mat: 'Target', matW: '90%', tier: 'Tier A', kw: 'strutture acciaio capannoni' },
-];
-
-export interface Comune {
+export interface ComuneSlot {
   name: string;
   x: number;
   y: number;
-  az: number;
 }
 
-export const COMUNI: Comune[] = [
-  { name: 'Vicenza', x: 220, y: 210, az: 4200 }, { name: 'Schio', x: 200, y: 110, az: 2100 },
-  { name: 'Thiene', x: 250, y: 140, az: 1700 }, { name: 'Bassano', x: 320, y: 100, az: 1900 },
-  { name: 'Arzignano', x: 130, y: 250, az: 2400 }, { name: 'Valdagno', x: 150, y: 175, az: 1300 },
-  { name: 'Montecchio', x: 175, y: 290, az: 1100 }, { name: 'Lonigo', x: 235, y: 320, az: 900 },
-  { name: 'Marostica', x: 300, y: 160, az: 700 }, { name: 'Malo', x: 210, y: 165, az: 600 },
+export interface Comune extends ComuneSlot {
+  az: number;
+  withSite: number;
+  topCategory: string;
+}
+
+/** Layout of the comuni bubble map for the province of Padova (abstract viewBox 460×420, north up). */
+export const COMUNI_PD: ComuneSlot[] = [
+  { name: 'Padova', x: 235, y: 215 }, { name: 'Cittadella', x: 170, y: 70 },
+  { name: 'Camposampiero', x: 285, y: 110 }, { name: 'Noventa Padovana', x: 330, y: 220 },
+  { name: 'Vigonza', x: 375, y: 150 }, { name: 'Selvazzano Dentro', x: 130, y: 165 },
+  { name: 'Albignasego', x: 250, y: 295 }, { name: 'Abano Terme', x: 140, y: 265 },
+  { name: 'Monselice', x: 210, y: 360 }, { name: 'Este', x: 95, y: 370 },
+  { name: 'Piove di Sacco', x: 365, y: 310 },
 ];
 
 export interface EnrichField {
@@ -266,14 +249,14 @@ export interface EnrichField {
 }
 
 export const ENRICH: EnrichField[] = [
-  { k: 'piva', label: 'P.IVA', cov: 63, toArr: 4320, costN: 0, cost: '€0', prio: 'Alta' },
-  { k: 'fatturato', label: 'Fatturato', cov: 31, toArr: 8910, costN: 142, cost: '€142', prio: 'Alta' },
-  { k: 'dipendenti', label: 'Dipendenti', cov: 27, toArr: 9420, costN: 118, cost: '€118', prio: 'Alta' },
-  { k: 'email', label: 'Email', cov: 51, toArr: 6150, costN: 28, cost: '€0–40', prio: 'Media' },
-  { k: 'pec', label: 'PEC', cov: 44, toArr: 7100, costN: 0, cost: '€0', prio: 'Media' },
-  { k: 'social', label: 'Social / LinkedIn', cov: 19, toArr: 10200, costN: 96, cost: '€96', prio: 'Media' },
-  { k: 'decisore', label: 'Decisore', cov: 8, toArr: 11580, costN: 580, cost: '€580', prio: 'Bassa' },
-  { k: 'ateco', label: 'ATECO', cov: 71, toArr: 3100, costN: 0, cost: '€0', prio: 'Bassa' },
+  { k: 'piva', label: 'P.IVA', cov: 63, toArr: 3560, costN: 0, cost: '€0', prio: 'Alta' },
+  { k: 'fatturato', label: 'Fatturato', cov: 31, toArr: 6650, costN: 96, cost: '€96', prio: 'Media' },
+  { k: 'dipendenti', label: 'Dipendenti', cov: 27, toArr: 7040, costN: 74, cost: '€74', prio: 'Alta' },
+  { k: 'email', label: 'Email', cov: 51, toArr: 4720, costN: 28, cost: '€0–40', prio: 'Media' },
+  { k: 'pec', label: 'PEC', cov: 44, toArr: 5400, costN: 0, cost: '€0', prio: 'Media' },
+  { k: 'social', label: 'Social / LinkedIn', cov: 38, toArr: 5980, costN: 121, cost: '€121', prio: 'Alta' },
+  { k: 'decisore', label: 'Decisore', cov: 14, toArr: 8290, costN: 310, cost: '€310', prio: 'Alta' },
+  { k: 'ateco', label: 'ATECO', cov: 71, toArr: 2600, costN: 0, cost: '€0', prio: 'Bassa' },
 ];
 
 export interface RaffFilter {
@@ -283,15 +266,18 @@ export interface RaffFilter {
 }
 
 export const RAFF: RaffFilter[] = [
-  { k: 'sito', label: 'Senza sito', removed: 4180 },
-  { k: 'categoria', label: 'Fuori categoria', removed: 1120 },
-  { k: 'fatturato', label: 'Fatturato sotto soglia', removed: 6800 },
-  { k: 'dipendenti', label: 'Dipendenti insufficienti', removed: 2060 },
-  { k: 'quadrante', label: 'Quadranti non target', removed: 2710 },
+  { k: 'sito', label: 'Senza sito', removed: 1380 },
+  { k: 'categoria', label: 'Fuori categoria', removed: 1650 },
+  { k: 'fatturato', label: 'Fatturato sotto soglia', removed: 3120 },
+  { k: 'dipendenti', label: 'Dipendenti insufficienti', removed: 1040 },
+  { k: 'quadrante', label: 'Quadranti non target', removed: 1280 },
 ];
 
-export const WIZ_CATS = ['Imprese metalmeccaniche', 'Carpenteria', 'Tornerie', 'Meccatronica', 'Fabbri', 'Serramenti', 'Imprese Edili', 'Elettricisti', 'Idraulici', 'Autofficine', 'Software House', 'Web Agency'];
-export const WIZ_PROV = ['Vicenza', 'Verona', 'Padova', 'Treviso', 'Venezia', 'Rovigo', 'Belluno', 'Brescia', 'Milano', 'Bergamo'];
+/** Static funnel universe of the prototype (tech companies mapped in Nord Italia); the imbuto and analytics views share it. */
+export const UNIVERSO = 9640;
+
+export const WIZ_CATS = ['Software B2B SaaS', 'Intelligenza artificiale', 'Cybersecurity', 'Fintech e insurtech', 'Robotica e automazione', 'Fotonica e semiconduttori', 'Biotech e medtech', 'Spacetech e aerospazio', 'Quantum e deeptech', 'Data e analytics', 'Climate tech', 'Industrial IoT'];
+export const WIZ_PROV = ['Milano', 'Torino', 'Bologna', 'Trento', 'Padova', 'Genova', 'Trieste', 'Treviso', 'Verona', 'Monza e Brianza'];
 
 export interface WizSource {
   id: string;
@@ -314,9 +300,28 @@ export interface WizDepth {
   dur: number;
 }
 export const WIZ_DEPTH: WizDepth[] = [
-  { id: 'rapido', nome: 'Rapido', desc: 'Fonti principali, meno query, copertura minore. Più veloce.', dur: 22 },
+  { id: 'rapido', nome: 'Rapido', desc: 'Solo il capoluogo, prima pagina di risultati. Circa un minuto, dati reali.', dur: 22 },
   { id: 'completo', nome: 'Completo', desc: 'Più varianti e più fonti, maggiore copertura.', dur: 58 },
   { id: 'esteso', nome: 'Esteso', desc: 'Tutte le combinazioni, query correlate, comuni e categorie vicine. Massimo recall.', dur: 100 },
 ];
 
-export const TOTAL = REGIONS.reduce((s, r) => s + r.az, 0); // 186.940
+// Structural template of the 3×3 A×B grid (axis level + design tier). The cell
+// COUNT is overlaid from the real judgment-summary quadrant histogram: the
+// engine emits quadrants as `A{s}B{s}` with s ∈ {+ , - , ?}; the view's three
+// buckets per axis map +→A (alta), ?→M (media/indeterminato), -→B (bassa).
+export const CELLS: { a: 'A' | 'M' | 'B'; b: 'A' | 'M' | 'B'; tier: string }[] = [
+  { a: 'B', b: 'A', tier: 'Tier C' }, { a: 'M', b: 'A', tier: 'Tier B' }, { a: 'A', b: 'A', tier: 'Tier A' },
+  { a: 'B', b: 'M', tier: 'Tier C' }, { a: 'M', b: 'M', tier: 'Tier C' }, { a: 'A', b: 'M', tier: 'Tier B' },
+  { a: 'B', b: 'B', tier: 'Tier D' }, { a: 'M', b: 'B', tier: 'Tier D' }, { a: 'A', b: 'B', tier: 'Tier C' },
+];
+const AXIS_SYM: Record<'A' | 'M' | 'B', string> = { A: '+', M: '?', B: '-' };
+/** real quadrant key for a view cell, e.g. a='A' b='B' → 'A+B-'. */
+export function cellQuadrant(c: { a: 'A' | 'M' | 'B'; b: 'A' | 'M' | 'B' }): string {
+  return `A${AXIS_SYM[c.a]}B${AXIS_SYM[c.b]}`;
+}
+
+const TIER_BY_QUADRANT: Record<string, string> = Object.fromEntries(CELLS.map((c) => [cellQuadrant(c), c.tier]));
+/** The design tier of a judged company's quadrant; NO_TIER when it has not been judged. */
+export function tierForQuadrant(quadrant: string | undefined): string {
+  return (quadrant && TIER_BY_QUADRANT[quadrant]) || NO_TIER;
+}

@@ -1,12 +1,13 @@
 import type { NormalizedLead } from '../../../types/discovery';
 import { ItalianNerParser } from './italian_ner_parser';
+import { stripDiacritics } from '../../../util/text';
 
 /**
  * Generates an aggressive set of plausible domains for a company by combining
  * NER-extracted brand tokens with city tokens, acronyms, and descriptors.
  * Output is post-filtered to length 3..60 to avoid pinging entire TLD blocks.
  *
- * Pure, deterministic. Adapted from pg3 hyperguesser_vx/generator.ts.
+ * Pure, deterministic.
  */
 export class HyperGuesserGenerator {
   private static readonly TLDS = ['.it', '.com', '.eu', '.net', '.org'];
@@ -21,7 +22,7 @@ export class HyperGuesserGenerator {
     const brandTokens = ner.brandTokens;
 
     const cleanName = ner.coreBrand.replace(/[^a-z0-9]/g, '');
-    const cleanCity = city.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]/g, '');
+    const cleanCity = stripDiacritics(city.toLowerCase()).replace(/[^a-z0-9]/g, '');
 
     // Base brand permutations
     this.add(domains, cleanName);

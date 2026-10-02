@@ -47,4 +47,23 @@ describe('InputWebsiteCandidate.assess', () => {
   it('rejects hostnames with no TLD', () => {
     expect(InputWebsiteCandidate.assess('http://localhost').classification).toBe('INVALID');
   });
+
+  it('adds the PSL registrable domain as a fallback, never a bare public suffix', () => {
+    const r = InputWebsiteCandidate.assess('https://shop.foo.pd.it/prodotti');
+    expect(r.candidates).toContain('https://foo.pd.it');
+    expect(r.candidates).toContain('https://www.foo.pd.it');
+    expect(r.candidates.some((c) => /^https?:\/\/(www\.)?pd\.it$/.test(c))).toBe(false);
+  });
+
+  it('never falls back from a hosting tenant to the platform apex', () => {
+    const r = InputWebsiteCandidate.assess('https://studiofoo.altervista.org');
+    expect(r.candidates).toContain('https://studiofoo.altervista.org');
+    expect(r.candidates.some((c) => /^https?:\/\/(www\.)?altervista\.org$/.test(c))).toBe(false);
+  });
+
+  it('folds a subdomain under a second-level ccTLD to the firm, not to co.uk', () => {
+    const r = InputWebsiteCandidate.assess('https://shop.foo.co.uk');
+    expect(r.candidates).toContain('https://foo.co.uk');
+    expect(r.candidates.some((c) => /^https?:\/\/(www\.)?co\.uk$/.test(c))).toBe(false);
+  });
 });

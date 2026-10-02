@@ -4,7 +4,7 @@ import type { Lead } from '../../src/types/lead';
 import type { NormalizedLead } from '../../src/types/discovery';
 
 /**
- * R4 — SmartSerperGate 0-network unit tests.
+ * SmartSerperGate 0-network unit tests.
  *
  * The gate is pure: input is a normalized lead + lead, output is a
  * deterministic decision. We test:

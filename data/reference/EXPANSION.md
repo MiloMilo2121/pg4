@@ -22,7 +22,7 @@ Then:
 > Note: the Google Maps `queryVariants` expansion (`--coverage full`) is driven by `sectors.json` via `src/discovery/sources/maps_coverage.ts` (with a hardcoded fallback table), so a new sector's variants apply automatically.
 
 ## 2) Adding an AREA (provincia / region)
-**No change to the code or the catalog.** The complete comuni (municipalities) of all **47 Northern provinces** (8 regions) are already in `comuni_nord.json`, and the geography in `src/coverage/geo_regions.ts`. Just pass the 2-letter codes to the driver:
+**No change to the code or the catalog.** The complete comuni (municipalities) of all **47 Northern provinces** (8 regions) are already in `comuni_nord.json`, and the geography in `src/geo/regions.ts`. Just pass the 2-letter codes to the driver:
 ```
 MAPS=1 nohup bash scripts/campaign.sh MI BG BS CO VA &   # Lombardia
 ```
@@ -44,5 +44,5 @@ Parked by choice: the current DB is level 1 (company registry data + phone + cat
 | ISTAT universe | `data/reference/istat_asia_universe.csv` |
 | category→ATECO crosswalk | `data/reference/category_ateco_map.json` |
 | ATECO taxonomy | `data/reference/ateco_divisions.json` |
-| Northern geography | `src/coverage/geo_regions.ts` |
+| Northern geography | `src/geo/regions.ts` |
 | scraping driver (extensible) | `scripts/campaign.sh` |

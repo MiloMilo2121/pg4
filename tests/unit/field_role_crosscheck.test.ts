@@ -22,7 +22,7 @@ describe('field cascade ↔ role registry cross-check (AC8)', () => {
   });
 
   it('official-data fields (pec/revenue/employees) carry OFFICIAL_COMPANY_DATA', () => {
-    for (const f of ['pec', 'revenue', 'employees']) {
+    for (const f of ['pec', 'revenue', 'employees'] as const) {
       expect(FIELD_BY_NAME.get(f)?.role).toBe('OFFICIAL_COMPANY_DATA');
     }
   });

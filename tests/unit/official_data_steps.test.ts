@@ -5,7 +5,7 @@ import { runFieldCascade } from '../../src/enrichment/fields/run_field_cascade';
 import { resolveVat, companyNameMatches, sharedNameTokenCount, isWrongEntity } from '../../src/enrichment/fields/field_registry';
 
 /**
- * Phase 3 official-data steps (VIES + fatturatoitalia) — wiring + SAFETY.
+ * Official-data steps (VIES + fatturatoitalia) — wiring + SAFETY.
  * These tests make NO network call: they exercise the checksum/no-input gates
  * that must short-circuit BEFORE any fetch. (The live behaviour is proven by
  * the e2e browser run + the measurement-evidence probe, not in unit tests.)
@@ -70,10 +70,13 @@ describe('sharedNameTokenCount + isWrongEntity — the three-way (foreign / ambi
     expect(sharedNameTokenCount('TECNOCASA FRANCHISING S.P.A.', 'Agenzia Immobiliare Tecnocasa Impresa Albignasego')).toBe(1); // ambiguous
     expect(sharedNameTokenCount('IMMOBILIARE METROQUADRO A R.L.', 'Immobiliare Metroquadro')).toBe(2); // confirm
   });
-  it('isWrongEntity refuses a different entity, allows a match, never blocks when no name', () => {
+  it('isWrongEntity refuses a different entity, allows a match, and refuses when a name is missing', () => {
     expect(isWrongEntity('TECNOCASA FRANCHISING S.P.A.', 'Agenzia Immobiliare Tecnocasa Impresa Albignasego')).toBe(true);
     expect(isWrongEntity('AGENZIA IMMOBILIARE ESEMPIO CASE SRL', 'Agenzia Immobiliare Esempio Case')).toBe(false);
-    expect(isWrongEntity(undefined, 'X')).toBe(false); // can't verify → don't block
+    // Unverifiable is not verified: another entity's revenue must not attach by default.
+    expect(isWrongEntity(undefined, 'Agenzia Immobiliare Esempio Case')).toBe(true);
+    expect(isWrongEntity('AGENZIA IMMOBILIARE ESEMPIO CASE SRL', undefined)).toBe(true);
+    expect(isWrongEntity('', '')).toBe(true);
   });
 });
 

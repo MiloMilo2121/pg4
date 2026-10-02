@@ -5,7 +5,7 @@ import {
 } from '../../src/discovery/sources/maps_coverage';
 
 /**
- * R5 — `maps_coverage` 0-network unit tests.
+ * `maps_coverage` 0-network unit tests.
  *
  * The module is pure: input is a category + coverage mode, output is
  * an ordered list of Maps query variants. We test:

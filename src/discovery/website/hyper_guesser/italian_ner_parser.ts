@@ -6,8 +6,9 @@
  *  - brandTokens (the unique brand part, used for domain generation)
  *  - coreBrand (brandTokens joined)
  *
- * Pure, deterministic. Adapted from pg3/enricher/core/discovery/hyperguesser_vx/italian_ner_parser.ts.
+ * Pure, deterministic.
  */
+import { stripDiacritics } from '../../../util/text';
 
 export interface NerResult {
   original: string;
@@ -50,10 +51,7 @@ const DESCRIPTORS = [
 export class ItalianNerParser {
   static parse(companyName: string): NerResult {
     const original = companyName;
-    let normalized = companyName
-      .toLowerCase()
-      .normalize('NFD')
-      .replace(/[̀-ͯ]/g, '')
+    let normalized = stripDiacritics(companyName.toLowerCase())
       .replace(/[^a-z0-9&.\s-]/g, ' ')
       .replace(/\s+/g, ' ')
       .trim();

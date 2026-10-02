@@ -3,6 +3,7 @@ import type { SerpProvider, SerpResult } from '../../types/providers';
 import { ProviderBlockError } from '../../types/providers';
 import { DEFAULTS } from '../../config/defaults';
 import { getEnv } from '../../config/env';
+import { CALL_COST_EUR } from '../pricing';
 
 /**
  * Tavily — paid SERP fallback for discovery (site/social/press). Tier 2 / paid,
@@ -13,7 +14,7 @@ export class TavilyProvider implements SerpProvider {
   readonly id = 'tavily';
   readonly family = 'serp' as const;
   readonly tier = 2;
-  readonly costPerCallEur = 0.005;
+  readonly costPerCallEur = CALL_COST_EUR.tavily;
 
   available(): boolean {
     const e = getEnv();

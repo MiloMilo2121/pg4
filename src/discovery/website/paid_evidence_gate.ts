@@ -3,7 +3,7 @@ import type { Lead } from '../../types/lead';
 import type { NormalizedLead } from '../../types/discovery';
 
 /**
- * R9 — Structural Paid Evidence Gate.
+ * Structural Paid Evidence Gate.
  *
  * Audit data driving this gate:
  *   - BL paid run: 73 SERP_PAID accepted, manual audit 67 TP / 6 FP
@@ -46,7 +46,7 @@ import type { NormalizedLead } from '../../types/discovery';
  * Use: SerpStage.runPaidPass runs this gate AFTER PreVerifyGate's
  * piva_match / phone_match acceptance and BEFORE setting
  * `lead.official_website`. On reject, the lead falls through to
- * NOT_FOUND (consistent with R7.0 semantic-veto behaviour).
+ * NOT_FOUND (consistent with the semantic-veto behaviour).
  *
  * Pure function: no I/O, no router calls. Tests stay 0-network.
  */
@@ -102,11 +102,6 @@ function distinctVatCount(html: string): number {
   const matches = html.match(/\b\d{11}\b/g) ?? [];
   return new Set(matches).size;
 }
-
-// (An earlier gate revision matched firm-distinctive name tokens against
-// title/H1 — superseded by the R9 semantic-evidence integration. The dead
-// helper was removed in the Phase E lint pass; see git history for the
-// original implementation if the rule ever comes back.)
 
 export function evaluatePaidEvidence(
   html: string,

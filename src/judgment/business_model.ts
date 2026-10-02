@@ -2,9 +2,9 @@ import type { Lead } from '../types/lead';
 import type { BusinessModel } from '../types/judgment';
 
 /**
- * Deterministic business-model classifier (a PRIOR, §2.8/§3.0.2 — never a rigid
- * rule). Reads the lead's category/ATECO-ish text and maps it to one of the five
- * ontology models. The GAP reasoner may refine it with collected evidence.
+ * Deterministic business-model classifier (a prior, never a rigid rule). Reads the
+ * lead's category/ATECO-ish text and maps it to one of the five ontology models.
+ * The GAP reasoner may refine it with collected evidence.
  *
  * Tuned to the four Cypher verticals: manifattura, dentale/medico, ristorazione
  * multi-sede, e-commerce di prodotto.

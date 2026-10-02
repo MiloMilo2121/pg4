@@ -2,7 +2,7 @@ import { execFile } from 'child_process';
 import { logger } from './logger';
 
 /**
- * Phase A.5 — pluggable operator notifications.
+ * Pluggable operator notifications.
  *
  * Call sites emit structured events; the active notifier decides delivery.
  * Default is `local`: a structured log line (info for a clean completion,
@@ -15,7 +15,7 @@ import { logger } from './logger';
  * Conservative default recorded in docs/decision_log.md.
  */
 
-export type NotifyKind =
+type NotifyKind =
   | 'run_complete'
   | 'run_partial'
   | 'run_failed'

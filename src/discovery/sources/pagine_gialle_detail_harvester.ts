@@ -1,13 +1,12 @@
 import * as cheerio from 'cheerio';
-import { request } from 'undici';
+import { followRedirects } from '../../providers/http/follow_redirects';
 import { isDirectoryOrSocial } from '../website/content_filter';
 import { DEFAULTS } from '../../config/defaults';
 
 /**
- * R1 — pg4 port of pg3's `PagineGialleHarvester`. HTTP-only, no
- * browser, run-scoped cache. Parses a PG company-detail page and
- * returns the deterministic evidence pg3 used to short-circuit the
- * SERP ladder:
+ * HTTP-only harvester of a PG company-detail page (no browser), with a
+ * run-scoped cache. Returns the deterministic evidence that can
+ * short-circuit the SERP ladder:
  *
  *   - official_website  (only if it passes `isDirectoryOrSocial` filter)
  *   - vat_code (P.IVA)
@@ -16,12 +15,11 @@ import { DEFAULTS } from '../../config/defaults';
  *
  * The harvester does NOT decide whether the website is the lead's
  * official site — that's `verifyCandidates` + `PreVerifyGate`. It only
- * extracts the candidate. Same separation pg4 uses elsewhere: the
+ * extracts the candidate. Same separation used elsewhere: the
  * harvester is a pure parser; the gate is the only authority on
  * acceptance.
  *
- * Adapted from `pg3/src/enricher/core/directories/paginegialle.ts`
- * but rewritten for pg4 conventions:
+ * Design notes:
  *   - undici instead of fetch
  *   - exact `isDirectoryOrSocial` filter
  *   - explicit `HarvestResult` shape
@@ -106,11 +104,10 @@ export class PgDetailHarvester {
   }
 
   private defaultFetchHtml = async (url: string, opts: { timeoutMs?: number }) => {
-    const res = await request(url, {
+    const { response: res } = await followRedirects(url, {
       method: 'GET',
       bodyTimeout: opts.timeoutMs,
       headersTimeout: opts.timeoutMs,
-      maxRedirections: 5,
       headers: {
         'user-agent': DEFAULTS.http.userAgent,
         'accept-language': 'it-IT,it;q=0.9,en;q=0.8',

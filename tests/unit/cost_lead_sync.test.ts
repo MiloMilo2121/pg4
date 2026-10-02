@@ -5,7 +5,7 @@ import { createPerLeadContext, createRun } from '../../src/runtime/run_context';
 import type { HttpProvider, HttpFetchResult, SerpProvider, SerpResult } from '../../src/types/providers';
 
 /**
- * Phase 4.2.1 cost integration test.
+ * Cost integration test.
  *
  * Validates that `lead.cost_eur` is sourced from the canonical CostLedger
  * (via `meta.lead_id`), not from in-memory stage counters that depended
@@ -43,7 +43,7 @@ const deadDns = async () => Promise.reject(new Error('ENOTFOUND'));
 
 describe('lead.cost_eur is sourced from the CostLedger (per-lead)', () => {
   it('reflects the cost of every router call tagged with this lead_id', async () => {
-    // Phase G — paid is default-deny in createRun, so the test must
+    // Paid is default-deny in createRun, so the test must
     // opt in. Cost ceiling must be high enough to cover repeated
     // €0.05 paid SERP calls (multiple stages may invoke).
     const run = createRun({ paidEnabled: true, costCeilingEur: 1.0 });

@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { createNotifier, setNotifier, getNotifier } from '../../src/runtime/notifier';
 import type { NotifyEvent, Notifier } from '../../src/runtime/notifier';
 
-describe('Notifier — Phase A.5', () => {
+describe('Notifier', () => {
   it('NOTIFY=off|0|false|none → noop notifier (does not throw, does nothing visible)', () => {
     for (const mode of ['off', '0', 'false', 'none', 'OFF']) {
       const n = createNotifier(mode);

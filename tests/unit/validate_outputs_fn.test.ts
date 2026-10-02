@@ -2,10 +2,10 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { describe, expect, it } from 'vitest';
-import { validateOutputs } from '../../src/scripts/validate_output';
+import { validateOutputs } from '../../src/io/validation/output_validator';
 
 /**
- * Phase B.2 — programmatic validator entry point + raw/enriched flavors.
+ * Programmatic validator entry point + raw/enriched flavors.
  */
 
 function tmpDir(): string {
@@ -15,7 +15,7 @@ function tmpDir(): string {
 const RAW_HEADER = 'company_name,category,city,phone,website,source,_schema_version';
 const ENR_HEADER = 'company_name,category,city,phone,website,source,status,reason_code,official_website,_schema_version';
 
-describe('validateOutputs — Phase B.2', () => {
+describe('validateOutputs', () => {
   it('raw flavor: rows without status/reason_code pass', async () => {
     const dir = tmpDir();
     const csv = path.join(dir, 'raw.csv');

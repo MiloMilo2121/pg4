@@ -1,7 +1,7 @@
 /**
- * R5 — Maps coverage modes.
+ * Maps coverage modes.
  *
- * pg4's default Maps run does ONE query per comune
+ * The default Maps run does ONE query per comune
  * (`<category> <comune>`). Audits show this leaves ~30 % of a
  * province's real estate agencies on the floor — Google Maps' SERP
  * for "agenzie immobiliari Padova" returns ~110 cards before the cap
@@ -17,7 +17,7 @@
  * phrase Italians use on Google Maps for the same business class —
  * not random keyword stuffing. The expansion table is hand-curated
  * (no LLM), with provenance comments so we can prune variants that
- * R6 benchmark shows are pure noise.
+ * benchmarks show are pure noise.
  *
  * Keep variants ordered most-general → most-specific so the run can
  * be interrupted early without losing the highest-yield query.
@@ -93,7 +93,7 @@ function variantsFor(category: string): string[] | undefined {
  * category) — falls back to the original when no expansion is known.
  *
  * The order is meaningful: variants[0] is the most-general /
- * highest-yield, variants[-1] the narrowest sub-sector. R5 callers
+ * highest-yield, variants[-1] the narrowest sub-sector. Callers
  * use that ordering to prioritise queries when a checkpoint must be
  * resumed mid-comune.
  */
@@ -107,7 +107,7 @@ export function expandMapsQueryVariants(category: string, mode: CoverageMode): s
 
 /**
  * True when the requested category has a curated full-coverage
- * variant table (from sectors.json or the hardcoded fallback). R5 logs a
+ * variant table (from sectors.json or the hardcoded fallback). Logs a
  * warning when the operator passes `--coverage full` for a category we don't
  * know how to expand — the run still proceeds with the single default query.
  */

@@ -1,0 +1,12 @@
+# Nightly trigger for pg4-campaign.service. Persistent=true runs the missed
+# slot once if the VPS was down at 02:00 (e.g. reboot), instead of silently
+# skipping a night.
+[Unit]
+Description=pg4 campaign nightly trigger
+
+[Timer]
+OnCalendar=*-*-* 02:00:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

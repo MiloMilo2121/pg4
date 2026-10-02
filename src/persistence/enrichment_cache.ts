@@ -1,17 +1,14 @@
 /**
  * Cross-run enrichment cache (a blueprint cost principle).
  *
- * The engine's existing `MemoryCache` is per-process and 30-min TTL — it does
- * NOT survive a run. This is the durable, tenant-scoped, cross-run cache: a
- * field already resolved for a company (keyed by a stable identity like the
+ * A field already resolved for a company (keyed by a stable identity like the
  * P.IVA) is never re-fetched. Since P.IVA→PEC and P.IVA→firmographics never
  * change, caching them forever collapses repeat-run cost toward €0 — the single
  * biggest cost lever at scale.
  *
- * Implements the same shape the per-field waterfall reads through, so wiring it
- * is a backend swap, not a call-site change. The in-memory implementation is
- * the dev/test double; `SupabaseEnrichmentCache` (documented, unwired this
- * pass) backs it with the `enrichment_cache` table from migration 0001.
+ * Implements the same shape the per-field waterfall reads through, so a durable
+ * backend is a backend swap, not a call-site change. The in-memory
+ * implementation is the one the engine uses today.
  */
 
 export interface CachedField {

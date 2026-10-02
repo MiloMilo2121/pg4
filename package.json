@@ -1,6 +1,6 @@
 {
   "name": "pg4",
-  "version": "0.1.0",
+  "version": "1.1.0",
   "description": "Lead discovery & enrichment engine for Italian SMBs — free-first, cost-bounded, test-heavy.",
   "private": true,
   "license": "MIT",
@@ -11,15 +11,24 @@
   },
   "homepage": "https://github.com/MiloMilo2121/pg4#readme",
   "bugs": "https://github.com/MiloMilo2121/pg4/issues",
-  "keywords": ["lead-generation", "web-scraping", "data-enrichment", "playwright", "typescript", "italy", "smb", "mcp"],
+  "keywords": [
+    "lead-generation",
+    "web-scraping",
+    "data-enrichment",
+    "playwright",
+    "typescript",
+    "italy",
+    "smb",
+    "mcp"
+  ],
   "type": "commonjs",
   "packageManager": "pnpm@10.33.2",
   "engines": {
-    "node": ">=22.0.0"
+    "node": ">=24.0.0"
   },
   "scripts": {
     "build": "node -e \"require('fs').rmSync('dist', { recursive: true, force: true })\" && tsc -p tsconfig.build.json",
-    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.test.json",
     "test": "vitest run tests/unit --reporter=dot",
     "test:smoke": "RUN_SMOKE=1 vitest run tests/smoke --reporter=dot",
     "test:all": "pnpm run test && pnpm run test:smoke",
@@ -28,8 +37,8 @@
     "pipeline": "tsx src/cli/run.ts",
     "benchmark": "tsx src/cli/benchmark.ts",
     "judge": "tsx src/cli/judge.ts",
-    "judge:eval": "tsx src/scripts/judgment_eval.ts",
-    "validate:output": "tsx src/scripts/validate_output.ts",
+    "judge:eval": "tsx src/cli/judgment_eval.ts",
+    "validate:output": "tsx src/cli/validate_output.ts",
     "lookup": "tsx src/cli/lookup.ts",
     "coverage": "tsx src/cli/coverage.ts",
     "campaign": "bash scripts/campaign.sh",
@@ -38,9 +47,11 @@
     "serve": "tsx src/server/api_server.ts",
     "dev": "node scripts/dev.mjs",
     "demo": "PG4_SEED_FILE=examples/demo/companies.jsonl node scripts/dev.mjs",
+    "demo:live": "PG4_SEED_FILE=/dev/null node scripts/dev.mjs",
     "mcp": "tsx src/server/mcp_server.ts",
     "lint": "eslint src tools tests scripts",
-    "test:coverage": "vitest run tests/unit --coverage --reporter=dot"
+    "test:coverage": "vitest run tests/unit --coverage --reporter=dot",
+    "knip": "knip && knip --production --include files"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.1",
@@ -48,29 +59,30 @@
     "csv-parse": "^7.0.3",
     "csv-stringify": "^6.9.0",
     "domhandler": "^5.0.3",
-    "dotenv": "^16.6.1",
-    "pino": "^9.14.0",
-    "pino-pretty": "^11.3.0",
+    "pino": "^10.3.1",
+    "pino-pretty": "^13.1.3",
     "playwright": "^1.63.0",
-    "undici": "^6.29.0",
-    "zod": "^3.25.76"
+    "tldts": "^7.4.16",
+    "undici": "^8.11.2",
+    "zod": "^4.6.5"
   },
   "pnpm": {
     "onlyBuiltDependencies": [
       "esbuild"
     ],
     "overrides": {
-      "cheerio>undici": "7.29.0",
+      "cheerio>undici": "7.30.0",
       "esbuild": "0.28.1"
     }
   },
   "devDependencies": {
-    "@types/node": "^22.20.4",
-    "@vitest/coverage-v8": "^3.2.7",
-    "eslint": "^9.39.5",
+    "@types/node": "^24.19.0",
+    "@vitest/coverage-v8": "^5.0.2",
+    "eslint": "^10.11.0",
+    "knip": "^6.38.0",
     "tsx": "^4.23.15",
-    "typescript": "^5.9.3",
-    "typescript-eslint": "^8.70.1",
-    "vitest": "^3.2.7"
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.71.0",
+    "vitest": "^5.0.2"
   }
 }

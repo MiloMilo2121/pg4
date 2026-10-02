@@ -18,7 +18,7 @@ function makeAged(dir: string, name: string, ageDays: number, now: number): stri
   return p;
 }
 
-describe('enforceRetention — Phase D.2', () => {
+describe('enforceRetention', () => {
   it('deletes data artifacts older than the cutoff, keeps newer ones', () => {
     const dir = tmpDir();
     const now = Date.now();
@@ -56,7 +56,7 @@ describe('enforceRetention — Phase D.2', () => {
   });
 });
 
-describe('resolveRetentionDays — Phase D.2', () => {
+describe('resolveRetentionDays', () => {
   it('undefined when neither flag nor env is set', () => {
     const prev = process.env.RETENTION_DAYS;
     delete process.env.RETENTION_DAYS;

@@ -50,17 +50,17 @@ export const ReasonCode = {
   ERROR_PROVIDER_RATE_LIMIT: 'ERROR_PROVIDER_RATE_LIMIT',
   ERROR_FETCH: 'ERROR_FETCH',
 
-  // Phase 4.5 (Phase D) — SerpStage reason-code split, replacing the
-  // single REJECTED_DIRECTORY catch-all with operator-actionable signals.
+  // SerpStage reason-code split: operator-actionable signals instead of a
+  // single REJECTED_DIRECTORY catch-all.
   // REJECTED_DIRECTORY is preserved for back-compat (still emitted by the
   // shared content_filter when the input website itself is a directory).
   SERP_EMPTY_ALL_PROVIDERS: 'SERP_EMPTY_ALL_PROVIDERS',
   SERP_DIRECTORY_ONLY: 'SERP_DIRECTORY_ONLY',
   SERP_REJECTED_BY_VERIFY: 'SERP_REJECTED_BY_VERIFY',
 
-  // Phase D — semantic gate rejection sub-reasons. Surfaced when
-  // PreVerifyGate refuses a candidate that would have been accepted by
-  // the previous (looser) version. Each reason maps to an audit pattern.
+  // Semantic gate rejection sub-reasons. Surfaced when
+  // PreVerifyGate refuses a candidate that would otherwise have been accepted.
+  // Each reason maps to an audit pattern.
   SEMANTIC_REJECTED_COMMON_STEM: 'SEMANTIC_REJECTED_COMMON_STEM',
   SEMANTIC_REJECTED_MISSING_CITY: 'SEMANTIC_REJECTED_MISSING_CITY',
   SEMANTIC_REJECTED_SECTOR_CONFLICT: 'SEMANTIC_REJECTED_SECTOR_CONFLICT',
@@ -68,12 +68,12 @@ export const ReasonCode = {
   SEMANTIC_REJECTED_RDAP_MISMATCH: 'SEMANTIC_REJECTED_RDAP_MISMATCH',
   SEMANTIC_REJECTED_NO_DISTINCTIVE_TOKENS: 'SEMANTIC_REJECTED_NO_DISTINCTIVE_TOKENS',
 
-  // Phase C.4 — Maps marked the business "Chiuso definitivamente"; enrich
+  // Maps marked the business "Chiuso definitivamente"; enrich
   // skips it by default (--include-closed overrides). The row is still
   // written (status SKIPPED) so CSV/JSONL row parity holds.
   SKIPPED_PERMANENTLY_CLOSED: 'SKIPPED_PERMANENTLY_CLOSED',
 
-  // Phase D.1 — lead matched the operator's suppression list (GDPR
+  // Lead matched the operator's suppression list (GDPR
   // right-to-objection / do-not-contact). Dropped from outputs entirely;
   // counted in the run summary.
   SUPPRESSED: 'SUPPRESSED',
